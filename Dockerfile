@@ -3,7 +3,7 @@
 # 因此同一镜像可在 amd64 / arm64（含多数 NAS）上原生运行。
 
 # ---------- build ----------
-FROM node:22-bookworm-slim AS build
+FROM node:24-bookworm-slim AS build
 RUN corepack enable && apt-get update \
   && apt-get install -y --no-install-recommends python3 make g++ \
   && rm -rf /var/lib/apt/lists/*
@@ -17,7 +17,7 @@ RUN pnpm install --frozen-lockfile
 RUN pnpm --filter @sendtomyself/web build
 
 # ---------- runtime ----------
-FROM node:22-bookworm-slim AS runtime
+FROM node:24-bookworm-slim AS runtime
 RUN corepack enable
 WORKDIR /app
 ENV NODE_ENV=production

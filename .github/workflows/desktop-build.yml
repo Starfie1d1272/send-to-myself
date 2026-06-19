@@ -25,12 +25,11 @@ jobs:
     name: ${{ matrix.name }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      # 版本取自根 package.json 的 packageManager 字段（不可再传 version，否则冲突报错）
       - uses: pnpm/action-setup@v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 24 # 与本地一致；pnpm 11.8 要求 Node ≥ 22.13
           cache: pnpm
@@ -49,7 +48,7 @@ jobs:
         run: pnpm tauri build
 
       # 自测用：无论触发方式都上传构件
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: sendtomyself-${{ matrix.os }}
           if-no-files-found: error
