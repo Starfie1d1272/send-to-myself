@@ -9,6 +9,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "echo \"TODO: wire up apps/api + apps/web dev\" && exit 0"
+    "dev": "pnpm --filter @sendtomyself/api --filter @sendtomyself/web --parallel run dev",
+    "typecheck": "pnpm -r run typecheck"
   }
 }
