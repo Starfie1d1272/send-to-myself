@@ -1,0 +1,35 @@
+# deps
+node_modules/
+.pnpm-store/
+
+# build
+dist/
+build/
+*.tsbuildinfo
+
+# data & attachments (NAS volume / local dev)
+data/
+uploads/
+*.sqlite
+*.sqlite-*
+*.db
+
+# env
+.env
+.env.*
+!.env.example
+
+# editor / os
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# logs
+*.log
+.omc/
+
+# mobile/desktop shells build output
+apps/android/android/
+apps/desktop/src-tauri/target/
+apps/harmony/build/
