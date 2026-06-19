@@ -1,0 +1,88 @@
+:root {
+  --bg: #0f1115;
+  --fg: #e7e9ee;
+  --muted: #9aa1ac;
+  --accent: #4f8cff;
+  --field: #1a1d24;
+  --border: #2a2f3a;
+  --err: #ff6b6b;
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  display: grid;
+  place-items: center;
+}
+
+.launcher {
+  width: min(420px, 86vw);
+  text-align: center;
+  padding: 24px;
+}
+
+.brand {
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  margin-bottom: 10px;
+}
+
+.sub {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 0 0 22px;
+}
+
+#form {
+  display: flex;
+  gap: 8px;
+}
+
+#url {
+  flex: 1;
+  padding: 11px 13px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--field);
+  color: var(--fg);
+  font-size: 14px;
+  outline: none;
+}
+
+#url:focus {
+  border-color: var(--accent);
+}
+
+button {
+  padding: 11px 18px;
+  border-radius: 10px;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button:active {
+  transform: translateY(1px);
+}
+
+.err {
+  color: var(--err);
+  font-size: 13px;
+  margin-top: 14px;
+}

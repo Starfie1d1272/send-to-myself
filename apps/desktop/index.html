@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="/src/styles.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>发给自己</title>
+    <script type="module" src="/src/main.ts" defer></script>
+  </head>
+  <body>
+    <main class="launcher" id="launcher" hidden>
+      <div class="brand">发给自己</div>
+      <p class="sub">填入你的服务器地址，连接后桌面随手发送、Cmd/Ctrl+Shift+S 速唤。</p>
+      <form id="form">
+        <input
+          id="url"
+          type="text"
+          inputmode="url"
+          autocomplete="off"
+          placeholder="https://stm.example.com"
+          required
+        />
+        <button type="submit">连接</button>
+      </form>
+      <p class="err" id="err" hidden></p>
+    </main>
+  </body>
+</html>
