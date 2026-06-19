@@ -9,7 +9,7 @@ RUN corepack enable && apt-get update \
   && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
-COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml tsconfig.base.json ./
 COPY packages ./packages
 COPY apps ./apps
 

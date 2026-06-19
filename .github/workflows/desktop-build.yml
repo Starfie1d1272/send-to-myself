@@ -34,6 +34,10 @@ jobs:
           node-version: 24 # 与本地一致；pnpm 11.8 要求 Node ≥ 22.13
           cache: pnpm
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - uses: dtolnay/rust-toolchain@stable
 
       - uses: swatinem/rust-cache@v2
@@ -41,7 +45,11 @@ jobs:
           workspaces: apps/desktop/src-tauri
 
       - name: Install deps
-        run: pnpm install --frozen-lockfile
+        run: |
+          npm install -g node-gyp
+          pnpm install --frozen-lockfile
+        env:
+          npm_config_build_from_source: true
 
       - name: Build app
         working-directory: apps/desktop
