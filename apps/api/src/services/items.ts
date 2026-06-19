@@ -1,0 +1,152 @@
+import { and, desc, eq, isNotNull, isNull, like, lt } from "drizzle-orm";
+import { detect } from "@sendtomyself/shared/detect";
+import type {
+  CreateItemInput,
+  Item,
+  ItemCategory,
+  ItemKind,
+  UpdateItemInput,
+} from "@sendtomyself/shared";
+import { db } from "../db/client.js";
+import { type ItemInsert, items } from "../db/schema.js";
+import { newId } from "../lib/id.js";
+import { isoToSec, rowToItem } from "../lib/mapper.js";
+import { bus } from "../realtime/bus.js";
+
+const nowSec = () => Math.floor(Date.now() / 1000);
+
+export interface ListFilter {
+  kind?: ItemKind;
+  category?: ItemCategory;
+  isTodo?: boolean;
+  completed?: boolean;
+  pinned?: boolean;
+  q?: string;
+  cursor?: string; // ISO；取严格早于此创建时间的
+  limit?: number;
+  deleted?: boolean; // true=回收站视图
+}
+
+export interface ListResult {
+  items: Item[];
+  nextCursor: string | null;
+}
+
+/**
+ * 发送即入库（SPEC §1「发送时不分类」+ §6 自动识别）。
+ * 识别结果仅作建议存入 meta；只有 `kind` 与 `sensitive` 自动采纳（SPEC §6）。
+ * todo / dueAt 等需用户后续确认，不在此自动设置。
+ */
+export function createItem(input: CreateItemInput): Item {
+  const det = detect(input.content);
+  const ts = nowSec();
+  const row: ItemInsert = {
+    id: newId(),
+    content: input.content,
+    kind: det.kind,
+    category: "none",
+    isTodo: false,
+    completed: false,
+    dueAt: null,
+    completedAt: null,
+    pinned: false,
+    sensitive: det.secret.sensitive, // 疑似密钥自动遮罩
+    deletedAt: null,
+    meta: JSON.stringify({
+      suggestions: {
+        todo: det.todo,
+        urls: det.urls,
+        due: det.due, // { dueAt, matchedText } | null，待用户确认
+        secretHint: det.secret.hint ?? null,
+      },
+    }),
+    createdAt: ts,
+    updatedAt: ts,
+  };
+  db.insert(items).values(row).run();
+  const item = db.select().from(items).where(eq(items.id, row.id!)).get()!;
+  const dto = rowToItem(item);
+  bus.publish({ type: "item.created", payload: dto });
+  return dto;
+}
+
+export function listItems(f: ListFilter): ListResult {
+  const limit = f.limit ?? 30;
+  const cond = [
+    f.deleted ? isNotNull(items.deletedAt) : isNull(items.deletedAt),
+  ];
+  if (f.kind) cond.push(eq(items.kind, f.kind));
+  if (f.category) cond.push(eq(items.category, f.category));
+  if (f.isTodo !== undefined) cond.push(eq(items.isTodo, f.isTodo));
+  if (f.completed !== undefined) cond.push(eq(items.completed, f.completed));
+  if (f.pinned !== undefined) cond.push(eq(items.pinned, f.pinned));
+  if (f.q) cond.push(like(items.content, `%${f.q}%`)); // 中文子串，SPEC §11
+  if (f.cursor) cond.push(lt(items.createdAt, isoToSec(f.cursor)));
+
+  const rows = db
+    .select()
+    .from(items)
+    .where(and(...cond))
+    .orderBy(desc(items.createdAt), desc(items.id))
+    .limit(limit + 1)
+    .all();
+
+  const hasMore = rows.length > limit;
+  const page = rows.slice(0, limit);
+  const last = page.at(-1);
+  return {
+    items: page.map(rowToItem),
+    nextCursor: hasMore && last ? new Date(last.createdAt * 1000).toISOString() : null,
+  };
+}
+
+export function getItem(id: string): Item | null {
+  const row = db.select().from(items).where(eq(items.id, id)).get();
+  return row ? rowToItem(row) : null;
+}
+
+/** 查看时再分类（SPEC §1）：仅更新可变字段。 */
+export function updateItem(id: string, patch: UpdateItemInput): Item | null {
+  const existing = db.select().from(items).where(eq(items.id, id)).get();
+  if (!existing) return null;
+
+  const set: Partial<ItemInsert> = { updatedAt: nowSec() };
+  if (patch.content !== undefined) set.content = patch.content;
+  if (patch.category !== undefined) set.category = patch.category;
+  if (patch.isTodo !== undefined) set.isTodo = patch.isTodo;
+  if (patch.pinned !== undefined) set.pinned = patch.pinned;
+  if (patch.sensitive !== undefined) set.sensitive = patch.sensitive;
+  if (patch.dueAt !== undefined) {
+    set.dueAt = patch.dueAt === null ? null : isoToSec(patch.dueAt);
+  }
+  if (patch.completed !== undefined) {
+    set.completed = patch.completed;
+    set.completedAt = patch.completed ? nowSec() : null;
+  }
+
+  db.update(items).set(set).where(eq(items.id, id)).run();
+  const row = db.select().from(items).where(eq(items.id, id)).get()!;
+  const dto = rowToItem(row);
+  bus.publish({ type: "item.updated", payload: dto });
+  return dto;
+}
+
+/** 软删除 → 回收站（SPEC §4, §9）。 */
+export function softDeleteItem(id: string): boolean {
+  const existing = db.select().from(items).where(eq(items.id, id)).get();
+  if (!existing) return false;
+  db.update(items).set({ deletedAt: nowSec(), updatedAt: nowSec() }).where(eq(items.id, id)).run();
+  bus.publish({ type: "item.deleted", payload: { id } });
+  return true;
+}
+
+/** 从回收站恢复。 */
+export function restoreItem(id: string): Item | null {
+  const existing = db.select().from(items).where(eq(items.id, id)).get();
+  if (!existing) return null;
+  db.update(items).set({ deletedAt: null, updatedAt: nowSec() }).where(eq(items.id, id)).run();
+  const row = db.select().from(items).where(eq(items.id, id)).get()!;
+  const dto = rowToItem(row);
+  bus.publish({ type: "item.updated", payload: dto });
+  return dto;
+}
