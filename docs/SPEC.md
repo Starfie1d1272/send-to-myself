@@ -1,18 +1,30 @@
-# SendToMyself — 需求与边界（SPEC V1.1）
+# SendToMyself — 需求与边界（SPEC V1.1 · 终稿）
 
 > 本文件是项目的**单一事实来源（single source of truth）**。
 > 任何关于「做不做、怎么做」的争议，以本文件为准。新增范围必须先改本文件。
 
-最后更新：2026-06-19 · 版本 V1.1（经竞品调研与 PM 审视后修订，见 [RESEARCH.md](RESEARCH.md)）
+最后更新：2026-06-19 · V1.1 终稿（技术栈已锁定，进入落地，见 [RESEARCH.md](RESEARCH.md)）
 
 ---
 
-## 0. 一句话定位
+## 0. 一句话定位与北极星
 
 部署在个人 NAS、单用户、跨平台的「发给自己」**统一信息流**，替代「微信发给自己」，但搜索和后续处理更强。
 
 **它不是**：笔记软件、密码管理器、完整任务管理器、网盘。
 **它是**：一个统一的「发给自己」入口。
+
+### 北极星（最重要的一句）
+
+> **本产品最大的价值是「把微信文件传输助手迁出来」。**
+
+衡量方向对不对，只看一件事——用户打开后**最常见的动作**是不是：
+
+```
+发一张截图 · 发一个链接 · 发一个 PDF · 发一句话
+```
+
+**跑偏信号**（一旦开始认真讨论这些，就是偏了）：知识图谱 · AI 分类 · 项目管理 · 任务依赖。
 
 ---
 
@@ -38,25 +50,31 @@
 
 ## 3. 数据模型（契约草案，最终以 packages/shared 为准）
 
+**关键设计决策**：`todo` 是**执行状态**，与**内容属性**（`idea`/`read_later`）是两个正交维度，**不能混在一个字段里**。否则会撞上「这篇论文我要稍后读，同时也是待办」这种情况。故 `isTodo` 独立成布尔字段。
+
 ```ts
 type Item = {
   id: string;            // 对外不可猜的 uid（nanoid/uuid）；DB 内部可另存自增主键
   content: string;
 
   kind: "text" | "link" | "image" | "file";
-  category: "none" | "todo" | "idea" | "read_later"; // 主标记，单选
 
-  completed: boolean;
-  pinned: boolean;
-  sensitive: boolean;    // 疑似密钥/手动标记 → UI 遮罩 + 排除搜索索引 + 可选字段加密
+  // —— 内容属性（单选，与 todo 正交）——
+  category: "none" | "idea" | "read_later";
 
+  // —— 执行状态（与 category 正交）——
+  isTodo: boolean;       // 是否待办
+  completed: boolean;    // 仅 isTodo 时有意义
   dueAt?: string;        // DDL
   completedAt?: string;
+
+  // —— 其它状态 ——
+  pinned: boolean;
+  sensitive: boolean;    // 疑似密钥/手动标记 → UI 默认遮罩正文（但仍参与搜索）
   deletedAt?: string;    // 软删除/回收站；为空=正常。硬删由保留期清理
 
   meta?: Record<string, unknown>; // JSON 列：链接预览(标题/域名/favicon/描述/封面)、
-                                  // 自动识别结果等易变字段。借鉴 Memos 的 payload 模式，
-                                  // 不为每个预览字段单开列
+                                  // 自动识别结果等易变字段。借鉴 Memos 的 payload 模式
 
   createdAt: string;
   updatedAt: string;     // 多设备并发以此做「最后写入胜出」
@@ -68,23 +86,27 @@ type Attachment = {
   filename: string;      // 保留原始文件名与扩展名
   mimeType: string;      // 保留 MIME
   size: number;
-  path: string;          // NAS 挂载目录中的相对路径，不入库存二进制
+  storageKey: string;    // 相对存储键，如 "2026/06/abc123.pdf"，不含根路径
+                         // 实际位置 = STORAGE_ROOT + storageKey，便于未来切 NAS/SMB/R2/S3
   createdAt: string;
 };
 ```
 
-**实现备注（借鉴 Memos）**：
-- 时间戳实现层可用 unix 秒（`BIGINT`）存储，排序/比较更省；对外 API 仍可序列化为 ISO 字符串。
-- `meta` JSON 列承载链接预览与自动识别结果，避免频繁改表。
-- 附件**只存路径**，二进制存 NAS volume，不进数据库。
+**实现备注**：
+- `storageKey` 而非绝对 `path`：根路径走 `STORAGE_ROOT` 环境变量，存储后端可替换，零迁移成本。
+- 时间戳实现层可用 unix 秒（`BIGINT`），对外 API 序列化为 ISO 字符串。
+- `meta` JSON 列承载链接预览与识别结果，避免频繁改表（学 Memos payload）。
+- 附件**只存键**，二进制存 NAS volume，不进数据库。
+- V1 标签先用上述固定枚举 `category` + `isTodo`；**自由标签留作后续增强**（届时再引入 `tags: string[]`）。
 
 ---
 
 ## 4. 分类与状态（极简）
 
-- **主标记（单选，最多一个）**：`none` / `todo` / `idea` / `read_later`
-- **独立状态**：`pinned`、`completed`、`sensitive`
-- **生命周期**：正常 → 软删除（进回收站，`deletedAt` 置位）→ 保留期后硬删。归档（隐藏出主时间线）与删除分开。
+- **内容属性（单选）**：`category` = `none` / `idea` / `read_later`
+- **执行状态（正交）**：`isTodo`（+ `completed` / `dueAt` / `completedAt`）
+- **其它独立状态**：`pinned`、`sensitive`
+- **生命周期**：正常 → 软删除（进回收站，`deletedAt` 置位）→ 保留期后硬删。归档与删除分开。
 - **DDL 分桶（仅展示，不做完整日历）**：已过期 / 今天截止 / 明天截止 / 本周截止 / 更晚截止
 
 **V1 不做**：多级文件夹、复杂标签树、多层项目、双向链接、知识图谱。自由标签留作后续增强。
@@ -93,11 +115,11 @@ type Attachment = {
 
 ## 5. 待办与 DDL
 
-待办是普通记录的**附加属性**，不建独立任务系统。
+待办是普通记录的**附加属性**（`isTodo`），不建独立任务系统，与 `category` 正交。
 
-- 字段：`category=todo`、`completed`、`dueAt`、`completedAt`
+- 字段：`isTodo`、`completed`、`dueAt`、`completedAt`
 - 操作：一键转待办；点两下设 DDL；快捷日期（今天/明天/本周日/自定义）；勾选完成；改/清 DDL
-- `dueAt` 数据层可独立于 `category` 存在；产品层默认在转为待办时才提示设 DDL
+- 一条记录可同时 `category=read_later` 且 `isTodo=true`（稍后读 + 待办）
 - **不做**：子任务、重复任务、任务依赖、甘特图、看板、课程表、月历视图、多人指派
 
 ---
@@ -110,9 +132,9 @@ type Attachment = {
 |---|---|---|
 | 链接 | URL 正则 | 抓取标题/域名/favicon/描述/封面，存入 `meta` |
 | 图片/文件 | 上传内容 | 缩略图 / 文件信息 |
-| 疑似待办 | `TODO` / `DDL` / `截止` 等关键词 | 提示转待办 |
-| 疑似 DDL | 日期解析（`6月25日前`/`本周五`/`明晚23:59`/`DDL 6.30`/`截止：2026-06-30`） | **仅建议，需用户点确认**，避免误识别发布/上课时间 |
-| 疑似 Key/Token | 常见前缀（`sk-`/`ghp_`/`AKIA` 等） | 置 `sensitive=true`：默认遮罩 + 点开 + 一键复制 + **排除搜索索引** |
+| 疑似待办 | `TODO` / `DDL` / `截止` / `待办` 等关键词 | 提示置 `isTodo` |
+| **DDL 自动识别（MVP）** | `chrono-node`（中文）解析 `6月25日前`/`本周五`/`明晚23:59`/`DDL 6.30`/`截止：2026-06-30` | **仅作建议，需用户点确认**，避免误识别发布/上课时间。成本极低，直接进 MVP |
+| 疑似 Key/Token | 常见前缀（`sk-`/`ghp_`/`gho_`/`AKIA` 等） | 置 `sensitive=true`：默认遮罩正文 + 点开 + 一键复制 |
 
 **V1 不引入**：大模型、向量数据库、RAG。
 
@@ -139,7 +161,7 @@ type Attachment = {
 - 支持：图片 / PDF / DOCX / Markdown / TXT / 压缩包 / 配置文件 / 其他常见文件
 - 功能：图片缩略图+预览、文件名+大小、下载、移动端系统分享、删除、保留 MIME 与扩展名
 - **缩略图服务端生成**（避免移动端时间线加载原图卡顿）
-- 附件存 NAS 挂载目录，不入库
+- 附件存 `STORAGE_ROOT` 下，按 `storageKey` 组织（如 `2026/06/abc123.pdf`），不入库
 - **单文件大小上限可配置**（默认值写入部署配置）；接近 NAS 容量上限时提示
 - **不内置打印**。作业打印流程 = 电脑上传 → 手机下载/分享 → 转发微信打印小程序
 
@@ -150,7 +172,7 @@ type Attachment = {
 类聊天信息流：
 
 - 按创建时间倒序；支持今天/昨天/更早分组
-- 新发送内容**立即出现**（依赖 §12.5 实时同步）；**游标分页**（cursor-based，非 offset，避免新内容插入导致错位）
+- 新发送内容**立即出现**（依赖 §12.5 实时同步）；**游标分页**（cursor-based，非 offset）
 - 移动端桌面端都好用
 
 每条记录支持：一键复制文字、下载/分享附件、编辑、删除（软删）、置顶、转待办、设/改 DDL、标完成、加简单分类、看原始链接。
@@ -169,8 +191,14 @@ type Attachment = {
 
 - **搜索范围**：正文、链接标题、URL、域名、文件名、分类、创建时间、DDL
 - **筛选**：内容类型、是否待办、是否完成、是否置顶、分类、DDL 范围
-- **中文搜索方案**：个人规模用 `content LIKE '%关键词%'` 子串匹配（Memos 同款，对中文有效）；数据量大再升级到 SQLite FTS5 **`trigram` 分词器**。**禁止使用 FTS5 默认分词器**（不切中文词，会导致中文搜不到）。
-- **敏感项（`sensitive=true`）排除出搜索索引/结果**，密钥不经搜索泄露
+- **中文搜索方案**：个人规模用 `content LIKE '%关键词%'` 子串匹配（Memos 同款，对中文有效）；数据量大再升级到 SQLite FTS5 **`trigram` 分词器**。**禁止使用 FTS5 默认分词器**（不切中文词）。
+- **敏感项（`sensitive=true`）仍参与索引、可被搜到**，但搜索结果中**正文默认隐藏**，展示如：
+
+  ```
+  ● 已隐藏敏感内容 · 匹配：GitHub · 点击展开
+  ```
+
+  —— 兼顾「能找回」与「不肩窥泄露」。（早期方案「排除索引」已废弃：会导致搜 `openrouter`/`github` 找不到自己的 Key，体验差。）
 - 软删除（回收站）内容默认不出现在搜索结果
 - V1 只要关键词搜索 + 按钮筛选，不要求复杂搜索语法
 
@@ -194,20 +222,21 @@ Docker Compose + NAS 本地存储 + 自有域名 + 反向代理 + HTTPS
 - **落盘**：默认依赖 **NAS 卷/磁盘加密**（透明）；可选对 `sensitive` 字段做应用层 AES-GCM 加密，**密钥由服务端持有（env/密钥文件，且不进备份）→ 解密全自动，不影响「秒复制」体验**
 - **明确不防**：服务器被完全攻破的场景（那需要端到端加密，V1 不做）。本工具定位「快速发给自己」，非密码保险箱。
 
-### 12.5 实时同步（MVP）
+### 12.5 实时同步（MVP，传输层独立抽象）
 - 「这台发、那台立即出现」是核心体验，**纳入 MVP**
-- 用 **SSE（Server-Sent Events）** 做服务端→客户端单向推送（比 WebSocket 简单，契合单向广播需求）
+- V1 用 **SSE（Server-Sent Events）** 做服务端→客户端单向推送
+- **必须抽象成独立的 `/realtime` 通道，不把 SSE 写死进业务层**。未来双向需求（桌面通知、分享状态、在线状态、离线队列同步）可平滑替换为 WebSocket
 - 断线自动重连；不支持 SSE 的环境降级为短轮询
 
 ---
 
 ## 13. 数据与备份
 
-- SQLite（数据）；NAS volume 存附件
+- SQLite（数据）；NAS volume 存附件（`STORAGE_ROOT` 下按 `storageKey` 组织）
 - 支持：数据库定时备份、附件目录备份、JSON 导出、原始附件导出
 - **恢复演练**：备份方案必须验证可恢复（含一次实际 restore 演练），未恢复过的备份等于无备份
-- 启用字段加密时，**加密密钥不得包含在备份中**（否则备份泄露=明文泄露）
-- **Schema 迁移工具从第一天起**（如 Drizzle/Kysely migrations），保证后续改表可控
+- 启用字段加密时，**加密密钥不得包含在备份中**
+- **Schema 迁移用 Drizzle migrations，从第一天起**，保证后续改表可控
 - **V1 不需要**：PostgreSQL、Redis、消息队列、对象存储、多节点
 
 ---
@@ -218,19 +247,21 @@ Docker Compose + NAS 本地存储 + 自有域名 + 反向代理 + HTTPS
 
 | 平台 | 壳方案 | 系统分享 | 里程碑 |
 |---|---|---|---|
-| 全平台兜底 | PWA / 浏览器 | Web Share Target | V1 |
+| 全平台兜底 | PWA / 浏览器 | Web Share Target | **V1** |
 | **HarmonyOS NEXT** | **原生 ArkTS** | Share Kit | **V1.1（作者主力机，刚需）** |
-| Android | Capacitor | `ACTION_SEND` | V1.1 |
-| Windows / macOS | Tauri 2 | Share Extension / Share Target | V1.2 |
+| Android | Capacitor | `ACTION_SEND` | V1.2 |
+| Windows / macOS | Tauri 2 | Share Extension / Share Target | V1.3 |
 | iOS | Capacitor（按需） | Share Extension | 以后 |
 
-**鸿蒙说明**：作者主力机为原生 HarmonyOS NEXT，鸿蒙端是**自用刚需**，与 Android 同列 V1.1。需独立的 ArkTS 技术栈与真机调试，工时单独评估，不让其拖累 V1 Web/PWA。
-
-**iOS 说明**：上架 App Store 需 $99/年 Apple Developer；单用户自用可 sideload（免费证书 7 天过期需重签，或付费转 1 年）。现在用不到，**不进 V1/V1.1，不为它花钱**，代码随时能补壳。
+**顺序说明（按真实刚需排）**：
+- **V1 只做 Web + PWA + Docker**，先把产品验证出来；`Web Share Target` 已能覆盖很多分享场景。
+- **V1.1 = 鸿蒙（ArkTS）**：作者主力机为原生 HarmonyOS NEXT，这是自用刚需，优先于 Android。
+- **V1.2 = Android**：不是刚需，靠后。
+- **iOS**：单用户自用可 sideload（免费证书 7 天过期需重签，或付费 $99/年转 1 年）。不进 V1.x，不为它花钱。
 
 ---
 
-## 15. V1 MVP 必须实现（21 项）
+## 15. V1 MVP 必须实现（22 项）
 
 1. 单用户登录（argon2 + 登录限速）
 2. 发送文字
@@ -241,57 +272,75 @@ Docker Compose + NAS 本地存储 + 自有域名 + 反向代理 + HTTPS
 7. 统一时间线（游标分页）
 8. 一键复制
 9. 编辑 + 软删除
-10. **回收站**（软删保留期）
+10. 回收站（软删保留期）
 11. 置顶
-12. 标记待办
+12. 标记待办（`isTodo`）
 13. 设 / 改 DDL
-14. 勾选完成
-15. 全文搜索（中文子串，敏感项排除）
-16. 类型 + 状态筛选
-17. 敏感内容遮罩 + 点开 + 一键复制
-18. **实时同步（SSE）**
-19. 响应式移动端
-20. PWA
-21. Docker Compose 部署 + SQLite/附件备份（含恢复演练）
+14. **DDL 自动识别（chrono-node，仅建议需确认）**
+15. 勾选完成
+16. 全文搜索（中文子串；敏感项参与索引、结果隐藏正文）
+17. 类型 + 状态筛选
+18. 敏感内容遮罩 + 点开 + 一键复制
+19. 实时同步（SSE，`/realtime` 独立抽象）
+20. 响应式移动端
+21. PWA
+22. Docker Compose 部署 + SQLite/附件备份（含恢复演练）
 
 ---
 
 ## 16. 后续增强（按价值排序）
 
 1. **离线发送队列（PWA，联网自动补发）** — 对微信的真实超越点，V1.1 强烈建议
-2. 手机系统分享（随 V1.1 客户端落地）
+2. 手机系统分享（随客户端落地）
 3. 浏览器扩展 / Bookmarklet
-4. DDL 自动识别（规则已在 §6，此处指交互打磨）
-5. 桌面全局快捷输入
-6. CLI
-7. 自由标签
-8. 批量操作
-9. `sensitive` 字段级加密（可选配置）
+4. 桌面全局快捷输入
+5. CLI
+6. **自由标签 `tags: string[]`**
+7. 批量操作
+8. `sensitive` 字段级加密（可选配置）
+9. 实时同步升级 WebSocket（双向：桌面通知/在线状态/离线同步）
 10. 导入微信历史内容
 11. 网页正文存档
 12. AI 摘要 / 自动分类
 
-> 注：实时同步、软删除/回收站已上提至 MVP（§15），不在本表。
+> 注：实时同步、软删除/回收站、DDL 自动识别已上提至 MVP（§15），不在本表。
 
 ---
 
 ## 17. 明确不做（V1）
 
-多人协作 · 公开注册 · 商业化 · 独立密码保险箱 · 端到端加密 · 自动剪贴板监听 · AI Agent · RAG · 向量数据库 · 知识图谱 · 完整笔记编辑器 · Notion 式 Block · 完整日历 · 课程表 · 看板/甘特图 · 原生全平台大客户端 · 内置打印服务 · 社区/插件市场
+多人协作 · 公开注册 · 商业化 · 独立密码保险箱 · 端到端加密 · 自动剪贴板监听 · AI Agent · RAG · 向量数据库 · 知识图谱 · AI 分类 · 项目管理 · 任务依赖 · 完整笔记编辑器 · Notion 式 Block · 完整日历 · 课程表 · 看板/甘特图 · 原生全平台大客户端 · 内置打印服务 · 社区/插件市场
 
 ---
 
-## 18. V1 验收标准
+## 18. 技术栈（锁定，不再讨论）
 
-1. Windows / macOS / HarmonyOS / Android 上均可正常访问
+```
+Frontend   React + Vite + TanStack Router + TanStack Query
+Backend    Hono
+DB         SQLite + better-sqlite3
+ORM        Drizzle（含 migrations）
+Realtime   SSE（/realtime 独立抽象，预留 WebSocket）
+Storage    本地文件系统（STORAGE_ROOT + storageKey）
+Deploy     Docker Compose
+Mono       pnpm workspace + 全 TypeScript
+```
+
+**明确否决（单用户产品上全是负收益）**：Next.js · PostgreSQL · Redis · 对象存储 · 消息队列 · 微服务 · 多节点。
+
+---
+
+## 19. V1 验收标准
+
+1. Windows / macOS / HarmonyOS / Android 上均可正常访问（Web/PWA）
 2. 从打开页面到发文字 ≤ 一次输入 + 一次点击
 3. 文字/图片/文件/链接均能跨设备获取
-4. **一台设备发送后，另一台已打开的页面无需手动刷新即出现（实时同步）**
+4. 一台设备发送后，另一台已打开的页面无需手动刷新即出现（实时同步）
 5. 手机能把文件下载或分享给其他应用
 6. 历史内容可关键词搜索找到（含中文）
-7. 任意记录可快速设待办 + 加 DDL
+7. 任意记录可快速设待办 + 加 DDL（含自动识别建议）
 8. 即将截止内容可单独查看
-9. API Key 等文本可快速复制（遮罩后点开即复制）
+9. API Key 等文本可快速复制（遮罩后点开即复制，且能被搜到）
 10. 误删内容可从回收站恢复
 11. 所有内容仍在一条统一时间线中
 12. 整体体验接近「微信发给自己」，但搜索与后续处理更强

@@ -12,20 +12,23 @@
 
 🚧 V1 开发前 — 仓库骨架阶段。
 
-## 技术栈
+## 技术栈（锁定）
 
 全 TypeScript pnpm monorepo：
 
 | 目录 | 内容 | 里程碑 |
 |---|---|---|
-| `apps/web` | React + Vite + PWA | V1 |
-| `apps/api` | Hono + better-sqlite3 + SQLite FTS5 | V1 |
-| `apps/android` | Capacitor 薄壳（系统分享入口） | V1.1 |
+| `apps/web` | React + Vite + TanStack Router/Query + PWA | V1 |
+| `apps/api` | Hono + better-sqlite3 + Drizzle + SSE | V1 |
 | `apps/harmony` | ArkTS 原生薄壳（Share Kit） | V1.1 |
-| `apps/desktop` | Tauri 薄壳（Win/Mac） | V1.2 |
+| `apps/android` | Capacitor 薄壳（`ACTION_SEND`） | V1.2 |
+| `apps/desktop` | Tauri 薄壳（Win/Mac） | V1.3 |
 | `packages/shared` | Item/Attachment 类型 + zod 校验 + 规则识别 | V1 |
 
-存储：SQLite（数据）+ NAS volume（附件）。部署：Docker Compose + 反向代理 + HTTPS。
+存储：SQLite（数据）+ 本地文件系统（附件，`STORAGE_ROOT`+`storageKey`）。
+实时：SSE（`/realtime` 独立抽象，预留 WebSocket）。部署：Docker Compose + 反向代理 + HTTPS。
+
+**明确否决**：Next.js · PostgreSQL · Redis · 对象存储 · 消息队列 · 微服务。详见 [SPEC §18](docs/SPEC.md)。
 
 ## 客户端策略
 
