@@ -54,6 +54,7 @@ itemsRoute.get("/", (c) => {
       isTodo: bool(q.isTodo),
       completed: bool(q.completed),
       pinned: bool(q.pinned),
+      sensitive: bool(q.sensitive),
       q: q.q,
       cursor: q.cursor,
       limit: q.limit ? Number(q.limit) : undefined,
@@ -82,5 +83,11 @@ itemsRoute.delete("/:id", (c) =>
 // 从回收站恢复
 itemsRoute.post("/:id/restore", (c) => {
   const item = svc.restoreItem(c.req.param("id"));
+  return item ? c.json(item) : c.json({ error: "not_found" }, 404);
+});
+
+// 手动重抓链接预览
+itemsRoute.post("/:id/refetch-preview", async (c) => {
+  const item = await svc.refetchPreview(c.req.param("id"));
   return item ? c.json(item) : c.json({ error: "not_found" }, 404);
 });

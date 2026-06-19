@@ -24,6 +24,7 @@ export interface ListFilter {
   isTodo?: boolean;
   completed?: boolean;
   pinned?: boolean;
+  sensitive?: boolean;
   q?: string;
   cursor?: string; // ISO；取严格早于此创建时间的
   limit?: number;
@@ -107,6 +108,18 @@ export async function createItemWithFiles(
   return dto;
 }
 
+/** 手动重抓预览（失败/未抓时用户主动触发，SPEC §7）。同步等待结果并广播。 */
+export async function refetchPreview(id: string): Promise<Item | null> {
+  const row = db.select().from(items).where(eq(items.id, id)).get();
+  if (!row) return null;
+  const urls = detect(row.content).urls;
+  const first = urls[0];
+  if (!first) return rowToItem(row, attachmentSvc.listByItem(id));
+  const updated = await fetchPreviewInto(id, first);
+  if (updated) bus.publish({ type: "item.updated", payload: updated });
+  return updated;
+}
+
 /** 非阻塞抓取首个链接预览，成功后更新 meta 并广播 item.updated（SPEC §7）。 */
 function schedulePreview(item: Item, urls: string[]): void {
   const first = urls[0];
@@ -128,6 +141,7 @@ export function listItems(f: ListFilter): ListResult {
   if (f.isTodo !== undefined) cond.push(eq(items.isTodo, f.isTodo));
   if (f.completed !== undefined) cond.push(eq(items.completed, f.completed));
   if (f.pinned !== undefined) cond.push(eq(items.pinned, f.pinned));
+  if (f.sensitive !== undefined) cond.push(eq(items.sensitive, f.sensitive));
   if (f.q) cond.push(like(items.content, `%${f.q}%`)); // 中文子串，SPEC §11
   if (f.cursor) cond.push(lt(items.createdAt, isoToSec(f.cursor)));
 

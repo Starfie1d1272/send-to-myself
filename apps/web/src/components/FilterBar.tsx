@@ -9,6 +9,7 @@ export type FilterKey =
   | "link"
   | "image"
   | "file"
+  | "secret"
   | "pinned"
   | "completed"
   | "trash";
@@ -22,6 +23,7 @@ export const FILTERS: { key: FilterKey; label: string }[] = [
   { key: "link", label: "链接" },
   { key: "image", label: "图片" },
   { key: "file", label: "文件" },
+  { key: "secret", label: "密钥" },
   { key: "pinned", label: "置顶" },
   { key: "completed", label: "已完成" },
   { key: "trash", label: "回收站" },

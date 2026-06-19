@@ -12,9 +12,11 @@ import {
   itemUrls,
   quickDue,
 } from "../lib/format";
+import { findSecretSpans } from "@sendtomyself/shared/detect/secret";
 import { useItemMutations } from "../hooks/useItems";
 import { Attachments } from "./Attachments";
 import { LinkPreviewCard } from "./LinkPreviewCard";
+import { SensitiveText } from "./SensitiveText";
 import {
   IconCheck,
   IconClock,
@@ -45,7 +47,7 @@ function LinkifiedText({ text }: { text: string }) {
 }
 
 export function ItemCard({ item, trash }: { item: Item; trash?: boolean }) {
-  const { update, remove, restore } = useItemMutations();
+  const { update, remove, restore, refetchPreview } = useItemMutations();
   const [revealed, setRevealed] = useState(false);
   const [copied, setCopied] = useState(false);
   const [dueOpen, setDueOpen] = useState(false);
@@ -69,6 +71,9 @@ export function ItemCard({ item, trash }: { item: Item; trash?: boolean }) {
   const bucket = dueBucket(item.dueAt);
   const showSuggestion = !trash && suggestion && !item.dueAt && !item.isTodo;
   const attachments = item.attachments ?? [];
+  // 命中具体密钥 → 只遮罩密钥本身；手动标敏感但无命中 → 整条遮罩
+  const secretSpans = item.sensitive ? findSecretSpans(item.content) : [];
+  const partialMask = item.sensitive && secretSpans.length > 0;
 
   return (
     <motion.li
@@ -94,7 +99,9 @@ export function ItemCard({ item, trash }: { item: Item; trash?: boolean }) {
         )}
 
         <div className="item__body">
-          {item.sensitive && !revealed ? (
+          {partialMask ? (
+            <SensitiveText content={item.content} spans={secretSpans} />
+          ) : item.sensitive && !revealed ? (
             <button className="redacted" onClick={() => setRevealed(true)}>
               <span className="redacted__bars" aria-hidden>
                 ▮▮▮▮▮▮▮▮▮▮
@@ -125,6 +132,16 @@ export function ItemCard({ item, trash }: { item: Item; trash?: boolean }) {
                   {hostnameOf(u)}
                 </a>
               ))}
+              {!trash && (
+                <button
+                  className="link-chip link-chip--action"
+                  title="重新抓取预览"
+                  disabled={refetchPreview.isPending}
+                  onClick={() => refetchPreview.mutate(item.id)}
+                >
+                  {refetchPreview.isPending ? "抓取中…" : "抓取预览"}
+                </button>
+              )}
             </div>
           )}
 

@@ -26,6 +26,8 @@ function toParams(f: FilterKey, q: string): ListParams {
       return { ...base, kind: "image" };
     case "file":
       return { ...base, kind: "file" };
+    case "secret":
+      return { ...base, sensitive: true };
     case "pinned":
       return { ...base, pinned: true };
     case "completed":

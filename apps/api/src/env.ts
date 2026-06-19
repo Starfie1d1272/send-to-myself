@@ -29,8 +29,8 @@ export const env = {
   loginLockMinutes: num(process.env.LOGIN_LOCK_MINUTES, 15),
 
   // —— 链接预览（SPEC §7）——
-  /** 抓取总超时（毫秒）。 */
-  previewTimeoutMs: num(process.env.PREVIEW_TIMEOUT_MS, 6000),
+  /** 抓取总超时（毫秒）。默认 10s：跨境访问 GitHub 等站点 6s 常不够。 */
+  previewTimeoutMs: num(process.env.PREVIEW_TIMEOUT_MS, 10_000),
   /** 抓取响应大小上限（字节）。 */
   previewMaxBytes: num(process.env.PREVIEW_MAX_BYTES, 2 * 1024 * 1024),
   /** 最大重定向跳数。 */

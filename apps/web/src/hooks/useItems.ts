@@ -24,5 +24,9 @@ export function useItemMutations() {
     }),
     remove: useMutation({ mutationFn: (id: string) => api.remove(id), onSuccess: invalidate }),
     restore: useMutation({ mutationFn: (id: string) => api.restore(id), onSuccess: invalidate }),
+    refetchPreview: useMutation({
+      mutationFn: (id: string) => api.refetchPreview(id),
+      onSuccess: invalidate,
+    }),
   };
 }

@@ -11,6 +11,7 @@ export interface ListParams {
   isTodo?: boolean;
   completed?: boolean;
   pinned?: boolean;
+  sensitive?: boolean;
   q?: string;
   cursor?: string;
   deleted?: boolean;
@@ -98,6 +99,9 @@ export const api = {
   },
   restore(id: string): Promise<Item> {
     return fetch(`/api/items/${id}/restore`, opts({ method: "POST" })).then(handle);
+  },
+  refetchPreview(id: string): Promise<Item> {
+    return fetch(`/api/items/${id}/refetch-preview`, opts({ method: "POST" })).then(handle);
   },
 };
 

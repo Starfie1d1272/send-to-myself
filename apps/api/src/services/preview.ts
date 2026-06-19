@@ -7,7 +7,10 @@ import { rowToItem } from "../lib/mapper.js";
 import { assertSafeUrl, SsrfError } from "../lib/ssrf.js";
 import { listByItem } from "./attachments.js";
 
-const UA = "SendToMyselfBot/1.0 (+self-hosted link preview)";
+// 用真实浏览器 UA：部分站点（B站/公众号等）对非浏览器 UA 返回精简页或拦截。
+const UA =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
+const ACCEPT_LANG = "zh-CN,zh;q=0.9,en;q=0.8";
 
 /** 抓取并解析链接预览；失败不抛，返回带 status 的结果（SPEC §7 抓取失败仍保存）。 */
 export async function fetchPreview(rawUrl: string): Promise<LinkPreview> {
@@ -55,7 +58,11 @@ async function safeFetchHtml(startUrl: string): Promise<{ html: string; finalUrl
         method: "GET",
         redirect: "manual",
         signal: ctrl.signal,
-        headers: { "user-agent": UA, accept: "text/html,application/xhtml+xml" },
+        headers: {
+          "user-agent": UA,
+          accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "accept-language": ACCEPT_LANG,
+        },
       });
 
       // 重定向：取 location 继续（下一轮再校验）

@@ -371,6 +371,7 @@ body {
   width: 20px;
   height: 20px;
   margin-top: 1px;
+  padding: 0;
   border: 1.6px solid var(--line-strong);
   border-radius: 7px;
   background: var(--card-hi);
@@ -418,6 +419,46 @@ body {
   color: var(--ink-faint);
 }
 
+/* inline secret mask (只遮罩 Key 本身) */
+.secret {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  vertical-align: baseline;
+  border: none;
+  border-radius: 6px;
+  padding: 1px 8px;
+  margin: 0 1px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.5;
+  color: #fff;
+  background: var(--ink);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.secret:hover {
+  background: var(--accent-deep);
+}
+.secret__dots {
+  letter-spacing: 1px;
+}
+.secret__tag {
+  font-family: var(--font-ui);
+  font-size: 10.5px;
+  font-weight: 600;
+  opacity: 0.7;
+}
+.secret--shown {
+  color: var(--accent-deep);
+  background: var(--accent-tint);
+  word-break: break-all;
+  text-align: left;
+}
+.secret--shown:hover {
+  background: #ecccba;
+}
+
 /* link chips */
 .chips {
   margin-top: 9px;
@@ -442,6 +483,20 @@ body {
   height: 5px;
   border-radius: 50%;
   background: var(--accent);
+}
+.link-chip--action {
+  border: 1px dashed var(--line-strong);
+  background: transparent;
+  color: var(--ink-faint);
+  cursor: pointer;
+}
+.link-chip--action:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.link-chip--action:disabled {
+  cursor: default;
+  opacity: 0.6;
 }
 
 /* DDL suggestion */
