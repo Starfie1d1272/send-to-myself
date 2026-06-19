@@ -8,7 +8,7 @@ export const secToIso = (s: number | null | undefined): string | undefined =>
 /** ISO 字符串 → unix 秒。 */
 export const isoToSec = (iso: string): number => Math.floor(Date.parse(iso) / 1000);
 
-export function rowToItem(r: ItemRow): Item {
+export function rowToItem(r: ItemRow, attachments?: AttachmentRow[]): Item {
   return {
     id: r.id,
     content: r.content,
@@ -22,6 +22,7 @@ export function rowToItem(r: ItemRow): Item {
     sensitive: r.sensitive,
     deletedAt: secToIso(r.deletedAt),
     meta: r.meta ? (JSON.parse(r.meta) as Record<string, unknown>) : undefined,
+    attachments: attachments?.length ? attachments.map(rowToAttachment) : undefined,
     createdAt: new Date(r.createdAt * 1000).toISOString(),
     updatedAt: new Date(r.updatedAt * 1000).toISOString(),
   };
@@ -35,6 +36,7 @@ export function rowToAttachment(r: AttachmentRow): Attachment {
     mimeType: r.mimeType,
     size: r.size,
     storageKey: r.storageKey,
+    hasThumb: r.thumbKey != null,
     createdAt: new Date(r.createdAt * 1000).toISOString(),
   };
 }

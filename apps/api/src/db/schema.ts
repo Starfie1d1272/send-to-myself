@@ -49,11 +49,21 @@ export const attachments = sqliteTable(
     mimeType: text("mime_type").notNull(),
     size: integer("size").notNull(),
     storageKey: text("storage_key").notNull(), // 相对键，如 2026/06/abc.pdf
+    thumbKey: text("thumb_key"), // 服务端缩略图键（仅图片，可空）
     createdAt: integer("created_at").notNull(),
   },
   (t) => [index("idx_attachments_item_id").on(t.itemId)],
 );
 
+/** 登录会话（SPEC §12.3）。token 为对外不可猜值，存哈希更安全；单用户场景直存。 */
+export const sessions = sqliteTable("sessions", {
+  token: text("token").primaryKey(),
+  createdAt: integer("created_at").notNull(),
+  expiresAt: integer("expires_at").notNull(),
+});
+
 export type ItemRow = typeof items.$inferSelect;
 export type ItemInsert = typeof items.$inferInsert;
 export type AttachmentRow = typeof attachments.$inferSelect;
+export type AttachmentInsert = typeof attachments.$inferInsert;
+export type SessionRow = typeof sessions.$inferSelect;

@@ -35,9 +35,26 @@ export const attachmentSchema = z.object({
   size: z.number().int().nonnegative(),
   /** 相对存储键，如 "2026/06/abc123.pdf"；实际位置 = STORAGE_ROOT + storageKey。 */
   storageKey: z.string().min(1),
+  /** 是否有服务端缩略图（仅图片）。客户端据此决定走 /thumb 还是 /raw。 */
+  hasThumb: z.boolean().optional(),
   createdAt: isoDateTime,
 });
 export type Attachment = z.infer<typeof attachmentSchema>;
+
+// —— 链接预览（存于 meta.preview，抓取成功后填充，SPEC §7）——
+
+export const linkPreviewSchema = z.object({
+  url: z.string(),
+  domain: z.string().optional(),
+  title: z.string().optional(),
+  description: z.string().optional(),
+  favicon: z.string().optional(),
+  image: z.string().optional(),
+  /** 抓取状态：未抓 / 成功 / 失败（失败仍保留原始 URL）。 */
+  status: z.enum(["pending", "ok", "error"]).optional(),
+  fetchedAt: isoDateTime.optional(),
+});
+export type LinkPreview = z.infer<typeof linkPreviewSchema>;
 
 // —— Item ——
 
@@ -65,6 +82,9 @@ export const itemSchema = z.object({
 
   /** 链接预览、自动识别结果等易变字段（Memos payload 模式）。 */
   meta: z.record(z.unknown()).optional(),
+
+  /** 同条记录的附件（随时间线一并下发，便于直接渲染）。 */
+  attachments: z.array(attachmentSchema).optional(),
 
   createdAt: isoDateTime,
   /** 多设备并发以此做「最后写入胜出」。 */

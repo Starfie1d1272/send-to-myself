@@ -12,6 +12,9 @@ import { type ItemInsert, items } from "../db/schema.js";
 import { newId } from "../lib/id.js";
 import { isoToSec, rowToItem } from "../lib/mapper.js";
 import { bus } from "../realtime/bus.js";
+import * as attachmentSvc from "./attachments.js";
+import { type IncomingFile } from "./attachments.js";
+import { fetchPreviewInto } from "./preview.js";
 
 const nowSec = () => Math.floor(Date.now() / 1000);
 
@@ -32,18 +35,20 @@ export interface ListResult {
   nextCursor: string | null;
 }
 
-/**
- * 发送即入库（SPEC §1「发送时不分类」+ §6 自动识别）。
- * 识别结果仅作建议存入 meta；只有 `kind` 与 `sensitive` 自动采纳（SPEC §6）。
- * todo / dueAt 等需用户后续确认，不在此自动设置。
- */
-export function createItem(input: CreateItemInput): Item {
-  const det = detect(input.content);
+/** 依内容与附件推断展示类型（SPEC §2）。 */
+function inferKind(contentKind: ItemKind, files: IncomingFile[]): ItemKind {
+  if (files.some((f) => f.mimeType.startsWith("image/"))) return "image";
+  if (files.length > 0) return "file";
+  return contentKind;
+}
+
+/** 组装 item 插入行 + 识别建议（SPEC §1「发送时不分类」+ §6 自动识别）。 */
+function buildRow(content: string, kind: ItemKind, det: ReturnType<typeof detect>): ItemInsert {
   const ts = nowSec();
-  const row: ItemInsert = {
+  return {
     id: newId(),
-    content: input.content,
-    kind: det.kind,
+    content,
+    kind,
     category: "none",
     isTodo: false,
     completed: false,
@@ -63,11 +68,54 @@ export function createItem(input: CreateItemInput): Item {
     createdAt: ts,
     updatedAt: ts,
   };
+}
+
+/**
+ * 发送纯文字/链接（无附件）。识别结果仅作建议存入 meta；
+ * 只有 `kind` 与 `sensitive` 自动采纳（SPEC §6）。todo/dueAt 需用户后续确认。
+ */
+export function createItem(input: CreateItemInput): Item {
+  const det = detect(input.content);
+  const row = buildRow(input.content, det.kind, det);
   db.insert(items).values(row).run();
-  const item = db.select().from(items).where(eq(items.id, row.id!)).get()!;
-  const dto = rowToItem(item);
+  const stored = db.select().from(items).where(eq(items.id, row.id!)).get()!;
+  const dto = rowToItem(stored);
   bus.publish({ type: "item.created", payload: dto });
+  schedulePreview(dto, det.urls);
   return dto;
+}
+
+/** 发送带附件的记录（图片/文件，可混合文字+链接，SPEC §2, §8）。 */
+export async function createItemWithFiles(
+  content: string,
+  files: IncomingFile[],
+): Promise<Item> {
+  const det = detect(content);
+  const kind = inferKind(det.kind, files);
+  const row = buildRow(content, kind, det);
+  db.insert(items).values(row).run();
+
+  for (const f of files) {
+    await attachmentSvc.saveAttachment(row.id!, f);
+  }
+
+  const stored = db.select().from(items).where(eq(items.id, row.id!)).get()!;
+  const atts = attachmentSvc.listByItem(row.id!);
+  const dto = rowToItem(stored, atts);
+  bus.publish({ type: "item.created", payload: dto });
+  schedulePreview(dto, det.urls);
+  return dto;
+}
+
+/** 非阻塞抓取首个链接预览，成功后更新 meta 并广播 item.updated（SPEC §7）。 */
+function schedulePreview(item: Item, urls: string[]): void {
+  const first = urls[0];
+  if (!first) return;
+  queueMicrotask(() => {
+    void fetchPreviewInto(item.id, first).then((updated) => {
+      if (updated) bus.publish({ type: "item.updated", payload: updated });
+    });
+  });
 }
 
 export function listItems(f: ListFilter): ListResult {
@@ -94,15 +142,16 @@ export function listItems(f: ListFilter): ListResult {
   const hasMore = rows.length > limit;
   const page = rows.slice(0, limit);
   const last = page.at(-1);
+  const attMap = attachmentSvc.listByItems(page.map((r) => r.id));
   return {
-    items: page.map(rowToItem),
+    items: page.map((r) => rowToItem(r, attMap.get(r.id))),
     nextCursor: hasMore && last ? new Date(last.createdAt * 1000).toISOString() : null,
   };
 }
 
 export function getItem(id: string): Item | null {
   const row = db.select().from(items).where(eq(items.id, id)).get();
-  return row ? rowToItem(row) : null;
+  return row ? rowToItem(row, attachmentSvc.listByItem(id)) : null;
 }
 
 /** 查看时再分类（SPEC §1）：仅更新可变字段。 */
@@ -126,7 +175,13 @@ export function updateItem(id: string, patch: UpdateItemInput): Item | null {
 
   db.update(items).set(set).where(eq(items.id, id)).run();
   const row = db.select().from(items).where(eq(items.id, id)).get()!;
-  const dto = rowToItem(row);
+  const dto = rowToItem(row, attachmentSvc.listByItem(id));
+
+  // 编辑正文后重跑识别并重抓链接预览（SPEC §7 编辑语义）。
+  if (patch.content !== undefined) {
+    const det = detect(patch.content);
+    schedulePreview(dto, det.urls);
+  }
   bus.publish({ type: "item.updated", payload: dto });
   return dto;
 }
@@ -146,7 +201,7 @@ export function restoreItem(id: string): Item | null {
   if (!existing) return null;
   db.update(items).set({ deletedAt: null, updatedAt: nowSec() }).where(eq(items.id, id)).run();
   const row = db.select().from(items).where(eq(items.id, id)).get()!;
-  const dto = rowToItem(row);
+  const dto = rowToItem(row, attachmentSvc.listByItem(id));
   bus.publish({ type: "item.updated", payload: dto });
   return dto;
 }

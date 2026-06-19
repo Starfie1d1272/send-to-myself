@@ -8,6 +8,13 @@
       "when": 1781858380316,
       "tag": "0000_tiny_living_mummy",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1781860821494,
+      "tag": "0001_gigantic_kinsey_walden",
+      "breakpoints": true
     }
   ]
 }
