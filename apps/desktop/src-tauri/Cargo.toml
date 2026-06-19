@@ -1,17 +1,15 @@
 [package]
-name = "desktop"
+name = "send-to-myself"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
+description = "SendToMyself 桌面薄壳"
+authors = ["Xinyu Du"]
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
-# The `_lib` suffix may seem redundant but it is necessary
-# to make the lib name unique and wouldn't conflict with the bin name.
-# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
-name = "desktop_lib"
+# lib 名与 bin 名不能同名（Windows 限制，见 rust-lang/cargo#8519），故加 _lib 后缀。
+name = "sendtomyself_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
