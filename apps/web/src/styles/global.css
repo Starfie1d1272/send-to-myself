@@ -286,7 +286,18 @@ body {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  /* 间距由每条的 margin-top 决定，以实现视觉聚簇（同簇贴紧、跨簇留空） */
+  gap: 0;
+}
+/* 视觉聚簇：当天首条无上距，新簇起始留正常间距，同簇续条贴紧 */
+.item--gap-first {
+  margin-top: 0;
+}
+.item--gap-normal {
+  margin-top: 12px;
+}
+.item--gap-cont {
+  margin-top: 4px;
 }
 
 /* ---------- Item ---------- */

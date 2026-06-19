@@ -46,6 +46,18 @@ function dayLabel(d: Date, now = new Date()): string {
     : `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
 }
 
+/** 视觉聚簇阈值：相邻两条创建时间间隔小于此值视为同一簇（连续发送），仅影响间距。 */
+export const CLUSTER_GAP_MS = 3 * 60_000;
+
+/** 相邻两条（newer, older）是否属于同一视觉簇。纯展示判断，不改数据。 */
+export function sameCluster(newer: Item, older: Item): boolean {
+  const gap = new Date(newer.createdAt).getTime() - new Date(older.createdAt).getTime();
+  return gap >= 0 && gap < CLUSTER_GAP_MS;
+}
+
+/** 一条在簇内的位置：当天首条 / 同簇续条 / 新簇起始。用于决定上间距。 */
+export type GapKind = "first" | "cont" | "normal";
+
 export interface DayGroup {
   key: string;
   label: string;

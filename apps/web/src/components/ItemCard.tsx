@@ -46,7 +46,15 @@ function LinkifiedText({ text }: { text: string }) {
   );
 }
 
-export function ItemCard({ item, trash }: { item: Item; trash?: boolean }) {
+export function ItemCard({
+  item,
+  trash,
+  gap = "normal",
+}: {
+  item: Item;
+  trash?: boolean;
+  gap?: "first" | "cont" | "normal";
+}) {
   const { update, remove, restore, refetchPreview } = useItemMutations();
   const [revealed, setRevealed] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -82,7 +90,7 @@ export function ItemCard({ item, trash }: { item: Item; trash?: boolean }) {
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.18 } }}
       transition={{ type: "spring", stiffness: 520, damping: 38 }}
-      className={`item${item.pinned ? " item--pinned" : ""}${
+      className={`item item--gap-${gap}${item.pinned ? " item--pinned" : ""}${
         item.completed ? " item--done" : ""
       }`}
     >

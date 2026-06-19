@@ -1,6 +1,6 @@
 import { AnimatePresence } from "motion/react";
 import type { Item } from "@sendtomyself/shared";
-import { groupByDay } from "../lib/format";
+import { type GapKind, groupByDay, sameCluster } from "../lib/format";
 import { ItemCard } from "./ItemCard";
 
 export function Timeline({
@@ -36,9 +36,11 @@ export function Timeline({
           </div>
           <ul className="day__list">
             <AnimatePresence initial={false}>
-              {g.items.map((it) => (
-                <ItemCard key={it.id} item={it} trash={trash} />
-              ))}
+              {g.items.map((it, i) => {
+                const gap: GapKind =
+                  i === 0 ? "first" : sameCluster(g.items[i - 1]!, it) ? "cont" : "normal";
+                return <ItemCard key={it.id} item={it} trash={trash} gap={gap} />;
+              })}
             </AnimatePresence>
           </ul>
         </section>
