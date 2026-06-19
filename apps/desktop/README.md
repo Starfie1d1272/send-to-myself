@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="src-tauri/icons/icon.png" width="120" alt="SendToMyself 图标" />
+</p>
+
 # SendToMyself 桌面薄壳（Tauri 2）
 
 Windows / macOS 桌面壳（SPEC §14 V1.3）。**业务逻辑全在服务端**，壳只做：

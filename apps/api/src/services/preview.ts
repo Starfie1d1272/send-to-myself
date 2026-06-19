@@ -89,16 +89,21 @@ async function safeFetchHtml(startUrl: string): Promise<{ html: string; finalUrl
 
 // —— 图片代理（解决图床防盗链 / 混合内容，SPEC §7）——
 
-/** 已知图床的防盗链 Referer 映射；命中则用站点首页做 Referer，否则用图床自身 origin。 */
+/**
+ * 图床 Referer 策略：多数图床拦的是「外站 Referer」而非「要求特定 Referer」，
+ * 故默认**不带** Referer（留空最通用，避免泄漏本站来源被当外链拦）。
+ * 仅对个别校验来源站的图床显式映射到其站点首页。
+ */
 const IMG_REFERER: Array<[string, string]> = [
-  ["hdslb.com", "https://www.bilibili.com/"], // B 站图床校验 bilibili.com Referer
+  ["hdslb.com", "https://www.bilibili.com/"], // B 站图床
+  ["qpic.cn", "https://mp.weixin.qq.com/"], // 公众号图床
 ];
 
-function imageReferer(host: string): string {
+function imageReferer(host: string): string | undefined {
   for (const [suffix, ref] of IMG_REFERER) {
     if (host === suffix || host.endsWith("." + suffix)) return ref;
   }
-  return `https://${host}/`;
+  return undefined;
 }
 
 /**
@@ -113,6 +118,7 @@ export async function fetchImage(
     for (let hop = 0; hop <= env.previewMaxRedirects; hop++) {
       await assertSafeUrl(current);
       const host = new URL(current).hostname;
+      const ref = imageReferer(host);
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), env.previewTimeoutMs);
       try {
@@ -122,9 +128,9 @@ export async function fetchImage(
           signal: ctrl.signal,
           headers: {
             "user-agent": UA,
-            referer: imageReferer(host),
             accept: "image/avif,image/webp,image/*,*/*;q=0.8",
             "accept-language": ACCEPT_LANG,
+            ...(ref ? { referer: ref } : {}), // 默认不带 Referer，最通用
           },
         });
         if (res.status >= 300 && res.status < 400) {
