@@ -7,6 +7,8 @@ export type FilterKey =
   | "idea"
   | "read_later"
   | "link"
+  | "image"
+  | "file"
   | "pinned"
   | "completed"
   | "trash";
@@ -18,6 +20,8 @@ export const FILTERS: { key: FilterKey; label: string }[] = [
   { key: "idea", label: "想法" },
   { key: "read_later", label: "稍后看" },
   { key: "link", label: "链接" },
+  { key: "image", label: "图片" },
+  { key: "file", label: "文件" },
   { key: "pinned", label: "置顶" },
   { key: "completed", label: "已完成" },
   { key: "trash", label: "回收站" },

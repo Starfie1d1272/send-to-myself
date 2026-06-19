@@ -71,3 +71,60 @@ export const IconSearch = (p: SVGProps<SVGSVGElement>) => (
     <path d="m20 20-3.2-3.2" />
   </svg>
 );
+
+export const IconPaperclip = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}>
+    <path d="M20 11.5 11.7 19.8a4.5 4.5 0 0 1-6.4-6.4l8.3-8.3a3 3 0 0 1 4.3 4.3l-8.4 8.3a1.5 1.5 0 0 1-2.1-2.1l7.6-7.6" />
+  </svg>
+);
+
+export const IconImage = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}>
+    <rect x="3" y="4" width="18" height="16" rx="2.5" />
+    <circle cx="8.5" cy="9.5" r="1.6" />
+    <path d="m4 17 5-5 4 4 3-3 4 4" />
+  </svg>
+);
+
+export const IconFile = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}>
+    <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z" />
+    <path d="M14 3v5h5" />
+  </svg>
+);
+
+export const IconDownload = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}>
+    <path d="M12 4v11m0 0 4-4m-4 4-4-4" />
+    <path d="M5 19h14" />
+  </svg>
+);
+
+export const IconShare = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}>
+    <circle cx="6" cy="12" r="2.4" />
+    <circle cx="18" cy="6" r="2.4" />
+    <circle cx="18" cy="18" r="2.4" />
+    <path d="m8.1 10.9 7.8-3.8M8.1 13.1l7.8 3.8" />
+  </svg>
+);
+
+export const IconX = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}>
+    <path d="M6 6l12 12M18 6 6 18" />
+  </svg>
+);
+
+export const IconLock = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}>
+    <rect x="5" y="11" width="14" height="9" rx="2.2" />
+    <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+  </svg>
+);
+
+export const IconLogout = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}>
+    <path d="M14 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3" />
+    <path d="M10 12H3m0 0 3.5-3.5M3 12l3.5 3.5" />
+  </svg>
+);

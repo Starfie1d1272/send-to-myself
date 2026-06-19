@@ -14,6 +14,10 @@ export function useItemMutations() {
   const invalidate = () => qc.invalidateQueries({ queryKey: ["items"] });
   return {
     create: useMutation({ mutationFn: (i: CreateItemInput) => api.create(i), onSuccess: invalidate }),
+    upload: useMutation({
+      mutationFn: (v: { content: string; files: File[] }) => api.upload(v.content, v.files),
+      onSuccess: invalidate,
+    }),
     update: useMutation({
       mutationFn: (v: { id: string; patch: UpdateItemInput }) => api.update(v.id, v.patch),
       onSuccess: invalidate,

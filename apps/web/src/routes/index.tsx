@@ -7,6 +7,8 @@ import { dueBucket, itemUrls } from "../lib/format";
 import { Composer } from "../components/Composer";
 import { FilterBar, type FilterKey } from "../components/FilterBar";
 import { Timeline } from "../components/Timeline";
+import { IconLogout } from "../components/icons";
+import { useAuth, useAuthActions } from "../hooks/useAuth";
 
 function toParams(f: FilterKey, q: string): ListParams {
   const base: ListParams = { limit: 100 };
@@ -20,6 +22,10 @@ function toParams(f: FilterKey, q: string): ListParams {
       return { ...base, category: "idea" };
     case "read_later":
       return { ...base, category: "read_later" };
+    case "image":
+      return { ...base, kind: "image" };
+    case "file":
+      return { ...base, kind: "file" };
     case "pinned":
       return { ...base, pinned: true };
     case "completed":
@@ -43,6 +49,9 @@ export function TimelinePage() {
   }, [qc]);
   useRealtime(refresh);
 
+  const { data: auth } = useAuth();
+  const { logout } = useAuthActions();
+
   let items = data?.items ?? [];
   if (filter === "due") {
     items = items.filter(
@@ -63,7 +72,18 @@ export function TimelinePage() {
             <span className="wordmark">SendToMyself</span>
             <span className="masthead__sub">发给自己 · 统一信息流</span>
           </div>
-          <span className="masthead__date">{dateStr}</span>
+          <div className="masthead__right">
+            <span className="masthead__date">{dateStr}</span>
+            {auth?.authEnabled && (
+              <button
+                className="icon-btn"
+                title="退出登录"
+                onClick={() => logout.mutate()}
+              >
+                <IconLogout width={17} height={17} />
+              </button>
+            )}
+          </div>
         </header>
 
         <Composer />

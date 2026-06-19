@@ -1,4 +1,4 @@
-import type { Item } from "@sendtomyself/shared";
+import type { Item, LinkPreview } from "@sendtomyself/shared";
 
 export type DueBucket = "overdue" | "today" | "tomorrow" | "this_week" | "later" | "none";
 
@@ -100,4 +100,19 @@ export function hostnameOf(url: string): string {
   } catch {
     return url;
   }
+}
+
+/** 取链接预览（meta.preview），仅当抓取成功且有标题/封面时返回。 */
+export function itemPreview(item: Item): LinkPreview | null {
+  const p = item.meta?.preview as LinkPreview | undefined;
+  if (!p || p.status !== "ok") return null;
+  if (!p.title && !p.image) return null;
+  return p;
+}
+
+/** 字节 → 人类可读。 */
+export function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }

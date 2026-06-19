@@ -8,10 +8,13 @@ import {
   formatTime,
   hostnameOf,
   itemDueSuggestion,
+  itemPreview,
   itemUrls,
   quickDue,
 } from "../lib/format";
 import { useItemMutations } from "../hooks/useItems";
+import { Attachments } from "./Attachments";
+import { LinkPreviewCard } from "./LinkPreviewCard";
 import {
   IconCheck,
   IconClock,
@@ -61,9 +64,11 @@ export function ItemCard({ item, trash }: { item: Item; trash?: boolean }) {
   };
 
   const urls = itemUrls(item);
+  const preview = itemPreview(item);
   const suggestion = itemDueSuggestion(item);
   const bucket = dueBucket(item.dueAt);
   const showSuggestion = !trash && suggestion && !item.dueAt && !item.isTodo;
+  const attachments = item.attachments ?? [];
 
   return (
     <motion.li
@@ -99,12 +104,20 @@ export function ItemCard({ item, trash }: { item: Item; trash?: boolean }) {
               </span>
             </button>
           ) : (
-            <p className={`item__content${item.sensitive ? " item__content--mono" : ""}`}>
-              {item.sensitive ? item.content : <LinkifiedText text={item.content} />}
-            </p>
+            item.content.trim().length > 0 && (
+              <p className={`item__content${item.sensitive ? " item__content--mono" : ""}`}>
+                {item.sensitive ? item.content : <LinkifiedText text={item.content} />}
+              </p>
+            )
           )}
 
-          {urls.length > 0 && !item.sensitive && (
+          {attachments.length > 0 && !item.sensitive && (
+            <Attachments items={attachments} />
+          )}
+
+          {preview && !item.sensitive && <LinkPreviewCard preview={preview} />}
+
+          {urls.length > 0 && !item.sensitive && !preview && (
             <div className="chips">
               {urls.slice(0, 3).map((u) => (
                 <a key={u} className="link-chip" href={u} target="_blank" rel="noreferrer">
