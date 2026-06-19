@@ -1,0 +1,70 @@
+name: Desktop Build
+
+# 打包桌面壳（apps/desktop）：
+# - 手动触发（workflow_dispatch）：产出可下载的安装包构件，用来自测（含 Windows）。
+# - 推送 v* tag：额外创建一个 GitHub Release 并附上安装包。
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    permissions:
+      contents: write # 打 tag 时创建 Release 需要
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            name: macOS (Apple Silicon)
+          - os: windows-latest
+            name: Windows
+    runs-on: ${{ matrix.os }}
+    name: ${{ matrix.name }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Build app
+        working-directory: apps/desktop
+        run: pnpm tauri build
+
+      # 自测用：无论触发方式都上传构件
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sendtomyself-${{ matrix.os }}
+          if-no-files-found: error
+          path: |
+            apps/desktop/src-tauri/target/release/bundle/dmg/*.dmg
+            apps/desktop/src-tauri/target/release/bundle/msi/*.msi
+            apps/desktop/src-tauri/target/release/bundle/nsis/*.exe
+
+      # 打 tag 时附到 Release
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            apps/desktop/src-tauri/target/release/bundle/dmg/*.dmg
+            apps/desktop/src-tauri/target/release/bundle/msi/*.msi
+            apps/desktop/src-tauri/target/release/bundle/nsis/*.exe
