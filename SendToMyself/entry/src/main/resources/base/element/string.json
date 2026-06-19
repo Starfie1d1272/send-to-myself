@@ -1,0 +1,24 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "Send content to yourself from any app"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "SendToMyself main view"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "SendToMyself"
+    },
+    {
+      "name": "ShareAbility_desc",
+      "value": "Receive shared content and send to server"
+    },
+    {
+      "name": "ShareAbility_label",
+      "value": "SendToMyself"
+    }
+  ]
+}
