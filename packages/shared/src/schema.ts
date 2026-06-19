@@ -100,6 +100,11 @@ export type Item = z.infer<typeof itemSchema>;
  */
 export const createItemInput = z.object({
   content: z.string().max(100_000).default(""),
+  /**
+   * 幂等键（可选）：原生壳离线队列补发时带上同一值，服务端据此去重，
+   * 避免弱网重试造成重复。客户端生成（uuid）；网页直发可不填。
+   */
+  dedupeKey: z.string().min(1).max(64).optional(),
 });
 export type CreateItemInput = z.infer<typeof createItemInput>;
 

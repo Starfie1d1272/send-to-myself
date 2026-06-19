@@ -43,8 +43,20 @@ function inferKind(contentKind: ItemKind, files: IncomingFile[]): ItemKind {
   return contentKind;
 }
 
+/** 命中幂等键的现有记录（离线队列补发去重，SPEC §16）。无键或未命中返回 null。 */
+function findByDedupeKey(dedupeKey: string | undefined): Item | null {
+  if (!dedupeKey) return null;
+  const row = db.select().from(items).where(eq(items.dedupeKey, dedupeKey)).get();
+  return row ? rowToItem(row, attachmentSvc.listByItem(row.id)) : null;
+}
+
 /** 组装 item 插入行 + 识别建议（SPEC §1「发送时不分类」+ §6 自动识别）。 */
-function buildRow(content: string, kind: ItemKind, det: ReturnType<typeof detect>): ItemInsert {
+function buildRow(
+  content: string,
+  kind: ItemKind,
+  det: ReturnType<typeof detect>,
+  dedupeKey?: string,
+): ItemInsert {
   const ts = nowSec();
   return {
     id: newId(),
@@ -58,6 +70,7 @@ function buildRow(content: string, kind: ItemKind, det: ReturnType<typeof detect
     pinned: false,
     sensitive: det.secret.sensitive, // 疑似密钥自动遮罩
     deletedAt: null,
+    dedupeKey: dedupeKey ?? null,
     meta: JSON.stringify({
       suggestions: {
         todo: det.todo,
@@ -76,8 +89,10 @@ function buildRow(content: string, kind: ItemKind, det: ReturnType<typeof detect
  * 只有 `kind` 与 `sensitive` 自动采纳（SPEC §6）。todo/dueAt 需用户后续确认。
  */
 export function createItem(input: CreateItemInput): Item {
+  const dup = findByDedupeKey(input.dedupeKey);
+  if (dup) return dup; // 离线补发重试，已存在则原样返回，不重复创建
   const det = detect(input.content);
-  const row = buildRow(input.content, det.kind, det);
+  const row = buildRow(input.content, det.kind, det, input.dedupeKey);
   db.insert(items).values(row).run();
   const stored = db.select().from(items).where(eq(items.id, row.id!)).get()!;
   const dto = rowToItem(stored);
@@ -90,10 +105,13 @@ export function createItem(input: CreateItemInput): Item {
 export async function createItemWithFiles(
   content: string,
   files: IncomingFile[],
+  dedupeKey?: string,
 ): Promise<Item> {
+  const dup = findByDedupeKey(dedupeKey);
+  if (dup) return dup; // 离线补发重试，已存在则原样返回
   const det = detect(content);
   const kind = inferKind(det.kind, files);
-  const row = buildRow(content, kind, det);
+  const row = buildRow(content, kind, det, dedupeKey);
   db.insert(items).values(row).run();
 
   for (const f of files) {

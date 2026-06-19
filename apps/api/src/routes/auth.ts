@@ -6,17 +6,21 @@ import { z } from "zod";
 import { env } from "../env.js";
 import {
   authEnabled,
+  createDeviceToken,
   createSession,
   destroySession,
   isLocked,
+  listDeviceTokens,
   recordFail,
   recordSuccess,
+  revokeDeviceToken,
   SESSION_COOKIE,
   sessionValid,
   verifyPassword,
 } from "../lib/auth.js";
 
 const loginInput = z.object({ password: z.string().min(1) });
+const deviceInput = z.object({ name: z.string().min(1).max(40) });
 
 function clientIp(c: Context): string {
   const xff = c.req.header("x-forwarded-for");
@@ -67,4 +71,31 @@ authRoute.post("/logout", (c) => {
   destroySession(getCookie(c, SESSION_COOKIE));
   deleteCookie(c, SESSION_COOKIE, { path: "/" });
   return c.json({ ok: true });
+});
+
+// —— 设备令牌管理（仅网页 session 可铸造/吊销，设备令牌自身无权管理）——
+
+/** 仅放行已登录的网页会话；设备令牌（Bearer）不得管理令牌。 */
+function sessionOnly(c: Context): boolean {
+  return !authEnabled || sessionValid(getCookie(c, SESSION_COOKIE));
+}
+
+authRoute.get("/devices", (c) => {
+  if (!sessionOnly(c)) return c.json({ error: "unauthorized" }, 401);
+  return c.json({ devices: listDeviceTokens() });
+});
+
+/** 签发设备令牌。明文 token 仅此次返回，需立即拷贝到原生壳。 */
+authRoute.post("/devices", zValidator("json", deviceInput), (c) => {
+  if (!sessionOnly(c)) return c.json({ error: "unauthorized" }, 401);
+  const { name } = c.req.valid("json");
+  const { token, createdAt } = createDeviceToken(name);
+  return c.json({ token, name, createdAt }, 201);
+});
+
+authRoute.delete("/devices/:tail", (c) => {
+  if (!sessionOnly(c)) return c.json({ error: "unauthorized" }, 401);
+  return revokeDeviceToken(c.req.param("tail"))
+    ? c.body(null, 204)
+    : c.json({ error: "not_found" }, 404);
 });

@@ -19,6 +19,7 @@ itemsRoute.post("/", zValidator("json", createItemInput), (c) =>
 itemsRoute.post("/upload", async (c) => {
   const body = await c.req.parseBody({ all: true });
   const content = typeof body.content === "string" ? body.content : "";
+  const dedupeKey = typeof body.dedupeKey === "string" ? body.dedupeKey : undefined;
 
   const raw = body.files ?? body["files[]"] ?? body.file;
   const blobs = (Array.isArray(raw) ? raw : [raw]).filter(
@@ -40,7 +41,7 @@ itemsRoute.post("/upload", async (c) => {
     });
   }
 
-  const item = await svc.createItemWithFiles(content, files);
+  const item = await svc.createItemWithFiles(content, files, dedupeKey);
   return c.json(item, 201);
 });
 

@@ -1,8 +1,8 @@
 import { randomBytes } from "node:crypto";
 import argon2 from "argon2";
-import { eq, lt } from "drizzle-orm";
+import { desc, eq, lt } from "drizzle-orm";
 import { db } from "../db/client.js";
-import { sessions } from "../db/schema.js";
+import { type DeviceTokenRow, deviceTokens, sessions } from "../db/schema.js";
 import { env } from "../env.js";
 
 /**
@@ -58,6 +58,49 @@ export function destroySession(token: string | undefined): void {
 /** 清理过期 session（启动时调一次）。 */
 export function purgeExpiredSessions(): void {
   db.delete(sessions).where(lt(sessions.expiresAt, nowSec())).run();
+}
+
+// —— 设备令牌（原生壳 Bearer 认证，SPEC §12.3 扩展）——
+
+/** 签发设备令牌。需已登录（仅网页会话可铸造）。token 明文仅此处返回一次。 */
+export function createDeviceToken(name: string): { token: string; createdAt: number } {
+  const token = randomBytes(32).toString("base64url");
+  const createdAt = nowSec();
+  db.insert(deviceTokens).values({ token, name, createdAt, lastUsedAt: null, expiresAt: null }).run();
+  return { token, createdAt };
+}
+
+/** 校验 Bearer 设备令牌；命中则顺带刷新 lastUsedAt。 */
+export function deviceTokenValid(token: string | undefined): boolean {
+  if (!token) return false;
+  const row = db.select().from(deviceTokens).where(eq(deviceTokens.token, token)).get();
+  if (!row) return false;
+  if (row.expiresAt != null && row.expiresAt <= nowSec()) {
+    db.delete(deviceTokens).where(eq(deviceTokens.token, token)).run();
+    return false;
+  }
+  db.update(deviceTokens).set({ lastUsedAt: nowSec() }).where(eq(deviceTokens.token, token)).run();
+  return true;
+}
+
+/** 列出设备令牌（不回传完整 token，仅尾 6 位用于辨识）。 */
+export function listDeviceTokens(): Array<
+  Pick<DeviceTokenRow, "name" | "createdAt" | "lastUsedAt"> & { tail: string }
+> {
+  return db
+    .select()
+    .from(deviceTokens)
+    .orderBy(desc(deviceTokens.createdAt))
+    .all()
+    .map((r) => ({ name: r.name, createdAt: r.createdAt, lastUsedAt: r.lastUsedAt, tail: r.token.slice(-6) }));
+}
+
+/** 按尾 6 位吊销设备令牌（列表里展示的就是尾号）。返回是否命中。 */
+export function revokeDeviceToken(tail: string): boolean {
+  const row = db.select().from(deviceTokens).all().find((r) => r.token.slice(-6) === tail);
+  if (!row) return false;
+  db.delete(deviceTokens).where(eq(deviceTokens.token, row.token)).run();
+  return true;
 }
 
 // —— 登录限速 / 失败锁定（内存态，单用户足够）——
