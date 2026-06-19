@@ -60,6 +60,7 @@
 ## 文档
 
 - **[docs/SPEC.md](docs/SPEC.md)** — 完整需求与边界（单一事实来源）
+- **[docs/DEPLOY.md](docs/DEPLOY.md)** — 自部署指南（Docker + 反代 + HTTPS）
 - **[docs/HARMONY_SHELL.md](docs/HARMONY_SHELL.md)** — 鸿蒙原生壳实现契约
 - **[docs/RESEARCH.md](docs/RESEARCH.md)** — 竞品与技术决策调研
 
@@ -112,7 +113,7 @@ cp .env.example .env       # 务必设置一个强 AUTH_PASSWORD
 docker compose up -d --build
 ```
 
-服务监听 `127.0.0.1:8787`，将反代（Caddy/Nginx）指向它即可。环境变量见 [.env.example](.env.example)。
+服务监听 `127.0.0.1:8787`，将反代（Caddy/Nginx）指向它即可。**完整步骤（域名、反代、自动 HTTPS、验证）见 [docs/DEPLOY.md](docs/DEPLOY.md)**；环境变量见 [.env.example](.env.example)。
 
 ## 备份与恢复（SPEC §13）
 
