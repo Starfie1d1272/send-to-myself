@@ -1,12 +1,24 @@
+/* 与 web 同一套暖色纸感设计（见 apps/web/src/styles/global.css） */
 :root {
-  --bg: #0f1115;
-  --fg: #e7e9ee;
-  --muted: #9aa1ac;
-  --accent: #4f8cff;
-  --field: #1a1d24;
-  --border: #2a2f3a;
-  --err: #ff6b6b;
-  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --font-display: "Fraunces", Georgia, "Songti SC", serif;
+  --font-ui: "Hanken Grotesk", -apple-system, BlinkMacSystemFont, "PingFang SC",
+    "HarmonyOS Sans SC", "Microsoft YaHei", sans-serif;
+
+  --paper: #f2ece1;
+  --card: #fbf7ef;
+  --card-hi: #fffdf8;
+  --ink: #241d16;
+  --ink-soft: #5b5044;
+  --ink-faint: #938573;
+  --line: #e3d9c7;
+  --line-strong: #d3c4ab;
+
+  --accent: #bc4b2a;
+  --accent-deep: #9a3a1f;
+  --red: #a8331e;
+
+  --shadow-md: 0 6px 22px -12px rgba(70, 45, 20, 0.28);
+  --radius: 14px;
 }
 
 * {
@@ -20,8 +32,15 @@ body {
 }
 
 body {
-  background: var(--bg);
-  color: var(--fg);
+  font-family: var(--font-ui);
+  color: var(--ink);
+  background:
+    radial-gradient(120% 80% at 50% -10%, var(--card-hi) 0%, transparent 55%),
+    radial-gradient(100% 60% at 100% 0%, #f6e7d4 0%, transparent 45%),
+    radial-gradient(90% 70% at 0% 100%, #efe6d6 0%, transparent 50%),
+    var(--paper);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
   display: grid;
   place-items: center;
 }
@@ -29,21 +48,27 @@ body {
 .launcher {
   width: min(420px, 86vw);
   text-align: center;
-  padding: 24px;
+  padding: 32px 28px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
 }
 
 .brand {
-  font-size: 30px;
-  font-weight: 700;
-  letter-spacing: 1px;
-  margin-bottom: 10px;
+  font-family: var(--font-display);
+  font-size: 34px;
+  font-weight: 560;
+  letter-spacing: 0.5px;
+  color: var(--ink);
+  margin-bottom: 12px;
 }
 
 .sub {
-  color: var(--muted);
+  color: var(--ink-soft);
   font-size: 13px;
-  line-height: 1.6;
-  margin: 0 0 22px;
+  line-height: 1.7;
+  margin: 0 0 24px;
 }
 
 #form {
@@ -55,26 +80,39 @@ body {
   flex: 1;
   padding: 11px 13px;
   border-radius: 10px;
-  border: 1px solid var(--border);
-  background: var(--field);
-  color: var(--fg);
+  border: 1px solid var(--line-strong);
+  background: var(--card-hi);
+  color: var(--ink);
+  font-family: var(--font-ui);
   font-size: 14px;
   outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+#url::placeholder {
+  color: var(--ink-faint);
 }
 
 #url:focus {
   border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-tint, rgba(188, 75, 42, 0.16));
 }
 
 button {
-  padding: 11px 18px;
+  padding: 11px 20px;
   border-radius: 10px;
   border: none;
   background: var(--accent);
-  color: #fff;
+  color: var(--card-hi);
+  font-family: var(--font-ui);
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
+  transition: background 0.15s, transform 0.05s;
+}
+
+button:hover {
+  background: var(--accent-deep);
 }
 
 button:active {
@@ -82,7 +120,8 @@ button:active {
 }
 
 .err {
-  color: var(--err);
+  color: var(--red);
   font-size: 13px;
-  margin-top: 14px;
+  line-height: 1.6;
+  margin: 16px 0 0;
 }

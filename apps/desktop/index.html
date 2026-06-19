@@ -2,21 +2,28 @@
 <html lang="zh">
   <head>
     <meta charset="UTF-8" />
-    <link rel="stylesheet" href="/src/styles.css" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>发给自己</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..600;1,9..144,400..600&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+    />
+    <link rel="stylesheet" href="/src/styles.css" />
     <script type="module" src="/src/main.ts" defer></script>
   </head>
   <body>
     <main class="launcher" id="launcher" hidden>
       <div class="brand">发给自己</div>
-      <p class="sub">填入你的服务器地址，连接后桌面随手发送、Cmd/Ctrl+Shift+S 速唤。</p>
+      <p class="sub">填入你的服务器地址，连接后即可在桌面随手发送。<br />连上后按 Cmd/Ctrl+Shift+S 可随时速唤。</p>
       <form id="form">
         <input
           id="url"
           type="text"
           inputmode="url"
           autocomplete="off"
+          spellcheck="false"
           placeholder="https://stm.example.com"
           required
         />
