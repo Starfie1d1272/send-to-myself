@@ -1,0 +1,27 @@
+# SendToMyself —— NAS / 服务器可视化部署模板
+#
+# 用法（群晖 Container Manager / QNAP Container Station / Portainer 等）：
+#   1. 新建一个「项目 / Stack / Compose」，把本文件内容整段粘进去；
+#   2. 把下面 AUTH_PASSWORD 改成你自己的强口令；
+#   3. 部署。容器会自动拉取预构建镜像，无需源码、无需编译。
+#
+# 数据（数据库 + 附件）保存在 ./data，备份时整个目录拷走即可。
+# HTTPS / 域名访问见 docs/DEPLOY.md（用 NAS 自带反向代理，或下方 Caddy 版本）。
+
+services:
+  app:
+    image: ghcr.io/starfie1d1272/send-to-myself:latest
+    container_name: sendtomyself
+    restart: unless-stopped
+    environment:
+      # —— 必改：登录口令（单用户）——
+      AUTH_PASSWORD: "改成一个强口令"
+      # 经 HTTPS 反向代理访问时填 true；纯内网 http 直接访问 IP 时填 false
+      SECURE_COOKIE: "true"
+      # 单文件上传上限（字节），默认 50MB
+      MAX_UPLOAD_BYTES: "52428800"
+    ports:
+      # 左边是 NAS 上对外的端口，可改；右边 8787 不要动
+      - "8787:8787"
+    volumes:
+      - ./data:/data
