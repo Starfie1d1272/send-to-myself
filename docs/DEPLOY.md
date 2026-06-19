@@ -29,25 +29,42 @@ docker compose up -d --build
 - 登录用的 cookie 标了 `Secure`，**没有 HTTPS 就登不上**；
 - 公网裸跑 HTTP 不安全。
 
-### 方案 A：Caddy（推荐，自动 HTTPS）
-
-Caddy 会**自动**为你的域名申请并续期 Let's Encrypt 证书，你只需要写一个 `Caddyfile`：
+Caddy 会**自动**为你的域名申请并续期 Let's Encrypt 证书。`Caddyfile` 只要一段：
 
 ```caddy
 stm.example.com {
-    reverse_proxy 127.0.0.1:8787
+    reverse_proxy app:8787
 }
 ```
 
-就这么多——SSE 实时推送、WebSocket 升级 Caddy 默认就支持，无需额外配置。
+SSE 实时推送、WebSocket 升级 Caddy 默认就支持，无需额外配置。
 
-跑起来（若 Caddy 也用 Docker，把 `127.0.0.1:8787` 换成容器名 `app:8787` 并接到同一网络）：
+> ⚠️ **常见坑**：本仓库的 compose 把端口绑在宿主机 `127.0.0.1`。如果 Caddy 跑在**另一个容器**里，容器内的 `127.0.0.1` 指向的是它自己、连不到应用。所以要么让 Caddy 和应用**在同一个 compose 网络里、用服务名 `app:8787`**（推荐，下方做法），要么用宿主机直接安装的 Caddy 才能用 `127.0.0.1:8787`。
 
-```bash
-caddy run --config ./Caddyfile
+#### 推荐：把 Caddy 加进同一个 compose
+
+在 `docker-compose.yml` 里追加一个 `caddy` 服务（与 `app` 同网络，故用 `app:8787`）：
+
+```yaml
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy-data:/data        # 证书持久化，别丢
+      - ./caddy-config:/config
 ```
 
-访问 `https://stm.example.com` 即可，证书自动签发。
+> 同 compose 内服务互通，应用的 `ports` 那行甚至可以删掉（不必再对宿主暴露 8787）。
+
+```bash
+docker compose up -d        # 起 app + caddy
+```
+
+访问 `https://stm.example.com` 即可，证书自动签发、自动续期。
 
 ### 方案 B：Nginx（已有 Nginx 时）
 
