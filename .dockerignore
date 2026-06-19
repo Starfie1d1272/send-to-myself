@@ -1,0 +1,11 @@
+**/node_modules
+**/dist
+**/.turbo
+data
+.git
+.github
+docs/screenshots
+*.md
+.env
+.DS_Store
+**/*.log

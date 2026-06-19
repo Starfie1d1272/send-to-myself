@@ -1,0 +1,23 @@
+# SendToMyself —— 自托管单容器（SPEC §12.1）。
+# 用法：复制 .env.example 为 .env 并设置 AUTH_PASSWORD，然后 `docker compose up -d`。
+# 反向代理（Caddy / Nginx）在前面终止 HTTPS 并转发到本服务的 8787。
+
+services:
+  app:
+    build: .
+    image: sendtomyself:latest
+    restart: unless-stopped
+    environment:
+      # 必填：登录口令（留空则认证关闭，切勿在公网这样做）
+      AUTH_PASSWORD: ${AUTH_PASSWORD:?请在 .env 设置 AUTH_PASSWORD}
+      # 经反代时 cookie 走 HTTPS
+      SECURE_COOKIE: ${SECURE_COOKIE:-true}
+      TRASH_RETENTION_DAYS: ${TRASH_RETENTION_DAYS:-30}
+      MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-52428800}
+      SESSION_TTL_DAYS: ${SESSION_TTL_DAYS:-30}
+    ports:
+      # 仅本机暴露，交给反代；如需直连改成 "8787:8787"
+      - "127.0.0.1:8787:8787"
+    volumes:
+      # 数据库 + 附件统一落盘到该卷，便于备份
+      - ./data:/data
