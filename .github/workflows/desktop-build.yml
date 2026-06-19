@@ -27,9 +27,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 版本取自根 package.json 的 packageManager 字段（不可再传 version，否则冲突报错）
       - uses: pnpm/action-setup@v4
-        with:
-          version: 11
 
       - uses: actions/setup-node@v4
         with:
