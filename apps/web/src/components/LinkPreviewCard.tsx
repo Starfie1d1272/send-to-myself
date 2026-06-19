@@ -1,4 +1,5 @@
 import type { LinkPreview } from "@sendtomyself/shared";
+import { previewImageUrl } from "../lib/api";
 
 /** 链接预览卡（meta.preview，SPEC §7）。封面/标题/描述/域名。 */
 export function LinkPreviewCard({ preview }: { preview: LinkPreview }) {
@@ -9,12 +10,14 @@ export function LinkPreviewCard({ preview }: { preview: LinkPreview }) {
     <a className="preview" href={preview.url} target="_blank" rel="noreferrer">
       {image && (
         <div className="preview__cover">
-          <img src={image} alt="" loading="lazy" />
+          <img src={previewImageUrl(image)} alt="" loading="lazy" />
         </div>
       )}
       <div className="preview__body">
         <span className="preview__domain">
-          {favicon && <img className="preview__favicon" src={favicon} alt="" />}
+          {favicon && (
+            <img className="preview__favicon" src={previewImageUrl(favicon)} alt="" />
+          )}
           {preview.domain ?? preview.url}
         </span>
         {preview.title && <span className="preview__title">{preview.title}</span>}

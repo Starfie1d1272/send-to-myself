@@ -109,3 +109,7 @@ export const api = {
 export const attachmentThumbUrl = (id: string) => `/api/attachments/${id}/thumb`;
 export const attachmentRawUrl = (id: string) => `/api/attachments/${id}/raw`;
 export const attachmentDownloadUrl = (id: string) => `/api/attachments/${id}/raw?download=1`;
+
+/** 链接预览封面/favicon 经服务端代理加载，绕过图床防盗链与混合内容（SPEC §7）。 */
+export const previewImageUrl = (raw: string) =>
+  `/api/preview/image?url=${encodeURIComponent(raw)}`;

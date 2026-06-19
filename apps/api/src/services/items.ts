@@ -5,6 +5,7 @@ import type {
   Item,
   ItemCategory,
   ItemKind,
+  LinkPreview,
   UpdateItemInput,
 } from "@sendtomyself/shared";
 import { db } from "../db/client.js";
@@ -138,13 +139,21 @@ export async function refetchPreview(id: string): Promise<Item | null> {
   return updated;
 }
 
-/** 非阻塞抓取首个链接预览，成功后更新 meta 并广播 item.updated（SPEC §7）。 */
-function schedulePreview(item: Item, urls: string[]): void {
+/**
+ * 非阻塞抓取首个链接预览，成功后更新 meta 并广播 item.updated（SPEC §7）。
+ * 失败（跨境超时等）自动重试一次，避免「必须手动点抓取」。
+ */
+function schedulePreview(item: Item, urls: string[], attempt = 0): void {
   const first = urls[0];
   if (!first) return;
   queueMicrotask(() => {
     void fetchPreviewInto(item.id, first).then((updated) => {
-      if (updated) bus.publish({ type: "item.updated", payload: updated });
+      if (!updated) return;
+      bus.publish({ type: "item.updated", payload: updated });
+      const status = (updated.meta?.preview as LinkPreview | undefined)?.status;
+      if (status === "error" && attempt < 1) {
+        setTimeout(() => schedulePreview(item, urls, attempt + 1), 4000);
+      }
     });
   });
 }

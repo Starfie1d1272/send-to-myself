@@ -87,6 +87,88 @@ async function safeFetchHtml(startUrl: string): Promise<{ html: string; finalUrl
   throw new SsrfError("too many redirects");
 }
 
+// —— 图片代理（解决图床防盗链 / 混合内容，SPEC §7）——
+
+/** 已知图床的防盗链 Referer 映射；命中则用站点首页做 Referer，否则用图床自身 origin。 */
+const IMG_REFERER: Array<[string, string]> = [
+  ["hdslb.com", "https://www.bilibili.com/"], // B 站图床校验 bilibili.com Referer
+];
+
+function imageReferer(host: string): string {
+  for (const [suffix, ref] of IMG_REFERER) {
+    if (host === suffix || host.endsWith("." + suffix)) return ref;
+  }
+  return `https://${host}/`;
+}
+
+/**
+ * 服务端取图：带浏览器 UA + 正确 Referer 绕过图床防盗链，手动跟随重定向并逐跳 SSRF 校验，
+ * 限大小/超时。返回二进制 + content-type；任何失败返回 null（前端显示裂图占位）。
+ */
+export async function fetchImage(
+  rawUrl: string,
+): Promise<{ data: Buffer; contentType: string } | null> {
+  try {
+    let current = rawUrl;
+    for (let hop = 0; hop <= env.previewMaxRedirects; hop++) {
+      await assertSafeUrl(current);
+      const host = new URL(current).hostname;
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), env.previewTimeoutMs);
+      try {
+        const res = await fetch(current, {
+          method: "GET",
+          redirect: "manual",
+          signal: ctrl.signal,
+          headers: {
+            "user-agent": UA,
+            referer: imageReferer(host),
+            accept: "image/avif,image/webp,image/*,*/*;q=0.8",
+            "accept-language": ACCEPT_LANG,
+          },
+        });
+        if (res.status >= 300 && res.status < 400) {
+          const loc = res.headers.get("location");
+          if (!loc) return null;
+          current = new URL(loc, current).toString();
+          continue;
+        }
+        if (!res.ok) return null;
+        const ct = res.headers.get("content-type") ?? "";
+        if (!/^image\//i.test(ct)) return null;
+        const data = await readCappedBytes(res, env.previewMaxBytes);
+        return data ? { data, contentType: ct } : null;
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** 读取二进制响应体，超过上限直接放弃（防大图耗内存）。 */
+async function readCappedBytes(res: Response, maxBytes: number): Promise<Buffer | null> {
+  const reader = res.body?.getReader();
+  if (!reader) return null;
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (value) {
+      chunks.push(value);
+      total += value.length;
+      if (total > maxBytes) {
+        await reader.cancel();
+        return null;
+      }
+    }
+  }
+  return Buffer.concat(chunks);
+}
+
 /** 读取响应体，超过上限即截断停止（防大响应耗内存）。 */
 async function readCapped(res: Response, maxBytes: number): Promise<string> {
   const reader = res.body?.getReader();

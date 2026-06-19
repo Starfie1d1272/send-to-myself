@@ -8,6 +8,7 @@ import { requireAuth } from "./middleware/require-auth.js";
 import { attachmentsRoute } from "./routes/attachments.js";
 import { authRoute } from "./routes/auth.js";
 import { itemsRoute } from "./routes/items.js";
+import { previewRoute } from "./routes/preview.js";
 import { realtimeRoute } from "./routes/realtime.js";
 
 export function createApp() {
@@ -26,10 +27,12 @@ export function createApp() {
   app.use("/api/items/*", requireAuth);
   app.use("/api/attachments/*", requireAuth);
   app.use("/api/realtime/*", requireAuth);
+  app.use("/api/preview/*", requireAuth);
 
   app.route("/api/items", itemsRoute);
   app.route("/api/attachments", attachmentsRoute);
   app.route("/api/realtime", realtimeRoute);
+  app.route("/api/preview", previewRoute);
 
   // 生产单容器部署：API 直接托管前端构建产物 + SPA 回退（SPEC §12.1, §21）。
   if (env.webDist) {
