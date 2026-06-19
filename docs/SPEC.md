@@ -216,6 +216,11 @@ Docker Compose + NAS 本地存储 + 自有域名 + 反向代理 + HTTPS
 - V1：简单账号密码（session）；预留反代认证 / Authentik / Authelia / OIDC
 - 口令用 **argon2id**（或 bcrypt）哈希
 - **登录限速 + 失败锁定**（防公网爆破）
+- **设备令牌（V1.1，为原生壳引入）**：系统分享处理程序无浏览器 cookie，需独立认证。
+  网页登录后铸造长效 **Bearer token** → 存入设备安全存储（鸿蒙 Preferences 加密 / 桌面 keychain），
+  随每次请求带 `Authorization: Bearer <token>`。`require-auth` 同时接受 cookie 与 Bearer；
+  令牌管理（铸造 / 列出 / 吊销）**仅网页 session** 可做，令牌自身无权管理令牌。
+  数据契约与端点见 `docs/HARMONY_SHELL.md`。
 
 ### 12.4 威胁模型（明确边界）
 - **传输**：全程 HTTPS
@@ -290,7 +295,8 @@ Docker Compose + NAS 本地存储 + 自有域名 + 反向代理 + HTTPS
 
 ## 16. 后续增强（按价值排序）
 
-1. **离线发送队列（PWA，联网自动补发）** — 对微信的真实超越点，V1.1 强烈建议
+1. **离线发送队列（PWA / 原生壳，联网自动补发）** — 对微信的真实超越点，V1.1 强烈建议。
+   服务端已就绪：`createItem` 接受可选 `dedupeKey`，弱网重试按幂等键去重，不产生重复（见 `docs/HARMONY_SHELL.md` §队列）
 2. 手机系统分享（随客户端落地）
 3. 浏览器扩展 / Bookmarklet
 4. 桌面全局快捷输入
