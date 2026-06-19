@@ -13,6 +13,7 @@ import {
   quickDue,
 } from "../lib/format";
 import { findSecretSpans } from "@sendtomyself/shared/detect/secret";
+import { copyText } from "../lib/clipboard";
 import { useItemMutations } from "../hooks/useItems";
 import { Attachments } from "./Attachments";
 import { LinkPreviewCard } from "./LinkPreviewCard";
@@ -64,12 +65,9 @@ export function ItemCard({
     update.mutate({ id: item.id, patch: p });
 
   const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(item.content);
+    if (await copyText(item.content)) {
       setCopied(true);
       setTimeout(() => setCopied(false), 1400);
-    } catch {
-      /* ignore */
     }
   };
 

@@ -9,6 +9,7 @@ import {
   createDeviceToken,
   createSession,
   destroySession,
+  deviceTokenValid,
   isLocked,
   listDeviceTokens,
   recordFail,
@@ -18,6 +19,11 @@ import {
   sessionValid,
   verifyPassword,
 } from "../lib/auth.js";
+
+/** 从 Authorization: Bearer 取设备令牌（原生壳认证）。 */
+function bearerToken(c: Context): string | undefined {
+  return /^Bearer\s+(.+)$/i.exec(c.req.header("authorization") ?? "")?.[1];
+}
 
 const loginInput = z.object({ password: z.string().min(1) });
 const deviceInput = z.object({ name: z.string().min(1).max(40) });
@@ -42,7 +48,11 @@ export const authRoute = new Hono();
 
 /** 是否需要登录 + 当前是否已登录。 */
 authRoute.get("/me", (c) => {
-  const authed = !authEnabled || sessionValid(getCookie(c, SESSION_COOKIE));
+  // 同时认 session cookie 与 Bearer 设备令牌，否则原生壳无法确认登录态。
+  const authed =
+    !authEnabled ||
+    sessionValid(getCookie(c, SESSION_COOKIE)) ||
+    deviceTokenValid(bearerToken(c));
   return c.json({ authEnabled, authenticated: authed });
 });
 

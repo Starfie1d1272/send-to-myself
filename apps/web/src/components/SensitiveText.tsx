@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { SecretSpan } from "@sendtomyself/shared/detect/secret";
+import { copyText } from "../lib/clipboard";
 
 /**
  * 只遮罩命中的密钥片段，前后文字照常显示（SPEC §11）。
@@ -8,15 +9,17 @@ import type { SecretSpan } from "@sendtomyself/shared/detect/secret";
 export function SensitiveText({ content, spans }: { content: string; spans: SecretSpan[] }) {
   const [shown, setShown] = useState<Set<number>>(new Set());
   const [copied, setCopied] = useState<number | null>(null);
+  const [failed, setFailed] = useState<number | null>(null);
 
   const reveal = (i: number) => setShown((s) => new Set(s).add(i));
   const copy = async (i: number, value: string) => {
-    try {
-      await navigator.clipboard.writeText(value);
+    const ok = await copyText(value);
+    if (ok) {
       setCopied(i);
       setTimeout(() => setCopied((c) => (c === i ? null : c)), 1400);
-    } catch {
-      /* ignore */
+    } else {
+      setFailed(i);
+      setTimeout(() => setFailed((f) => (f === i ? null : f)), 1800);
     }
   };
 
@@ -58,7 +61,7 @@ export function SensitiveText({ content, spans }: { content: string; spans: Secr
             title="点击复制"
             onClick={() => copy(i, p.secret!.value)}
           >
-            {copied === i ? "已复制 ✓" : p.text}
+            {copied === i ? "已复制 ✓" : failed === i ? "复制失败，请手动选择" : p.text}
           </button>
         );
       })}
