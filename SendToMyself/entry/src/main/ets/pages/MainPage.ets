@@ -73,12 +73,12 @@ struct MainPage {
   @Builder
   LoginView() {
     Column() {
-      Text('SendToMyself')
+      Text('发给自己')
         .fontSize(28)
         .fontWeight(FontWeight.Bold)
         .margin({ bottom: 40 })
 
-      TextInput({ placeholder: 'Server URL (e.g. https://stm.example.com)', text: this.serverUrl })
+      TextInput({ placeholder: '服务器地址（如 https://stm.example.com）', text: this.serverUrl })
         .type(InputType.Normal)
         .width('80%')
         .height(48)
@@ -87,7 +87,7 @@ struct MainPage {
         })
         .margin({ bottom: 16 })
 
-      TextInput({ placeholder: 'Password' })
+      TextInput({ placeholder: '登录口令' })
         .type(InputType.Password)
         .width('80%')
         .height(48)
@@ -96,13 +96,13 @@ struct MainPage {
         })
         .margin({ bottom: 24 })
 
-      Button('Login')
+      Button('连接')
         .width('80%')
         .height(48)
         .type(ButtonType.Capsule)
         .onClick(async () => {
           hilog.info(DOMAIN, TAG, 'Login clicked, url=%{public}s', this.serverUrl);
-          let result = await loginAndMintToken(this.serverUrl, this.password, 'HarmonyOS Device');
+          let result = await loginAndMintToken(this.serverUrl, this.password, '鸿蒙手机');
           if (result.success) {
             this.hasToken = true;
             this.showLogin = false;
@@ -114,7 +114,7 @@ struct MainPage {
         })
 
       if (this.hasToken) {
-        Button('Skip Login (use saved token)')
+        Button('跳过登录（用已保存的令牌）')
           .width('80%')
           .height(40)
           .type(ButtonType.Capsule)

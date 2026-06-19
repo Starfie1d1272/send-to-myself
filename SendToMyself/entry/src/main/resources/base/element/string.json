@@ -2,23 +2,23 @@
   "string": [
     {
       "name": "module_desc",
-      "value": "Send content to yourself from any app"
+      "value": "从任意应用把内容发给自己"
     },
     {
       "name": "EntryAbility_desc",
-      "value": "SendToMyself main view"
+      "value": "发给自己主界面"
     },
     {
       "name": "EntryAbility_label",
-      "value": "SendToMyself"
+      "value": "发给自己"
     },
     {
       "name": "ShareAbility_desc",
-      "value": "Receive shared content and send to server"
+      "value": "接收分享内容并发送到服务器"
     },
     {
       "name": "ShareAbility_label",
-      "value": "SendToMyself"
+      "value": "发给自己"
     }
   ]
 }

@@ -3,7 +3,7 @@ import { UIExtensionContentSession } from '@kit.AbilityKit';
 @Entry
 @Component
 struct SharePage {
-  @State statusText: string = 'Saving...';
+  @State statusText: string = '发送中…';
   @State statusColor: ResourceColor = Color.Gray;
   private session: UIExtensionContentSession | undefined = undefined;
 
@@ -23,7 +23,7 @@ struct SharePage {
       } else {
         let errMsg = storage2.get<string>('shareError');
         if (errMsg && errMsg.length > 0) {
-          this.statusText = 'Failed: ' + errMsg;
+          this.statusText = '失败：' + errMsg;
           this.statusColor = Color.Red;
           this.autoClose(3000);
         }
@@ -33,19 +33,19 @@ struct SharePage {
 
   handleResult(result: string): void {
     if (result === 'success') {
-      this.statusText = 'Saved!';
+      this.statusText = '已发送';
       this.statusColor = Color.Green;
       this.autoClose(800);
     } else if (result === 'queued') {
-      this.statusText = 'Queued - will send when online';
+      this.statusText = '已加入队列，联网后自动发送';
       this.statusColor = Color.Orange;
       this.autoClose(1500);
     } else if (result === 'needsLogin') {
-      this.statusText = 'Please login first';
+      this.statusText = '请先在应用内登录';
       this.statusColor = Color.Red;
       this.autoClose(2000);
     } else {
-      this.statusText = 'Failed';
+      this.statusText = '发送失败';
       this.statusColor = Color.Red;
       this.autoClose(2000);
     }
