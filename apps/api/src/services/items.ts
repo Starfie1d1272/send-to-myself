@@ -1,4 +1,4 @@
-import { and, desc, eq, isNotNull, isNull, like, lt } from "drizzle-orm";
+import { and, desc, eq, exists, isNotNull, isNull, like, lt, or } from "drizzle-orm";
 import { detect } from "@sendtomyself/shared/detect";
 import type {
   CreateItemInput,
@@ -9,7 +9,7 @@ import type {
   UpdateItemInput,
 } from "@sendtomyself/shared";
 import { db } from "../db/client.js";
-import { type ItemInsert, items } from "../db/schema.js";
+import { attachments, type ItemInsert, items } from "../db/schema.js";
 import { newId } from "../lib/id.js";
 import { isoToSec, rowToItem } from "../lib/mapper.js";
 import { bus } from "../realtime/bus.js";
@@ -169,7 +169,22 @@ export function listItems(f: ListFilter): ListResult {
   if (f.completed !== undefined) cond.push(eq(items.completed, f.completed));
   if (f.pinned !== undefined) cond.push(eq(items.pinned, f.pinned));
   if (f.sensitive !== undefined) cond.push(eq(items.sensitive, f.sensitive));
-  if (f.q) cond.push(like(items.content, `%${f.q}%`)); // 中文子串，SPEC §11
+  if (f.q) {
+    // 搜索覆盖：正文 + meta（链接标题/描述/URL/域名）+ 附件文件名（SPEC §11）
+    const kw = `%${f.q}%`;
+    cond.push(
+      or(
+        like(items.content, kw),
+        like(items.meta, kw),
+        exists(
+          db
+            .select({ x: attachments.itemId })
+            .from(attachments)
+            .where(and(eq(attachments.itemId, items.id), like(attachments.filename, kw))),
+        ),
+      )!,
+    );
+  }
   if (f.cursor) cond.push(lt(items.createdAt, isoToSec(f.cursor)));
 
   const rows = db

@@ -24,6 +24,8 @@ import {
   IconClock,
   IconCopy,
   IconEye,
+  IconEdit,
+  IconLock,
   IconPin,
   IconRestore,
   IconTag,
@@ -63,6 +65,8 @@ export function ItemCard({
   const [copied, setCopied] = useState(false);
   const [dueOpen, setDueOpen] = useState(false);
   const [tagOpen, setTagOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
 
   const patch = (p: Parameters<typeof update.mutate>[0]["patch"]) =>
     update.mutate({ id: item.id, patch: p });
@@ -80,6 +84,16 @@ export function ItemCard({
       setCopied(true);
       setTimeout(() => setCopied(false), 1400);
     }
+  };
+
+  const startEdit = () => {
+    setDraft(item.content);
+    setEditing(true);
+  };
+  const saveEdit = () => {
+    const v = draft.trim();
+    if (v && v !== item.content) patch({ content: v }); // 后端会重跑识别 + 重抓预览
+    setEditing(false);
   };
 
   const urls = itemUrls(item);
@@ -116,7 +130,28 @@ export function ItemCard({
         )}
 
         <div className="item__body">
-          {partialMask ? (
+          {editing ? (
+            <div className="item__edit">
+              <textarea
+                className="item__edit-input"
+                value={draft}
+                autoFocus
+                onChange={(e) => setDraft(e.target.value)}
+              />
+              <div className="item__edit-actions">
+                <button
+                  className="item__edit-save"
+                  onClick={saveEdit}
+                  disabled={update.isPending}
+                >
+                  保存
+                </button>
+                <button className="item__edit-cancel" onClick={() => setEditing(false)}>
+                  取消
+                </button>
+              </div>
+            </div>
+          ) : partialMask ? (
             <SensitiveText content={item.content} spans={secretSpans} />
           ) : item.sensitive && !revealed ? (
             <button className="redacted" onClick={() => setRevealed(true)}>
@@ -196,6 +231,16 @@ export function ItemCard({
           <>
             <button className="icon-btn" title={copied ? "已复制" : "复制"} onClick={copy}>
               {copied ? <IconCheck /> : <IconCopy />}
+            </button>
+            <button className="icon-btn" title="编辑" onClick={startEdit}>
+              <IconEdit />
+            </button>
+            <button
+              className={`icon-btn${item.sensitive ? " icon-btn--on" : ""}`}
+              title={item.sensitive ? "取消敏感遮罩" : "标记为敏感"}
+              onClick={() => patch({ sensitive: !item.sensitive })}
+            >
+              <IconLock />
             </button>
             <button
               className={`icon-btn${item.pinned ? " icon-btn--on" : ""}`}

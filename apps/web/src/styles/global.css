@@ -723,6 +723,51 @@ body {
   background: rgba(255, 255, 255, 0.28);
 }
 
+/* ---------- 行内编辑 ---------- */
+.item__edit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.item__edit-input {
+  width: 100%;
+  min-height: 72px;
+  resize: vertical;
+  font: inherit;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--ink);
+  background: var(--card-hi);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.item__edit-actions {
+  display: flex;
+  gap: 8px;
+}
+.item__edit-save,
+.item__edit-cancel {
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid var(--line-strong);
+}
+.item__edit-save {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+.item__edit-save:disabled {
+  opacity: 0.6;
+}
+.item__edit-cancel {
+  background: transparent;
+  color: var(--ink-soft);
+}
+
 /* ---------- States ---------- */
 .state {
   text-align: center;
