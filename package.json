@@ -1,6 +1,6 @@
 {
   "name": "send-to-myself",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "private": true,
   "description": "A self-hosted cross-platform inbox for sending text, links, images, files, and tasks to yourself.",
   "license": "MIT",
