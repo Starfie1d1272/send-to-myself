@@ -63,6 +63,18 @@ fn toggle_window(app: &tauri::AppHandle) {
     }
 }
 
+/// 切换服务器：清空已存地址并导航回本地启动页，让用户重填。
+/// 托盘菜单与全局快捷键（Cmd/Ctrl+Shift+逗号）共用——不依赖托盘也能逃生。
+fn switch_server(app: &tauri::AppHandle) {
+    let _ = write_config(app, &Config::default());
+    let target = app.state::<LauncherUrl>().0.lock().unwrap().clone();
+    if let (Some(w), Some(u)) = (app.get_webview_window("main"), target) {
+        let _ = w.navigate(u);
+        let _ = w.show();
+        let _ = w.set_focus();
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -90,6 +102,9 @@ pub fn run() {
             let menu = Menu::with_items(app, &[&show, &switch, &quit])?;
             TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
+                // macOS 菜单栏按单色 template 渲染，自适应深/浅色，避免彩色图标看不清；
+                // 其他平台忽略此项。
+                .icon_as_template(true)
                 .tooltip("发给自己")
                 .menu(&menu)
                 .on_menu_event(|app, event| match event.id.as_ref() {
@@ -99,16 +114,7 @@ pub fn run() {
                             let _ = w.set_focus();
                         }
                     }
-                    "switch" => {
-                        // 清空已存地址并导航回启动页，让用户重填。
-                        let _ = write_config(app, &Config::default());
-                        let target = app.state::<LauncherUrl>().0.lock().unwrap().clone();
-                        if let (Some(w), Some(u)) = (app.get_webview_window("main"), target) {
-                            let _ = w.navigate(u);
-                            let _ = w.show();
-                            let _ = w.set_focus();
-                        }
-                    }
+                    "switch" => switch_server(app),
                     "quit" => app.exit(0),
                     _ => {}
                 })
@@ -121,17 +127,27 @@ pub fn run() {
                     Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState,
                 };
                 let toggle = Shortcut::new(Some(Modifiers::SUPER | Modifiers::SHIFT), Code::KeyS);
+                // 切换服务器：Cmd/Ctrl+Shift+逗号——不依赖托盘的逃生入口。
+                let switch_sc =
+                    Shortcut::new(Some(Modifiers::SUPER | Modifiers::SHIFT), Code::Comma);
                 let toggle_for_handler = toggle;
+                let switch_for_handler = switch_sc;
                 handle.plugin(
                     tauri_plugin_global_shortcut::Builder::new()
                         .with_handler(move |app, sc, event| {
-                            if *sc == toggle_for_handler && event.state() == ShortcutState::Pressed {
+                            if event.state() != ShortcutState::Pressed {
+                                return;
+                            }
+                            if *sc == toggle_for_handler {
                                 toggle_window(app);
+                            } else if *sc == switch_for_handler {
+                                switch_server(app);
                             }
                         })
                         .build(),
                 )?;
                 app.global_shortcut().register(toggle)?;
+                app.global_shortcut().register(switch_sc)?;
             }
 
             Ok(())
