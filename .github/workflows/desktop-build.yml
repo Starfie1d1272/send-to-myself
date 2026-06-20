@@ -2,7 +2,7 @@ name: Desktop Build
 
 # 打包桌面壳（apps/desktop）：
 # - 手动触发（workflow_dispatch）：产出可下载的安装包构件，用来自测（含 Windows）。
-# - 推送 desktop-v* tag：额外创建一个 GitHub Release 并附上安装包。
+# - 推送 desktop-v* tag：额外创建一个 GitHub Release 并附上安装包，Release 说明自动从 CHANGELOG 提取。
 #   （壳与核心版本独立，见 docs/VERSIONING.md；打核心 v* 不会触发本工作流）
 on:
   workflow_dispatch:
@@ -32,7 +32,7 @@ jobs:
 
       - uses: actions/setup-node@v5
         with:
-          node-version: 24 # 与本地一致；pnpm 11.8 要求 Node ≥ 22.13
+          node-version: 24
           cache: pnpm
 
       - uses: actions/setup-python@v5
@@ -51,6 +51,9 @@ jobs:
           pnpm install --frozen-lockfile
         env:
           npm_config_build_from_source: true
+          # Windows + Node 24 下 node-gyp 并行 rebuild 会触发竞态
+          # "Completion callback never invoked!" → 强制单线程规避
+          npm_config_jobs: 1
 
       - name: Build app
         working-directory: apps/desktop
@@ -66,11 +69,32 @@ jobs:
             apps/desktop/src-tauri/target/release/bundle/msi/*.msi
             apps/desktop/src-tauri/target/release/bundle/nsis/*.exe
 
+      # 从 CHANGELOG 提取当前版本说明，供 Release body 用
+      - name: Extract changelog
+        if: startsWith(github.ref, 'refs/tags/desktop-v')
+        id: changelog
+        shell: bash
+        run: |
+          TAG="${{ github.ref_name }}"
+          # desktop-v1.0.0 → 1.0.0
+          VER="${TAG#desktop-v}"
+          # 提取 CHANGELOG 中对应版本的整段
+          BODY=$(awk -v ver="$VER" '
+            $0 ~ "^## \\[" ver "\\]" { found=1; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md)
+          # 多行输出到 GITHUB_OUTPUT
+          echo "body<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$BODY" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
       # 打 tag 时附到 Release
       - name: Attach to release
         if: startsWith(github.ref, 'refs/tags/desktop-v')
         uses: softprops/action-gh-release@v2
         with:
+          body: ${{ steps.changelog.outputs.body }}
           files: |
             apps/desktop/src-tauri/target/release/bundle/dmg/*.dmg
             apps/desktop/src-tauri/target/release/bundle/msi/*.msi

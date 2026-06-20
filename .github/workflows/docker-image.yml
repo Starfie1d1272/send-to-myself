@@ -4,6 +4,9 @@ name: Docker Image
 # - 手动触发：发布 :latest，供 NAS 可视化部署直接拉取。
 # - 推送 v* tag（核心产品版本，如 v1.0.0）：额外打版本号镜像 tag。
 #   （核心与平台壳版本独立，见 docs/VERSIONING.md）
+#
+# 镜像发布到 GHCR Packages，不会出现在 GitHub Releases 页面。
+# 桌面安装包走 GitHub Releases（见 desktop-build.yml）。
 on:
   workflow_dispatch:
   push:
@@ -19,7 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: docker/setup-qemu-action@v3 # arm64 交叉构建
+      - uses: docker/setup-qemu-action@v3
 
       - uses: docker/setup-buildx-action@v3
 
@@ -32,7 +35,7 @@ jobs:
       - id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }} # 自动转小写
+          images: ghcr.io/${{ github.repository }}
           tags: |
             type=raw,value=latest
             type=semver,pattern={{version}}
