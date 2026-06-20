@@ -27,3 +27,25 @@ export async function copyText(text: string): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * 复制图片到剪贴板。仅安全上下文（https）支持写图片本体；
+ * 局域网 http 下 Clipboard API 不可用，降级为复制图片的完整链接，避免静默失败。
+ */
+export async function copyImage(url: string): Promise<boolean> {
+  const clip = navigator.clipboard as Clipboard & {
+    write?: (items: ClipboardItem[]) => Promise<void>;
+  };
+  if (window.isSecureContext && clip?.write && typeof ClipboardItem !== "undefined") {
+    try {
+      const res = await fetch(url, { credentials: "include" });
+      const blob = await res.blob();
+      await clip.write([new ClipboardItem({ [blob.type]: blob })]);
+      return true;
+    } catch {
+      /* 落到链接回退 */
+    }
+  }
+  // 回退：复制图片的完整可访问链接
+  return copyText(new URL(url, location.origin).toString());
+}

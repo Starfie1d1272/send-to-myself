@@ -659,6 +659,69 @@ body {
   border-top: 1px solid var(--line) !important;
   margin-top: 3px;
 }
+.due-menu__custom {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 7px 10px;
+  font-size: 13px;
+  color: var(--ink);
+  border-top: 1px solid var(--line);
+  margin-top: 3px;
+}
+.due-menu__custom input {
+  font: inherit;
+  font-size: 12px;
+  color: var(--ink);
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px 6px;
+}
+
+/* ---------- Lightbox（壳内看大图） ---------- */
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(20, 16, 11, 0.78);
+  backdrop-filter: blur(4px);
+}
+.lightbox__scroll {
+  max-width: 100%;
+  max-height: 100%;
+  overflow: auto;
+  border-radius: 12px;
+}
+.lightbox__img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 12px;
+}
+.lightbox__close {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  z-index: 51;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  cursor: pointer;
+}
+.lightbox__close:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
 
 /* ---------- States ---------- */
 .state {
@@ -803,6 +866,9 @@ body {
 }
 .att__img {
   display: block;
+  width: 100%;
+  padding: 0;
+  cursor: pointer;
   border-radius: 10px;
   overflow: hidden;
   border: 1px solid var(--line);

@@ -128,3 +128,10 @@ export const IconLogout = (p: SVGProps<SVGSVGElement>) => (
     <path d="M10 12H3m0 0 3.5-3.5M3 12l3.5 3.5" />
   </svg>
 );
+
+export const IconTag = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}>
+    <path d="M3 11.5V5a2 2 0 0 1 2-2h6.5a2 2 0 0 1 1.4.6l7 7a2 2 0 0 1 0 2.8l-6.5 6.5a2 2 0 0 1-2.8 0l-7-7a2 2 0 0 1-.6-1.4Z" />
+    <circle cx="7.5" cy="7.5" r="1.3" />
+  </svg>
+);

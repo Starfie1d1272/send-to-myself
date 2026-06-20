@@ -13,7 +13,8 @@ import {
   quickDue,
 } from "../lib/format";
 import { findSecretSpans } from "@sendtomyself/shared/detect/secret";
-import { copyText } from "../lib/clipboard";
+import { copyText, copyImage } from "../lib/clipboard";
+import { attachmentRawUrl } from "../lib/api";
 import { useItemMutations } from "../hooks/useItems";
 import { Attachments } from "./Attachments";
 import { LinkPreviewCard } from "./LinkPreviewCard";
@@ -25,6 +26,7 @@ import {
   IconEye,
   IconPin,
   IconRestore,
+  IconTag,
   IconTrash,
 } from "./icons";
 
@@ -60,12 +62,21 @@ export function ItemCard({
   const [revealed, setRevealed] = useState(false);
   const [copied, setCopied] = useState(false);
   const [dueOpen, setDueOpen] = useState(false);
+  const [tagOpen, setTagOpen] = useState(false);
 
   const patch = (p: Parameters<typeof update.mutate>[0]["patch"]) =>
     update.mutate({ id: item.id, patch: p });
 
   const copy = async () => {
-    if (await copyText(item.content)) {
+    // 有文字复制文字；纯图片记录复制图片本体（http 下自动降级为复制图片链接）
+    const firstImg = (item.attachments ?? []).find((a) => a.mimeType.startsWith("image/"));
+    const ok =
+      item.content.trim().length > 0
+        ? await copyText(item.content)
+        : firstImg
+          ? await copyImage(attachmentRawUrl(firstImg.id))
+          : false;
+    if (ok) {
       setCopied(true);
       setTimeout(() => setCopied(false), 1400);
     }
@@ -202,6 +213,46 @@ export function ItemCard({
             </button>
             <div className="due-wrap">
               <button
+                className={`icon-btn${item.category !== "none" ? " icon-btn--on" : ""}`}
+                title="标签：想法 / 稍后看"
+                onClick={() => setTagOpen((v) => !v)}
+              >
+                <IconTag />
+              </button>
+              {tagOpen && (
+                <div className="due-menu" onMouseLeave={() => setTagOpen(false)}>
+                  <button
+                    onClick={() => {
+                      patch({ category: "idea" });
+                      setTagOpen(false);
+                    }}
+                  >
+                    想法
+                  </button>
+                  <button
+                    onClick={() => {
+                      patch({ category: "read_later" });
+                      setTagOpen(false);
+                    }}
+                  >
+                    稍后看
+                  </button>
+                  {item.category !== "none" && (
+                    <button
+                      className="due-menu__clear"
+                      onClick={() => {
+                        patch({ category: "none" });
+                        setTagOpen(false);
+                      }}
+                    >
+                      清除标签
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="due-wrap">
+              <button
                 className={`icon-btn${item.dueAt ? " icon-btn--on" : ""}`}
                 title="截止时间"
                 onClick={() => setDueOpen((v) => !v)}
@@ -221,6 +272,18 @@ export function ItemCard({
                       {k === "today" ? "今天" : k === "tomorrow" ? "明天" : "本周日"}
                     </button>
                   ))}
+                  <label className="due-menu__custom">
+                    自定义…
+                    <input
+                      type="datetime-local"
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          patch({ isTodo: true, dueAt: new Date(e.target.value).toISOString() });
+                          setDueOpen(false);
+                        }
+                      }}
+                    />
+                  </label>
                   {item.dueAt && (
                     <button
                       className="due-menu__clear"

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { Attachment } from "@sendtomyself/shared";
 import {
   attachmentDownloadUrl,
@@ -6,6 +7,7 @@ import {
 } from "../lib/api";
 import { formatSize } from "../lib/format";
 import { IconDownload, IconFile, IconShare } from "./icons";
+import { Lightbox } from "./Lightbox";
 
 const isImage = (a: Attachment) => a.mimeType.startsWith("image/");
 
@@ -34,6 +36,9 @@ async function share(a: Attachment) {
 }
 
 export function Attachments({ items }: { items: Attachment[] }) {
+  // 当前在看大图的原图 URL；null=未打开。单 WebView 壳里 target="_blank" 打不开，故用壳内弹层。
+  const [viewing, setViewing] = useState<{ url: string; alt: string } | null>(null);
+
   if (items.length === 0) return null;
   const images = items.filter(isImage);
   const files = items.filter((a) => !isImage(a));
@@ -43,15 +48,15 @@ export function Attachments({ items }: { items: Attachment[] }) {
       {images.length > 0 && (
         <div className={`att__grid att__grid--${Math.min(images.length, 3)}`}>
           {images.map((a) => (
-            <a
+            <button
               key={a.id}
+              type="button"
               className="att__img"
-              href={attachmentRawUrl(a.id)}
-              target="_blank"
-              rel="noreferrer"
+              onClick={() => setViewing({ url: attachmentRawUrl(a.id), alt: a.filename })}
+              title="查看大图"
             >
               <img src={attachmentThumbUrl(a.id)} alt={a.filename} loading="lazy" />
-            </a>
+            </button>
           ))}
         </div>
       )}
@@ -80,6 +85,10 @@ export function Attachments({ items }: { items: Attachment[] }) {
           </div>
         </div>
       ))}
+
+      {viewing && (
+        <Lightbox src={viewing.url} alt={viewing.alt} onClose={() => setViewing(null)} />
+      )}
     </div>
   );
 }
