@@ -16,17 +16,20 @@ interface LoginResultData {
   success: boolean;
   errorMessage?: string;
   retryAfter?: number;
+  sessionCookie?: string;
 }
 
 class LoginResultClass implements LoginResultData {
   success: boolean = false;
   errorMessage?: string = undefined;
   retryAfter?: number = undefined;
+  sessionCookie?: string = undefined;
 
-  constructor(success: boolean, errorMessage?: string, retryAfter?: number) {
+  constructor(success: boolean, errorMessage?: string, retryAfter?: number, sessionCookie?: string) {
     this.success = success;
     this.errorMessage = errorMessage;
     this.retryAfter = retryAfter;
+    this.sessionCookie = sessionCookie;
   }
 }
 
@@ -97,7 +100,7 @@ export async function loginAndMintToken(serverUrl: string, password: string, dev
 
   await saveDeviceToken(token);
   hilog.info(DOMAIN, TAG, 'Device token saved successfully');
-  return new LoginResultClass(true);
+  return new LoginResultClass(true, undefined, undefined, cookie);
 }
 
 export async function checkTokenValid(): Promise<boolean> {
