@@ -1,6 +1,6 @@
 [package]
 name = "send-to-myself"
-version = "0.1.0"
+version = "1.0.0"
 description = "SendToMyself 桌面薄壳"
 authors = ["Xinyu Du"]
 edition = "2021"
