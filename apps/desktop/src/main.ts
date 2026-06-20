@@ -33,6 +33,17 @@ function isShellOrigin(u: string): boolean {
   }
 }
 
+/** 跳转前探测服务器是否活着：活=resolve(opaque)，挂=reject。
+ *  no-cors 只看 TCP+HTTP 是否可达，不关心跨域响应内容。 */
+async function isReachable(url: string): Promise<boolean> {
+  try {
+    await fetch(url, { mode: "no-cors", signal: AbortSignal.timeout(4000) });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function boot(): Promise<void> {
   let saved: string | null = null;
   try {
@@ -44,8 +55,14 @@ async function boot(): Promise<void> {
     return;
   }
   if (saved && !isShellOrigin(saved)) {
-    window.location.replace(saved); // 跳到部署好的网页
-    return;
+    // 先探测可达性：否则目标站点（如已关闭的本地 dev）挂掉时，
+    // 整页 location.replace 过去会白屏，且壳 JS 不再运行、回不到表单。
+    if (await isReachable(saved)) {
+      window.location.replace(saved); // 跳到部署好的网页
+      return;
+    }
+    showError("上次的服务器连不上了：" + saved + "，可改成别的地址后重新连接");
+    urlInput.value = saved;
   }
   reveal();
 }
