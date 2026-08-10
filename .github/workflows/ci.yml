@@ -1,0 +1,35 @@
+name: CI
+
+# 普通 push / PR 的非发布验证门。
+# 真正的平台打包与镜像发布分别由 desktop-build.yml / docker-image.yml 负责。
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm typecheck
+
+      - run: pnpm --filter @sendtomyself/web build
+
+      - run: pnpm --filter desktop build
+
+      - run: docker build -t send-to-myself:ci .
