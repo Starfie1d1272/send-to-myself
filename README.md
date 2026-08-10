@@ -11,6 +11,7 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/Starfie1d1272/send-to-myself/actions/workflows/ci.yml"><img src="https://github.com/Starfie1d1272/send-to-myself/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <a href="https://github.com/Starfie1d1272/send-to-myself/actions/workflows/desktop-build.yml"><img src="https://github.com/Starfie1d1272/send-to-myself/actions/workflows/desktop-build.yml/badge.svg" alt="Desktop Build" /></a>
   <a href="https://github.com/Starfie1d1272/send-to-myself/actions/workflows/docker-image.yml"><img src="https://github.com/Starfie1d1272/send-to-myself/actions/workflows/docker-image.yml/badge.svg" alt="Docker Image" /></a>
   <a href="https://github.com/Starfie1d1272/send-to-myself/pkgs/container/send-to-myself"><img src="https://img.shields.io/badge/image-ghcr.io-blue" alt="Docker" /></a>
