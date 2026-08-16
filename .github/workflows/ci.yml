@@ -4,9 +4,9 @@ name: CI
 # 真正的平台打包与镜像发布分别由 desktop-build.yml / docker-image.yml 负责。
 on:
   push:
-    branches: [master]
+    branches: [main]
   pull_request:
-    branches: [master]
+    branches: [main]
 
 permissions:
   contents: read
