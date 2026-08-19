@@ -16,7 +16,7 @@
     "@sendtomyself/shared": "workspace:*",
     "argon2": "^0.44.0",
     "better-sqlite3": "^11.8.1",
-    "drizzle-orm": "^0.38.4",
+    "drizzle-orm": "^0.45.2",
     "hono": "^4.12.34",
     "nanoid": "^5.1.16",
     "sharp": "^0.35.1",
