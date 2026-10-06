@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { timelineParams } from "../lib/timeline";
 import { useItems } from "../hooks/useItems";
@@ -12,7 +12,7 @@ import { useAuth, useAuthActions } from "../hooks/useAuth";
 export function TimelinePage() {
   const [filter, setFilter] = useState<FilterKey>("all");
   const [query, setQuery] = useState("");
-  const params = useMemo(() => timelineParams(filter, query), [filter, query]);
+  const params = timelineParams(filter, query);
   const { data, isLoading, isError, hasNextPage, fetchNextPage, isFetchingNextPage, refetch } = useItems(params);
 
   const qc = useQueryClient();

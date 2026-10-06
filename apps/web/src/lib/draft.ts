@@ -32,10 +32,12 @@ export async function loadDraft(): Promise<ComposerDraft> {
   return new Promise((resolve, reject) => {
     const request = db.transaction(STORE).objectStore(STORE).get(KEY);
     request.onsuccess = () => {
+      try {
       const saved = request.result as StoredDraft | undefined;
       resolve(saved ? { content: saved.content, ...(saved.dedupeKey ? { dedupeKey: saved.dedupeKey } : {}), files: saved.files.map((file) =>
         new File([file.blob], file.name, { type: file.blob.type, lastModified: file.lastModified })) }
         : { content: "", files: [] });
+      } catch (error) { reject(error); }
     };
     request.onerror = () => reject(request.error);
   });
