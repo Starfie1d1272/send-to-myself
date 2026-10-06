@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { timelineParams } from "../lib/timeline";
 import { useItems } from "../hooks/useItems";
 import { useRealtime } from "../lib/realtime";
+import { DeviceAccess } from "../components/DeviceAccess";
 import { Composer } from "../components/Composer";
 import { FilterBar, type FilterKey } from "../components/FilterBar";
 import { Timeline } from "../components/Timeline";
@@ -10,6 +11,7 @@ import { IconLogout } from "../components/icons";
 import { useAuth, useAuthActions } from "../hooks/useAuth";
 
 export function TimelinePage() {
+  const [devicesOpen, setDevicesOpen] = useState(false);
   const [filter, setFilter] = useState<FilterKey>("all");
   const [query, setQuery] = useState("");
   const params = timelineParams(filter, query);
@@ -40,6 +42,7 @@ export function TimelinePage() {
           </div>
           <div className="masthead__right">
             <span className="masthead__date">{dateStr}</span>
+            <button className="masthead__devices" onClick={() => setDevicesOpen(true)}>设备接入</button>
             {auth?.authEnabled && (
               <button
                 className="icon-btn"
@@ -52,6 +55,7 @@ export function TimelinePage() {
           </div>
         </header>
 
+        {devicesOpen && <DeviceAccess onClose={() => setDevicesOpen(false)} />}
         <Composer />
         <FilterBar active={filter} onChange={setFilter} query={query} onQuery={setQuery} />
         {isError && (

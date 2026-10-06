@@ -1,3 +1,11 @@
 fn main() {
-    tauri_build::build()
+    tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
+        tauri_build::AppManifest::new().commands(&[
+            "get_server_url",
+            "set_server_url",
+            "copy_text",
+            "copy_image",
+        ]),
+    ))
+    .expect("build Tauri permissions");
 }

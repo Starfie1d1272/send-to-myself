@@ -245,3 +245,40 @@ test("link and deadline filters apply before page limits, including attachment r
   assert.equal((await app.request("/api/items?hasLinks=invalid", { headers })).status, 400);
   assert.equal((await app.request("/api/items?dueBefore=invalid", { headers })).status, 400);
 });
+
+test("Raycast and desktop share records, attachments, retries, pagination and token revocation", async () => {
+  const extensionClientPath = "../../raycast/src/lib/client.js";
+  const { InboxClient } = await import(extensionClientPath);
+  const session = await cookie();
+  const issued = await app.request("/api/auth/devices", { method: "POST", headers: { cookie: session, "content-type": "application/json" }, body: JSON.stringify({ name: "Raycast Mac" }) });
+  assert.equal(issued.status, 201);
+  const { token } = await issued.json() as { token: string };
+  const transport: typeof fetch = async (url, init) => app.request(new Request(String(url), init));
+  let lost = true;
+  const client = new InboxClient("http://localhost", token, async (url: Parameters<typeof fetch>[0], init?: RequestInit) => {
+    const response = await transport(url, init);
+    if (lost && init?.method === "POST") { lost = false; throw new Error("reply lost after server commit"); }
+    return response;
+  });
+  await assert.rejects(client.send("Mac → Windows 中文记录", [], "raycast-retry"));
+  const sent = await client.send("Mac → Windows 中文记录", [], "raycast-retry");
+  const desktop = await app.request("/api/items", { headers: { cookie: session } });
+  const desktopItems = (await desktop.json() as { items: Array<{ id: string }> }).items;
+  assert.equal(desktopItems.length, 1); assert.equal(desktopItems[0]!.id, sent.id);
+  // Reverse direction: a desktop cookie upload is available through a Raycast bearer.
+  const uploaded = await upload([new File(["file contents"], "桌面文件.txt", { type: "text/plain" })], "desktop-file");
+  assert.equal(uploaded.status, 201);
+  const fileItem = itemSchema.parse(await uploaded.json());
+  assert.equal(await (await client.attachment(fileItem.attachments![0]!.id)).text(), "file contents");
+  assert.equal((await client.list("Mac → Windows")).items[0]!.id, sent.id);
+  for (let i = 0; i < 32; i++) svc.createItem({ content: `分页 ${i}` });
+  const first = await client.list(); assert.equal(first.items.length, 30); assert.ok(first.nextCursor);
+  const second = await client.list("", first.nextCursor!);
+  assert.equal(new Set([...first.items, ...second.items].map((item: { id: string }) => item.id)).size, 34);
+  const denied = await app.request("/api/auth/devices", { headers: { authorization: `Bearer ${token}` } });
+  assert.equal(denied.status, 401);
+  const revoked = await app.request(`/api/auth/devices/${token.slice(-6)}`, { method: "DELETE", headers: { cookie: session } });
+  assert.equal(revoked.status, 204);
+  await assert.rejects(client.list(), /吊销/);
+  await assert.rejects(client.attachment(fileItem.attachments![0]!.id), /吊销/);
+});

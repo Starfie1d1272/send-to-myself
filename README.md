@@ -116,6 +116,7 @@ PWA 当前支持安装与页面外壳缓存；尚无 Web Share Target 分享接�
 |---|---|
 | `apps/web` | React + Vite + TanStack Router/Query + motion + PWA |
 | `apps/api` | Hono + better-sqlite3 + Drizzle + SSE + argon2/sharp |
+| `apps/raycast` | Raycast Mac / Windows 本地扩展：主动发送剪贴板、随手记录、搜索取用 |
 | `apps/desktop` | Tauri 2 桌面薄壳（Rust） |
 | `packages/shared` | 类型 + zod 校验 + 规则识别 |
 | `SendToMyself/` | HarmonyOS ArkTS 原生壳 |
@@ -154,3 +155,7 @@ cd apps/desktop && pnpm tauri dev
 ## License
 
 MIT
+
+### Raycast 与 Mac / Windows 主动发送
+
+主窗口的“设备接入”可创建和吊销 Raycast 设备令牌。扩展提供发送剪贴板、随手记录、最近记录三个入口，安装和边界见 [Raycast README](apps/raycast/README.md)。Mac / Windows 通过同一 API 互通文字、链接、图片和文件；桌面新版壳支持原生图片复制，不进行后台剪贴板监听。需要同时更新服务端页面和桌面壳。实际 Raycast / 桌面应用粘贴仍需真机验收。

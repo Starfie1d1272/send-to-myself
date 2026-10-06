@@ -37,3 +37,9 @@ pnpm tauri build      # 产物在 src-tauri/target/release/bundle/
 - `src-tauri/tauri.conf.json` — 窗口与打包配置。
 
 > 配置存于系统应用配置目录的 `config.json`（仅一个 `server_url` 字段）。
+
+## 主动跨端复制
+
+新版壳可把配置服务器中的文字或图片写入 Mac / Windows 原生剪贴板，支持局域网 HTTP。图片统一转 PNG（动图首帧），最大 1600 万像素 / 原附件 50 MB；不支持图片时明确提示下载，不复制私有附件 URL。图片可在附件下逐张复制。普通文件仍通过下载使用。
+
+原生权限仅允许当前配置服务器 origin 的主窗口写入，不允许读取剪贴板。切换服务器后旧 origin 的请求也会被命令内部检查拒绝。主窗口加载的是部署端页面，因此必须同时更新服务端和桌面壳。实际复制到聊天/图像应用需 Mac / Windows 真机验收。

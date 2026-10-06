@@ -61,6 +61,16 @@ export const api = {
     return fetch("/api/auth/logout", opts({ method: "POST" })).then(handle);
   },
 
+  devices(): Promise<{ devices: Array<{ name: string; tail: string; createdAt: number; lastUsedAt: number | null }> }> {
+    return fetch("/api/auth/devices", opts()).then(handle);
+  },
+  createDevice(name: string): Promise<{ token: string; name: string; createdAt: number }> {
+    return fetch("/api/auth/devices", opts({ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name }) })).then(handle);
+  },
+  revokeDevice(tail: string): Promise<null> {
+    return fetch(`/api/auth/devices/${encodeURIComponent(tail)}`, opts({ method: "DELETE" })).then(handle);
+  },
+
   // —— 时间线 ——
   list(p: ListParams = {}): Promise<ListResult> {
     const q = new URLSearchParams();
