@@ -133,8 +133,8 @@ export const timelineFilter = z
     pinned: z.boolean().optional(),
     /** 关键词搜索（正文/标题/URL/文件名）。 */
     q: z.string().optional(),
-    /** 游标分页：上一页最后一条的 createdAt（SPEC §9）。 */
-    cursor: isoDateTime.optional(),
+    /** 不透明分页游标，原样回传 nextCursor；兼容历史 ISO 时间。 */
+    cursor: z.union([isoDateTime, z.string().max(512).regex(/^v1\.[A-Za-z0-9_-]+$/)]).optional(),
     limit: z.number().int().min(1).max(100).default(30),
   })
   .partial({ limit: true });

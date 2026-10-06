@@ -42,7 +42,7 @@
 | ⚡ **实时同步** | SSE 推送——这台发，另一台立刻出现 | |
 | 🔍 **全文搜索** | 中文子串搜索，覆盖正文 / 链接标题 / 文件名；敏感内容参与索引但**不泄漏正文** | |
 | 🔒 **密钥自动遮罩** | API Key / Token 自动识别，只遮密钥本体，前后文正常显示；一键「密钥」聚合 | |
-| 📴 **离线不丢** | 原生端断网排队，联网自动补发，幂等去重不重复 | |
+| 📴 **离线不丢** | 鸿蒙壳已实现断网排队与联网补发，待真机验收；Web/PWA 和桌面壳尚无离线发送队列 | |
 | 🗑️ **回收站** | 软删除保留期内随时恢复 | |
 
 ## 📦 在哪用
@@ -54,7 +54,7 @@
 | 浏览器 / PWA | 响应式网页，可安装 | ✅ |
 | 桌面 Windows / macOS | Tauri 薄壳 · 托盘常驻 · 全局快捷键 `Cmd/Ctrl+Shift+S` | ✅ |
 | HarmonyOS NEXT | ArkTS 原生壳 · 系统分享 · 离线队列 | 🚧 待真机 |
-| Android | Capacitor 薄壳 | 📋 |
+| Android / iOS | 计划中的原生壳 | 📋 未实现 |
 
 ## 🚀 快速开始
 
@@ -96,11 +96,14 @@ docker compose up -d
 
 部署后浏览器打开，用口令登录即用。原生客户端填同一个地址。
 
+PWA 当前支持安装与页面外壳缓存；尚无 Web Share Target 分享接收入口或离线发送队列。桌面壳也尚无系统分享接收入口。
+
 ## 📚 文档
 
 - **[docs/SPEC.md](docs/SPEC.md)** — 完整需求与边界
 - **[docs/DEPLOY.md](docs/DEPLOY.md)** — 部署指南（镜像 / 源码 / 反代 / 验证）
 - **[docs/HARMONY_SHELL.md](docs/HARMONY_SHELL.md)** — 鸿蒙原生壳契约
+- **[docs/RELIABILITY.md](docs/RELIABILITY.md)** — 自动化测试范围、恢复演练与待验收项
 - **[docs/RESEARCH.md](docs/RESEARCH.md)** — 竞品与技术决策
 
 ---
@@ -128,7 +131,8 @@ pnpm dev                  # api(:8787) + web(:5173) 同时启动
 
 ```bash
 pnpm -r run typecheck     # 全量类型检查
-pnpm test                # 数据契约回归检查
+pnpm test                # 契约、API、分页/上传/SSE/备份及重连回归
+pnpm test:recovery       # Docker 完整备份恢复演练（需先构建 send-to-myself:ci）
 ```
 
 云环境通常从已发布的快照恢复。启动说明可先运行 `bash scripts/cloud-sync.sh`：

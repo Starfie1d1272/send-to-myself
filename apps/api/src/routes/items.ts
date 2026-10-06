@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
-import { createItemInput, updateItemInput } from "@sendtomyself/shared";
+import { createItemInput, timelineFilter, updateItemInput } from "@sendtomyself/shared";
+import { decodeCursor } from "../lib/cursor.js";
 import { env } from "../env.js";
 import type { IncomingFile } from "../services/attachments.js";
 import * as svc from "../services/items.js";
@@ -19,7 +20,9 @@ itemsRoute.post("/", zValidator("json", createItemInput), (c) =>
 itemsRoute.post("/upload", async (c) => {
   const body = await c.req.parseBody({ all: true });
   const content = typeof body.content === "string" ? body.content : "";
-  const dedupeKey = typeof body.dedupeKey === "string" ? body.dedupeKey : undefined;
+  const input = createItemInput.safeParse({ content, dedupeKey: body.dedupeKey });
+  if (!input.success) return c.json({ error: "invalid_input" }, 400);
+  const { dedupeKey } = input.data;
 
   const raw = body.files ?? body["files[]"] ?? body.file;
   const blobs = (Array.isArray(raw) ? raw : [raw]).filter(
@@ -48,20 +51,26 @@ itemsRoute.post("/upload", async (c) => {
 // 时间线 / 搜索 / 筛选（游标分页）
 itemsRoute.get("/", (c) => {
   const q = c.req.query();
-  return c.json(
-    svc.listItems({
-      kind: q.kind as svc.ListFilter["kind"],
-      category: q.category as svc.ListFilter["category"],
-      isTodo: bool(q.isTodo),
-      completed: bool(q.completed),
-      pinned: bool(q.pinned),
-      sensitive: bool(q.sensitive),
-      q: q.q,
-      cursor: q.cursor,
-      limit: q.limit ? Number(q.limit) : undefined,
-      deleted: bool(q.deleted) ?? false,
-    }),
-  );
+  for (const key of ["isTodo", "completed", "pinned", "sensitive", "deleted"]) {
+    if (q[key] !== undefined && !["true", "false", "1", "0"].includes(q[key]!)) {
+      return c.json({ error: "invalid_query" }, 400);
+    }
+  }
+  const parsed = timelineFilter.safeParse({
+    ...q,
+    limit: q.limit === undefined ? undefined : Number(q.limit),
+    isTodo: bool(q.isTodo), completed: bool(q.completed), pinned: bool(q.pinned),
+  });
+  if (!parsed.success) return c.json({ error: "invalid_query" }, 400);
+  if (q.cursor) {
+    try { decodeCursor(q.cursor); }
+    catch { return c.json({ error: "invalid_cursor" }, 400); }
+  }
+  return c.json(svc.listItems({
+    ...parsed.data,
+    sensitive: bool(q.sensitive),
+    deleted: bool(q.deleted) ?? false,
+  }));
 });
 
 itemsRoute.get("/:id", (c) => {

@@ -3,7 +3,7 @@
 > 本文件是项目的**单一事实来源（single source of truth）**。
 > 任何关于「做不做、怎么做」的争议，以本文件为准。新增范围必须先改本文件。
 
-最后更新：2026-06-20 · V1.1 终稿 — V1 MVP 22 项全部达成（见 §15），核心发布 1.0.0（见 [CHANGELOG.md](../CHANGELOG.md)）
+最后更新：2026-10-07 · 核心 MVP 已首次发布；自动化可靠性验证逐步补齐，鸿蒙真机及实际部署验收待完成。版本变更见 [CHANGELOG.md](../CHANGELOG.md)，验证范围见 [RELIABILITY.md](RELIABILITY.md)。
 
 ---
 
@@ -172,7 +172,7 @@ type Attachment = {
 类聊天信息流：
 
 - 按创建时间倒序；支持今天/昨天/更早分组
-- 新发送内容**立即出现**（依赖 §12.5 实时同步）；**游标分页**（cursor-based，非 offset）
+- 新发送内容**立即出现**（依赖 §12.5 实时同步）；**游标分页**（cursor-based，非 offset）；API 的 `nextCursor` 为不透明 `(createdAt, id)` 复合游标，客户端原样回传
 - 移动端桌面端都好用
 
 每条记录支持：一键复制文字、下载/分享附件、编辑、删除（软删）、置顶、转待办、设/改 DDL、标完成、加简单分类、看原始链接。
@@ -250,19 +250,15 @@ Docker Compose + NAS 本地存储 + 自有域名 + 反向代理 + HTTPS
 
 一套 Web 代码 + 各平台**原生薄壳**。壳只做：登录 + 展示 WebView + 接收系统分享 + 上传 + 再分享。**业务逻辑全在服务端。**
 
-| 平台 | 壳方案 | 系统分享 | 里程碑 |
+| 平台 | 壳方案 | 系统分享接收 | 当前状态 |
 |---|---|---|---|
-| 全平台兜底 | PWA / 浏览器 | Web Share Target | **V1** |
-| **HarmonyOS NEXT** | **原生 ArkTS** | Share Kit | **V1.1（作者主力机，刚需）** |
-| Android | Capacitor | `ACTION_SEND` | V1.2 |
-| Windows / macOS | Tauri 2 | Share Extension / Share Target | V1.3 |
-| iOS | Capacitor（按需） | Share Extension | 以后 |
+| 浏览器 / PWA | 响应式网页，可安装 | Web Share Target 尚未实现 | 核心已发布；无离线发送队列 |
+| Windows / macOS | Tauri 2 | 尚未实现系统分享接收 | 已发布安装包，含托盘/全局快捷键/切换服务器 |
+| **HarmonyOS NEXT** | **原生 ArkTS** | Share Kit 代码已实现 | 登录/WebView/离线队列已有代码，待真机验收 |
+| Android | Capacitor（计划） | ACTION_SEND（计划） | 尚未实现 |
+| iOS | Capacitor（按需） | Share Extension（计划） | 尚未实现 |
 
-**顺序说明（按真实刚需排）**：
-- **V1 只做 Web + PWA + Docker**，先把产品验证出来；`Web Share Target` 已能覆盖很多分享场景。
-- **V1.1 = 鸿蒙（ArkTS）**：作者主力机为原生 HarmonyOS NEXT，这是自用刚需，优先于 Android。
-- **V1.2 = Android**：不是刚需，靠后。
-- **iOS**：单用户自用可 sideload（免费证书 7 天过期需重签，或付费 $99/年转 1 年）。不进 V1.x，不为它花钱。
+**后续顺序**：先可靠性回归与恢复演练，再完成鸿蒙真机闭环和核心补丁维护；桌面设置页随后，Android/iOS 后置。平台壳与核心版本独立管理，不再用核心 V1.x 标记平台开发顺序。
 
 ---
 
@@ -296,7 +292,7 @@ Docker Compose + NAS 本地存储 + 自有域名 + 反向代理 + HTTPS
 ## 16. 后续增强（按价值排序）
 
 1. **离线发送队列（PWA / 原生壳，联网自动补发）** — 对微信的真实超越点，V1.1 强烈建议。
-   服务端已就绪：`createItem` 接受可选 `dedupeKey`，弱网重试按幂等键去重，不产生重复（见 `docs/HARMONY_SHELL.md` §队列）
+   服务端文字和附件发送接受可选 `dedupeKey`；附件成功提交前不暴露记录，失败可按相同键重试。鸿蒙壳已有队列代码但待真机验收；Web/PWA 与桌面尚未实现队列（见 `docs/HARMONY_SHELL.md` §队列）
 2. 手机系统分享（随客户端落地）
 3. 浏览器扩展 / Bookmarklet
 4. 桌面全局快捷输入

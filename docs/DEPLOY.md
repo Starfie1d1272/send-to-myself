@@ -131,7 +131,22 @@ server {
 
 ## 备份
 
-数据都在 `./data` 目录。SQLite 文件 + 附件全部落此卷，备份时整个拷走即可。
+数据都在 `./data` 目录。运行中的 SQLite 采用 WAL，直接复制数据库文件不能保证备份一致。
+使用核心 1.0.1 及以上镜像后，在本仓库部署目录执行：
+
+```bash
+bash scripts/backup.sh
+bash scripts/restore.sh backups/stm-日期-时间-随机后缀 --dry-run
+# 确认完整性后恢复（会替换当前数据；旧数据另存为 data.before-restore-*）：
+bash scripts/restore.sh backups/stm-日期-时间-随机后缀
+```
+
+备份期间短暂停服，自动恢复服务；快照、附件归档、SHA-256 清单与 JSON 导出来自同一次备份。
+`--dry-run` 校验数据库、外键、全部附件/缩略图及文件校验和，不改变现网数据。
+历史备份没有校验清单时仍检查附件存在及大小；缺少附件的备份拒绝恢复。
+脚本使用仓库 Compose 配置的 `./data:/data` 卷；NAS 自定义卷映射需相应调整脚本。
+JSON/数据库含敏感信息明文，口令 `.env` 不在备份中，需分别保管。
+验证覆盖与真机清单见 [RELIABILITY.md](RELIABILITY.md)。
 
 ## 客户端连接
 

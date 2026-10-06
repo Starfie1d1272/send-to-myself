@@ -30,8 +30,15 @@ jobs:
 
       - run: pnpm test
 
+      - run: pnpm audit --audit-level high
+
       - run: pnpm --filter @sendtomyself/web build
 
       - run: pnpm --filter desktop build
 
       - run: docker build -t send-to-myself:ci .
+
+      - name: Docker backup and restore rehearsal
+        run: pnpm test:recovery
+        env:
+          RECOVERY_IMAGE: send-to-myself:ci

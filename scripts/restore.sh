@@ -1,43 +1,59 @@
 #!/usr/bin/env bash
-# SendToMyself 恢复（SPEC §13：未恢复过的备份等于无备份）。
-# 用法：scripts/restore.sh <某次备份目录 如 backups/stm-20260619-200000>
-# 会停服 → 覆盖 data/ → 重启。建议先用 --dry-run 验证备份可读。
+# 完整校验数据库、附件归档与 SHA-256；dry-run 不改变现网数据。
+# 用法：scripts/restore.sh <备份目录> [--dry-run]
 set -euo pipefail
-
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
 DATA="$ROOT/data"
 SRC="${1:-}"
 DRY=""
 [ "${2:-}" = "--dry-run" ] && DRY=1
 [ "${1:-}" = "--dry-run" ] && { DRY=1; SRC="${2:-}"; }
-
 if [ -z "$SRC" ] || [ ! -d "$SRC" ]; then
   echo "用法: scripts/restore.sh <备份目录> [--dry-run]"; exit 1
 fi
+SRC="$(cd "$SRC" && pwd)"
 [ -f "$SRC/app.db" ] || { echo "✗ 缺少 $SRC/app.db"; exit 1; }
-
-echo "校验数据库完整性…"
-docker compose run --rm -T -v "$(cd "$SRC" && pwd):/restore:ro" app node -e '
-const Database = require("better-sqlite3");
-const db = new Database("/restore/app.db", { readonly: true });
-const r = db.pragma("integrity_check", { simple: true });
-const n = db.prepare("SELECT COUNT(*) c FROM items").get().c;
-if (r !== "ok") { console.error("integrity:", r); process.exit(1); }
-console.log("  完整性 ok，items =", n);
-'
-
-if [ -n "$DRY" ]; then
-  echo "✓ 演练通过（未改动现网数据）。去掉 --dry-run 执行真正恢复。"; exit 0
-fi
-
-echo "停止服务…"; docker compose stop app
-echo "恢复数据库与附件…"
-mkdir -p "$DATA"
-cp "$SRC/app.db" "$DATA/app.db"
-rm -f "$DATA/app.db-wal" "$DATA/app.db-shm"
+STAGE="$(mktemp -d "$ROOT/.restore-XXXXXX")"
+OLD=""
+RESTART=0
+cleanup() {
+  local status=$?
+  rm -rf "$STAGE"
+  if [ "$RESTART" = 1 ]; then docker compose start app || status=1; fi
+  exit "$status"
+}
+trap cleanup EXIT
+cp "$SRC/app.db" "$STAGE/app.db"
+[ ! -f "$SRC/manifest.json" ] || cp "$SRC/manifest.json" "$STAGE/manifest.json"
+mkdir -p "$STAGE/uploads"
 if [ -f "$SRC/uploads.tar.gz" ]; then
-  rm -rf "$DATA/uploads"
-  tar -xzf "$SRC/uploads.tar.gz" -C "$DATA"
+  # 只接受 uploads/ 下的常规文件/目录，拒绝越界路径及符号/硬链接。
+  tar -tzf "$SRC/uploads.tar.gz" | awk '
+    $0 !~ /^uploads\// || $0 ~ /(^|\/)\.\.(\/|$)/ { bad=1 }
+    END { exit bad }'
+  tar -tvzf "$SRC/uploads.tar.gz" | awk 'substr($0,1,1) != "-" && substr($0,1,1) != "d" { bad=1 } END { exit bad }'
+  tar -xzf "$SRC/uploads.tar.gz" --no-same-owner --no-same-permissions -C "$STAGE"
 fi
-echo "重启服务…"; docker compose start app
-echo "✓ 恢复完成。"
+echo "校验数据库、附件及校验清单…"
+docker compose run --rm --no-deps -T -v "$STAGE:/restore" app \
+  node --import tsx src/lib/backup.ts verify /restore /restore/uploads
+if [ -n "$DRY" ]; then
+  echo "✓ 演练通过（数据库、全部附件已验证；未改动现网数据）。"; exit 0
+fi
+# 已停服务的部署恢复后保持停服；运行中的部署恢复后重新启动。
+if docker compose ps --status running --services | awk '$0 == "app" { found=1 } END { exit !found }'; then
+  RESTART=1
+fi
+docker compose stop app
+if [ -d "$DATA" ]; then
+  OLD="$(mktemp -d "$ROOT/data.before-restore-$(date +%Y%m%d-%H%M%S)-XXXXXX")"
+  rmdir "$OLD"
+  mv "$DATA" "$OLD"
+fi
+if ! mv "$STAGE" "$DATA"; then
+  [ -z "$OLD" ] || mv "$OLD" "$DATA"
+  exit 1
+fi
+if [ "$RESTART" = 1 ]; then docker compose start app; RESTART=0; fi
+echo "✓ 恢复完成。恢复前的数据保留在: ${OLD:-（此前无数据）}"

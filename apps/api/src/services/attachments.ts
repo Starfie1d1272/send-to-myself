@@ -3,7 +3,7 @@ import { db } from "../db/client.js";
 import { type AttachmentInsert, type AttachmentRow, attachments } from "../db/schema.js";
 import { newId } from "../lib/id.js";
 import { makeKey, putBuffer, remove } from "../lib/storage.js";
-import { isImageMime, makeThumbnail } from "../lib/thumbnail.js";
+import { isImageMime, makeThumbnail, thumbKey as thumbnailKey } from "../lib/thumbnail.js";
 
 const nowSec = () => Math.floor(Date.now() / 1000);
 
@@ -13,31 +13,36 @@ export interface IncomingFile {
   data: Buffer;
 }
 
-/** 保存单个附件：落盘 + 图片生成缩略图 + 入库（SPEC §8）。 */
-export async function saveAttachment(
+/** 先准备文件；数据库行由调用方在同步事务中统一提交。 */
+export async function prepareAttachment(
   itemId: string,
   file: IncomingFile,
-): Promise<AttachmentRow> {
+): Promise<AttachmentInsert> {
   const storageKey = makeKey(file.filename);
-  await putBuffer(storageKey, file.data);
-
-  let thumbKey: string | null = null;
-  if (isImageMime(file.mimeType)) {
-    thumbKey = await makeThumbnail(storageKey, file.data);
+  const candidateThumbKey = thumbnailKey(storageKey);
+  try {
+    await putBuffer(storageKey, file.data);
+    const thumbKey = isImageMime(file.mimeType)
+      ? await makeThumbnail(storageKey, file.data)
+      : null;
+    // best-effort 缩略图失败时也可能留下部分写入的文件。
+    if (!thumbKey) await remove(candidateThumbKey);
+    return {
+      id: newId(), itemId, filename: file.filename, mimeType: file.mimeType,
+      size: file.data.length, storageKey, thumbKey, createdAt: nowSec(),
+    };
+  } catch (error) {
+    await Promise.all([remove(storageKey), remove(candidateThumbKey)]);
+    throw error;
   }
+}
 
-  const row: AttachmentInsert = {
-    id: newId(),
-    itemId,
-    filename: file.filename,
-    mimeType: file.mimeType,
-    size: file.data.length,
-    storageKey,
-    thumbKey,
-    createdAt: nowSec(),
-  };
-  db.insert(attachments).values(row).run();
-  return db.select().from(attachments).where(eq(attachments.id, row.id!)).get()!;
+/** 清理由未提交上传产生的文件（包括缩略图）。 */
+export async function discardPrepared(rows: AttachmentInsert[]): Promise<void> {
+  await Promise.all(rows.flatMap((row) => [
+    remove(row.storageKey),
+    ...(row.thumbKey ? [remove(row.thumbKey)] : []),
+  ]));
 }
 
 export function listByItem(itemId: string): AttachmentRow[] {

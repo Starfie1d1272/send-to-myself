@@ -3,9 +3,22 @@
 版本遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 **核心**（Web + API + Docker 镜像）统一版本号；各平台**原生壳独立版本**（壳只做登录 + WebView + 分享，发布节奏与核心解耦，见 [SPEC §14](docs/SPEC.md)）。
 
+## [1.0.1] - 2026-10-07
+
+### 修复与维护
+- 时间线改用创建时间 + ID 的复合游标，避免同秒记录跨页遗漏；兼容历史 ISO 游标。
+- 附件先准备文件，再事务提交记录及附件；失败清理文件与幂等键，并发重试只创建一次。
+- SSE 每次连接（含断线重连）重新查询时间线，补齐断线期间的变化。
+- 分页 limit/cursor 与 multipart 内容/幂等键加入输入校验。
+- 备份短暂停服以保证数据库与附件一致；导出来自同一快照，新增附件 SHA-256 校验。
+- 恢复先完整校验附件与归档，再替换数据目录；保留恢复前的数据，无附件备份也会清理旧附件。
+- 补 API 行为、SSE、重连、备份完整性及 Docker 恢复演练测试，加入 CI。
+- 更新 Actions 与传递依赖 fast-uri、brace-expansion、shell-quote；覆盖旧 esbuild 修复开发依赖漏洞。
+- 校正 PWA 分享、离线发送范围和平台状态；鸿蒙真机验收仍待执行。
+
 ## [1.0.0] - 2026-06-20
 
-首个正式版本 —— V1 MVP 22 项全部达成（[SPEC §15](docs/SPEC.md)）。
+首个核心版本，已实现 MVP 主要功能（[SPEC §15](docs/SPEC.md)）；当时缺少完整行为测试与恢复演练证据，不能视为全部验收通过。
 
 ### 核心功能
 - **登录**：argon2id 口令哈希 + 登录限速锁定；原生壳用长效 Bearer 设备令牌
@@ -24,7 +37,9 @@
 
 ### 平台壳
 - **Web / PWA**：全平台兜底
-- **HarmonyOS NEXT**（ArkTS 原生壳）：登录 + WebView + Share Kit 系统分享 + 离线队列
+- **HarmonyOS NEXT**（ArkTS 原生壳）：已实现登录 + WebView + Share Kit 系统分享 + 离线队列，真机验收待完成
 - **桌面**（Tauri 2，macOS / Windows）：薄壳加载 + 托盘常驻 + 全局快捷键 + 切换服务器
 
 [1.0.0]: https://github.com/Starfie1d1272/send-to-myself/releases/tag/v1.0.0
+
+[1.0.1]: https://github.com/Starfie1d1272/send-to-myself/releases/tag/v1.0.1

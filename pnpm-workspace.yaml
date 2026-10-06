@@ -12,3 +12,6 @@ onlyBuiltDependencies:
   - argon2
   - better-sqlite3
   - esbuild
+# drizzle-kit 的历史 esm-loader 间接使用旧 esbuild；升级修复开发服务器漏洞。
+overrides:
+  '@esbuild-kit/core-utils>esbuild': ^0.25.12
