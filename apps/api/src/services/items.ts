@@ -9,7 +9,8 @@ import type {
   UpdateItemInput,
 } from "@sendtomyself/shared";
 import { db } from "../db/client.js";
-import { attachments, type ItemInsert, items } from "../db/schema.js";
+import { attachments, type AttachmentInsert, type ItemInsert, items } from "../db/schema.js";
+import { decodeCursor, encodeCursor } from "../lib/cursor.js";
 import { newId } from "../lib/id.js";
 import { isoToSec, rowToItem } from "../lib/mapper.js";
 import { bus } from "../realtime/bus.js";
@@ -27,7 +28,7 @@ export interface ListFilter {
   pinned?: boolean;
   sensitive?: boolean;
   q?: string;
-  cursor?: string; // ISO；取严格早于此创建时间的
+  cursor?: string; // 不透明的 (createdAt, id) 游标；兼容旧 ISO 游标
   limit?: number;
   deleted?: boolean; // true=回收站视图
 }
@@ -113,15 +114,32 @@ export async function createItemWithFiles(
   const det = detect(content);
   const kind = inferKind(det.kind, files);
   const row = buildRow(content, kind, det, dedupeKey);
-  db.insert(items).values(row).run();
-
-  for (const f of files) {
-    await attachmentSvc.saveAttachment(row.id!, f);
+  const prepared: AttachmentInsert[] = [];
+  let dto: Item;
+  let created = false;
+  try {
+    // await 文件 I/O 期间不持有 SQLite 事务，也不暴露半成品记录。
+    for (const file of files) {
+      prepared.push(await attachmentSvc.prepareAttachment(row.id!, file));
+    }
+    dto = db.transaction((tx) => {
+      // 并发重试可能在文件准备期间完成；在提交前重新检查幂等键。
+      const existing = findByDedupeKey(dedupeKey);
+      if (existing) return existing;
+      tx.insert(items).values(row).run();
+      if (prepared.length) tx.insert(attachments).values(prepared).run();
+      const stored = tx.select().from(items).where(eq(items.id, row.id!)).get()!;
+      return rowToItem(stored, attachmentSvc.listByItem(row.id!));
+    });
+    created = dto.id === row.id;
+  } catch (error) {
+    await attachmentSvc.discardPrepared(prepared);
+    throw error;
   }
-
-  const stored = db.select().from(items).where(eq(items.id, row.id!)).get()!;
-  const atts = attachmentSvc.listByItem(row.id!);
-  const dto = rowToItem(stored, atts);
+  if (!created) {
+    await attachmentSvc.discardPrepared(prepared);
+    return dto;
+  }
   bus.publish({ type: "item.created", payload: dto });
   schedulePreview(dto, det.urls);
   return dto;
@@ -185,7 +203,13 @@ export function listItems(f: ListFilter): ListResult {
       )!,
     );
   }
-  if (f.cursor) cond.push(lt(items.createdAt, isoToSec(f.cursor)));
+  if (f.cursor) {
+    const cursor = decodeCursor(f.cursor);
+    cond.push(cursor.id === undefined
+      ? lt(items.createdAt, cursor.createdAt)
+      : or(lt(items.createdAt, cursor.createdAt),
+        and(eq(items.createdAt, cursor.createdAt), lt(items.id, cursor.id)))!);
+  }
 
   const rows = db
     .select()
@@ -201,7 +225,7 @@ export function listItems(f: ListFilter): ListResult {
   const attMap = attachmentSvc.listByItems(page.map((r) => r.id));
   return {
     items: page.map((r) => rowToItem(r, attMap.get(r.id))),
-    nextCursor: hasMore && last ? new Date(last.createdAt * 1000).toISOString() : null,
+    nextCursor: hasMore && last ? encodeCursor(last.createdAt, last.id) : null,
   };
 }
 

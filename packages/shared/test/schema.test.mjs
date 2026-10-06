@@ -37,3 +37,13 @@ test("partial updates preserve nullable due dates and reject invalid fields", ()
   assert.equal(updateItemInput.safeParse({ dueAt: "tomorrow" }).success, false);
   assert.equal(updateItemInput.safeParse({ completed: "true" }).success, false);
 });
+
+test("timeline accepts opaque and legacy cursors and bounds page size", async () => {
+  const { timelineFilter } = await import("../src/schema.ts");
+  assert.equal(timelineFilter.safeParse({ cursor: "v1.WzEwLCJpZCJd", limit: 100 }).success, true);
+  assert.equal(timelineFilter.safeParse({ cursor: "2026-10-06T00:00:00Z" }).success, true);
+  for (const limit of [0, -1, 1.5, 101, NaN]) {
+    assert.equal(timelineFilter.safeParse({ limit }).success, false);
+  }
+  assert.equal(timelineFilter.safeParse({ cursor: "broken" }).success, false);
+});

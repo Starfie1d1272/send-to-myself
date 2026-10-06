@@ -12,7 +12,7 @@
 
 | 部分 | 版本来源 | 当前 |
 |---|---|---|
-| 核心（api / web / 根） | `package.json` 的 `version` | 1.0.0 |
+| 核心（api / web / 根） | `package.json` 的 `version` | 1.0.1 |
 | 桌面壳（Tauri） | `apps/desktop/src-tauri/tauri.conf.json` + `Cargo.toml` 的 `version` | 1.0.0 |
 | 鸿蒙壳（ArkTS） | `SendToMyself/AppScope/app.json5` 的 `versionName` / `versionCode` | 1.0.0 |
 
@@ -30,8 +30,11 @@
 
 **发核心版本**
 ```bash
-# 1. 改 package.json 的 version + 更新 CHANGELOG.md
-# 2. 打 tag 并推送：
+# 1. 同步根、apps/api、apps/web 的 version + 更新 CHANGELOG.md
+#    pnpm typecheck && pnpm test && pnpm audit
+#    docker build -t send-to-myself:ci . && pnpm test:recovery
+# 2. 合并通过 CI 的 PR，确认 main 的 validate 成功
+# 3. 在已验证的 main 提交上打 tag 并推送：
 git tag v1.0.1 && git push origin v1.0.1
 # → 自动构建并发布镜像；NAS 上 docker compose pull && up -d 即更新
 ```
