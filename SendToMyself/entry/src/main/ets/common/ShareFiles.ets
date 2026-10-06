@@ -37,9 +37,27 @@ function mimeForFile(filename: string, utd?: string): string {
   return 'application/octet-stream';
 }
 
+function sniffMime(path: string): string | undefined {
+  let file = fileIo.openSync(path, fileIo.OpenMode.READ_ONLY);
+  try {
+    let buffer = new ArrayBuffer(16);
+    let length = fileIo.readSync(file.fd, buffer);
+    let bytes = new Uint8Array(buffer);
+    if (length >= 8 && bytes[0] === 137 && bytes[1] === 80 && bytes[2] === 78 && bytes[3] === 71) return 'image/png';
+    if (length >= 3 && bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255) return 'image/jpeg';
+    if (length >= 6 && bytes[0] === 71 && bytes[1] === 73 && bytes[2] === 70 && bytes[3] === 56) return 'image/gif';
+    if (length >= 12 && bytes[0] === 82 && bytes[1] === 73 && bytes[2] === 70 && bytes[3] === 70 &&
+      bytes[8] === 87 && bytes[9] === 69 && bytes[10] === 66 && bytes[11] === 80) return 'image/webp';
+  } finally { fileIo.closeSync(file); }
+  return undefined;
+}
+
 export function copySharedFile(context: common.Context, uri: string, title?: string, utd?: string): SharedFileData {
   let filename = title ?? '';
-  try { filename = new fileUri.FileUri(uri).name || filename; } catch (_err) {}
+  try {
+    let uriName = new fileUri.FileUri(uri).name;
+    if (!filename || uriName.indexOf('.') >= 0) filename = uriName || filename;
+  } catch (_err) {}
   filename = filename.replace(/[\\/\u0000-\u001f]/g, '_').substring(0, 200) || 'shared-file';
   let directory = context.filesDir + '/shared-queue';
   if (!fileIo.accessSync(directory)) fileIo.mkdirSync(directory, true);
@@ -51,7 +69,8 @@ export function copySharedFile(context: common.Context, uri: string, title?: str
     catch (error) { try { fileIo.unlinkSync(path); } catch (_err) {} throw error; }
     finally { fileIo.closeSync(destination); }
   } finally { fileIo.closeSync(source); }
-  return new SharedFile(path, filename, mimeForFile(filename, utd));
+  try { return new SharedFile(path, filename, sniffMime(path) ?? mimeForFile(filename, utd)); }
+  catch (error) { try { fileIo.unlinkSync(path); } catch (_err) {} throw error; }
 }
 
 export function cleanSharedFiles(files: SharedFileData[]): void {

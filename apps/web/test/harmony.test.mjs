@@ -2,7 +2,7 @@
 // This verifies logic, not an SDK build or device behavior.
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFileSync, mkdtempSync, rmSync, openSync, closeSync, copyFileSync, unlinkSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { readFileSync, mkdtempSync, rmSync, openSync, closeSync, copyFileSync, unlinkSync, existsSync, mkdirSync, writeFileSync, readSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, basename } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -47,6 +47,7 @@ function fixture(t) {
           unlock: () => { locks.delete(path); },
         }; },
         closeSync: (file) => { closeSync(file.fd); openFiles.delete(file.fd); },
+        readSync: (fd, buffer) => readSync(fd, new Uint8Array(buffer), 0, buffer.byteLength, 0),
         copyFileSync: (from, to) => copyFileSync(`/proc/self/fd/${from}`, `/proc/self/fd/${to}`),
         unlinkSync,
       },
@@ -191,5 +192,16 @@ test("Harmony independent module instances cannot overwrite another process's en
     (i % 2 ? first : second).enqueue(f.context, `process-${i}`, "text", String(i))));
   assert.equal((await first.queueStatus(f.context)).count, 20);
   assert.equal((await second.queueStatus(f.context)).count, 20);
+  assert.equal(f.openFiles.size, 0);
+});
+
+
+test("Harmony generic image UTD and opaque media URI still preserve image MIME and supplied filename", (t) => {
+  const f = fixture(t);
+  const original = join(f.root, "12345");
+  writeFileSync(original, Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  const file = f.load("./ShareFiles").copySharedFile(f.context, original, "相册截图.png", "general.image");
+  assert.equal(file.filename, "相册截图.png");
+  assert.equal(file.mimeType, "image/png");
   assert.equal(f.openFiles.size, 0);
 });
