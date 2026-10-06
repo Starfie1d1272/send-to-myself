@@ -179,8 +179,18 @@ mod clipboard_tests {
         png.extend(100u32.to_be_bytes());
         png.extend(100u32.to_be_bytes());
         assert!(check_png(&png).is_ok());
-        png[16..20].copy_from_slice(&100_000u32.to_be_bytes());
+        png[16..20].copy_from_slice(&200_000u32.to_be_bytes());
         assert!(check_png(&png).is_err());
+        png[16..20].copy_from_slice(&4000u32.to_be_bytes());
+        png[20..24].copy_from_slice(&4000u32.to_be_bytes());
+        assert!(check_png(&png).is_ok());
+        png[20..24].copy_from_slice(&4001u32.to_be_bytes());
+        assert!(check_png(&png).is_err());
+        let fixture = include_bytes!("../icons/128x128.png");
+        assert!(check_png(fixture).is_ok());
+        let decoded = tauri::image::Image::from_bytes(fixture).unwrap();
+        assert_eq!(decoded.width(), 128);
+        assert_eq!(decoded.height(), 128);
     }
 }
 
