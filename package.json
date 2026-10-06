@@ -4,11 +4,12 @@
   "private": true,
   "description": "A self-hosted cross-platform inbox for sending text, links, images, files, and tasks to yourself.",
   "license": "MIT",
-  "packageManager": "pnpm@11.8.0",
+  "packageManager": "pnpm@12.9.1",
   "engines": {
-    "node": ">=20"
+    "node": ">=24.21.0 <25 || >=26"
   },
   "scripts": {
+    "test": "pnpm --filter @sendtomyself/shared test && node --test scripts/cloud-sync.test.mjs",
     "dev": "pnpm --filter @sendtomyself/api --filter @sendtomyself/web --parallel run dev",
     "typecheck": "pnpm -r run typecheck"
   }

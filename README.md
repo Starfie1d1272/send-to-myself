@@ -124,9 +124,18 @@ pnpm dev                  # api(:8787) + web(:5173) 同时启动
 
 开发态不设 `AUTH_PASSWORD` 则认证关闭。
 
+开发和 CI 使用 Node 24.21.0（见 `.node-version`）及 pnpm 12.9.1（见 `packageManager`）。
+
 ```bash
 pnpm -r run typecheck     # 全量类型检查
+pnpm test                # 数据契约回归检查
 ```
+
+云环境通常从已发布的快照恢复。启动说明可先运行 `bash scripts/cloud-sync.sh`：
+仅在 `main` 或默认 `work` 分支工作区干净、且没有偏离主线的本地提交时，
+通过 `git pull --ff-only origin main` 更新。存在本地改动、任务分支或分叉提交时保留现场。
+同步后执行 `pnpm install --frozen-lockfile`，再运行 `pnpm dev`。
+该脚本需要在云环境的启动说明中注册；仓库中存在脚本本身不会触发自动执行。
 
 桌面壳开发需 [Rust](https://tauri.app/start/prerequisites/)：
 

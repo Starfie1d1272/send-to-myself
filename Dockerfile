@@ -3,7 +3,7 @@
 # 因此同一镜像可在 amd64 / arm64（含多数 NAS）上原生运行。
 
 # ---------- build ----------
-FROM node:24-bookworm-slim AS build
+FROM node:24.21.0-bookworm-slim AS build
 RUN corepack enable && apt-get update \
   && apt-get install -y --no-install-recommends python3 make g++ \
   && rm -rf /var/lib/apt/lists/*
@@ -17,9 +17,8 @@ RUN pnpm install --frozen-lockfile
 RUN pnpm --filter @sendtomyself/web build
 
 # ---------- runtime ----------
-FROM node:24-bookworm-slim AS runtime
-RUN corepack enable
-WORKDIR /app
+FROM node:24.21.0-bookworm-slim AS runtime
+WORKDIR /app/apps/api
 ENV NODE_ENV=production
 
 # 复制已装好（含已编译原生模块）的整个工作区与前端构建产物
@@ -36,4 +35,5 @@ EXPOSE 8787
 HEALTHCHECK --interval=30s --timeout=4s --start-period=10s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||8787)+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
-CMD ["pnpm", "--filter", "@sendtomyself/api", "start"]
+# 使用已安装的 tsx，容器启动时无需再联网下载 pnpm。
+CMD ["node", "--import", "tsx", "src/index.ts"]
