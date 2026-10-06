@@ -59,6 +59,7 @@ fn toggle_window(app: &tauri::AppHandle) {
         } else {
             let _ = w.show();
             let _ = w.set_focus();
+            let _ = w.eval("window.dispatchEvent(new Event('send-to-myself:focus-composer'));");
         }
     }
 }
@@ -126,10 +127,14 @@ pub fn run() {
                 use tauri_plugin_global_shortcut::{
                     Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState,
                 };
-                let toggle = Shortcut::new(Some(Modifiers::SUPER | Modifiers::SHIFT), Code::KeyS);
+                #[cfg(target_os = "macos")]
+                let primary = Modifiers::SUPER;
+                #[cfg(not(target_os = "macos"))]
+                let primary = Modifiers::CONTROL;
+                let toggle = Shortcut::new(Some(primary | Modifiers::SHIFT), Code::KeyS);
                 // 切换服务器：Cmd/Ctrl+Shift+逗号——不依赖托盘的逃生入口。
                 let switch_sc =
-                    Shortcut::new(Some(Modifiers::SUPER | Modifiers::SHIFT), Code::Comma);
+                    Shortcut::new(Some(primary | Modifiers::SHIFT), Code::Comma);
                 let toggle_for_handler = toggle;
                 let switch_for_handler = switch_sc;
                 handle.plugin(
@@ -146,8 +151,13 @@ pub fn run() {
                         })
                         .build(),
                 )?;
-                app.global_shortcut().register(toggle)?;
-                app.global_shortcut().register(switch_sc)?;
+                // A shortcut owned by another app must not prevent launching the inbox.
+                if let Err(error) = app.global_shortcut().register(toggle) {
+                    eprintln!("Cannot register window shortcut: {error}");
+                }
+                if let Err(error) = app.global_shortcut().register(switch_sc) {
+                    eprintln!("Cannot register server shortcut: {error}");
+                }
             }
 
             Ok(())

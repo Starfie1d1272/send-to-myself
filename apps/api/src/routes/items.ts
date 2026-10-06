@@ -51,7 +51,7 @@ itemsRoute.post("/upload", async (c) => {
 // 时间线 / 搜索 / 筛选（游标分页）
 itemsRoute.get("/", (c) => {
   const q = c.req.query();
-  for (const key of ["isTodo", "completed", "pinned", "sensitive", "deleted"]) {
+  for (const key of ["isTodo", "completed", "pinned", "sensitive", "deleted", "hasLinks"]) {
     if (q[key] !== undefined && !["true", "false", "1", "0"].includes(q[key]!)) {
       return c.json({ error: "invalid_query" }, 400);
     }
@@ -60,6 +60,7 @@ itemsRoute.get("/", (c) => {
     ...q,
     limit: q.limit === undefined ? undefined : Number(q.limit),
     isTodo: bool(q.isTodo), completed: bool(q.completed), pinned: bool(q.pinned),
+    hasLinks: bool(q.hasLinks),
   });
   if (!parsed.success) return c.json({ error: "invalid_query" }, 400);
   if (q.cursor) {

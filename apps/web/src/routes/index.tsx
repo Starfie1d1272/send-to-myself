@@ -1,49 +1,19 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import type { ListParams } from "../lib/api";
+import { timelineParams } from "../lib/timeline";
 import { useItems } from "../hooks/useItems";
 import { useRealtime } from "../lib/realtime";
-import { dueBucket, itemUrls } from "../lib/format";
 import { Composer } from "../components/Composer";
 import { FilterBar, type FilterKey } from "../components/FilterBar";
 import { Timeline } from "../components/Timeline";
 import { IconLogout } from "../components/icons";
 import { useAuth, useAuthActions } from "../hooks/useAuth";
 
-function toParams(f: FilterKey, q: string): ListParams {
-  const base: ListParams = { limit: 100 };
-  if (q) base.q = q;
-  switch (f) {
-    case "todo":
-      return { ...base, isTodo: true, completed: false };
-    case "due":
-      return { ...base, isTodo: true };
-    case "idea":
-      return { ...base, category: "idea" };
-    case "read_later":
-      return { ...base, category: "read_later" };
-    case "image":
-      return { ...base, kind: "image" };
-    case "file":
-      return { ...base, kind: "file" };
-    case "secret":
-      return { ...base, sensitive: true };
-    case "pinned":
-      return { ...base, pinned: true };
-    case "completed":
-      return { ...base, completed: true };
-    case "trash":
-      return { ...base, deleted: true };
-    default:
-      return base; // all / link
-  }
-}
-
 export function TimelinePage() {
   const [filter, setFilter] = useState<FilterKey>("all");
   const [query, setQuery] = useState("");
-  const params = useMemo(() => toParams(filter, query), [filter, query]);
-  const { data, isLoading } = useItems(params);
+  const params = timelineParams(filter, query);
+  const { data, isLoading, isError, hasNextPage, fetchNextPage, isFetchingNextPage, refetch } = useItems(params);
 
   const qc = useQueryClient();
   const refresh = useCallback(() => {
@@ -54,13 +24,7 @@ export function TimelinePage() {
   const { data: auth } = useAuth();
   const { logout } = useAuthActions();
 
-  let items = data?.items ?? [];
-  if (filter === "due") {
-    items = items.filter(
-      (i) => !i.completed && ["overdue", "today", "tomorrow", "this_week"].includes(dueBucket(i.dueAt)),
-    );
-  }
-  if (filter === "link") items = items.filter((i) => itemUrls(i).length > 0);
+  const items = data?.pages.flatMap((page) => page.items) ?? [];
 
   const now = new Date();
   const dateStr = `${now.getFullYear()} · ${now.getMonth() + 1}月${now.getDate()}日`;
@@ -90,7 +54,20 @@ export function TimelinePage() {
 
         <Composer />
         <FilterBar active={filter} onChange={setFilter} query={query} onQuery={setQuery} />
-        <Timeline items={items} trash={filter === "trash"} loading={isLoading} />
+        {isError && (
+          <div className="state" role="alert">
+            <p>加载失败，已显示的内容仍保留。</p>
+            <button onClick={() => void refetch()}>重试加载</button>
+          </div>
+        )}
+        {(!isError || items.length > 0) && <Timeline items={items} trash={filter === "trash"} loading={isLoading} />}
+        {hasNextPage && (
+          <div className="timeline__more">
+            <button className="send" disabled={isFetchingNextPage} onClick={() => void fetchNextPage()}>
+              {isFetchingNextPage ? "加载中…" : "加载更多"}
+            </button>
+          </div>
+        )}
       </main>
     </div>
   );

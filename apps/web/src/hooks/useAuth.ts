@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { clearDraft } from "../lib/draft";
 import { api } from "../lib/api";
 
 export function useAuth() {
@@ -17,7 +18,8 @@ export function useAuthActions() {
     login: useMutation({ mutationFn: (pw: string) => api.login(pw), onSuccess: refresh }),
     logout: useMutation({
       mutationFn: () => api.logout(),
-      onSuccess: () => {
+      onSuccess: async () => {
+        await clearDraft().catch(() => {});
         qc.clear();
         void refresh();
       },

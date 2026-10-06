@@ -222,3 +222,26 @@ test("image upload stores original and thumbnail; invalid image falls back to or
   const invalid = await svc.createItemWithFiles("fallback", [{ filename: "bad.png", mimeType: "image/png", data: Buffer.from("not an image") }]);
   assert.equal(invalid.attachments![0]!.hasThumb, false);
 });
+
+test("link and deadline filters apply before page limits, including attachment records with links", async () => {
+  // Insert directly so fixtures never schedule outbound preview requests.
+  const older = svc.createItem({ content: "older fixture" });
+  db.update(items).set({ kind: "image", createdAt: 1, meta: JSON.stringify({ suggestions: { urls: ["https://example.invalid/post"] } }) })
+    .where(eq(items.id, older.id)).run();
+  const due = svc.createItem({ content: "due fixture" });
+  svc.updateItem(due.id, { isTodo: true, dueAt: "2026-10-08T10:00:00Z" });
+  const late = svc.createItem({ content: "later fixture" });
+  svc.updateItem(late.id, { isTodo: true, dueAt: "2026-10-20T10:00:00Z" });
+  const completed = svc.createItem({ content: "completed fixture" });
+  svc.updateItem(completed.id, { isTodo: true, completed: true, dueAt: "2026-10-08T10:00:00Z" });
+  for (let i = 0; i < 105; i++) svc.createItem({ content: `newer ${i}` });
+  const headers = { cookie: await cookie() };
+  const links = await app.request("/api/items?hasLinks=true&limit=1", { headers });
+  assert.equal(links.status, 200);
+  assert.deepEqual(((await links.json()) as { items: Array<{ id: string }> }).items.map((item: { id: string }) => item.id), [older.id]);
+  const deadlines = await app.request("/api/items?isTodo=true&completed=false&dueBefore=2026-10-15T00%3A00%3A00Z&limit=1", { headers });
+  assert.equal(deadlines.status, 200);
+  assert.deepEqual(((await deadlines.json()) as { items: Array<{ id: string }> }).items.map((item: { id: string }) => item.id), [due.id]);
+  assert.equal((await app.request("/api/items?hasLinks=invalid", { headers })).status, 400);
+  assert.equal((await app.request("/api/items?dueBefore=invalid", { headers })).status, 400);
+});

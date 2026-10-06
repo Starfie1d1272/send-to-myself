@@ -1,12 +1,10 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import type { CreateItemInput, UpdateItemInput } from "@sendtomyself/shared";
 import { api, type ListParams } from "../lib/api";
+import { itemPages } from "../lib/timeline";
 
 export function useItems(params: ListParams) {
-  return useQuery({
-    queryKey: ["items", params],
-    queryFn: () => api.list(params),
-  });
+  return useInfiniteQuery(itemPages(params));
 }
 
 export function useItemMutations() {
@@ -15,7 +13,7 @@ export function useItemMutations() {
   return {
     create: useMutation({ mutationFn: (i: CreateItemInput) => api.create(i), onSuccess: invalidate }),
     upload: useMutation({
-      mutationFn: (v: { content: string; files: File[] }) => api.upload(v.content, v.files),
+      mutationFn: (v: { content: string; files: File[]; dedupeKey?: string }) => api.upload(v.content, v.files, v.dedupeKey),
       onSuccess: invalidate,
     }),
     update: useMutation({

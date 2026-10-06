@@ -12,6 +12,8 @@ export interface ListParams {
   completed?: boolean;
   pinned?: boolean;
   sensitive?: boolean;
+  hasLinks?: boolean;
+  dueBefore?: string;
   q?: string;
   cursor?: string;
   deleted?: boolean;
@@ -63,7 +65,7 @@ export const api = {
   list(p: ListParams = {}): Promise<ListResult> {
     const q = new URLSearchParams();
     for (const [k, v] of Object.entries(p)) {
-      if (v !== undefined && v !== "" && v !== false) q.set(k, String(v));
+      if (v !== undefined && v !== "") q.set(k, String(v));
     }
     return fetch(`/api/items?${q.toString()}`, opts()).then(handle);
   },
@@ -78,9 +80,10 @@ export const api = {
     ).then(handle);
   },
   /** 带附件发送（multipart）。 */
-  upload(content: string, files: File[]): Promise<Item> {
+  upload(content: string, files: File[], dedupeKey?: string): Promise<Item> {
     const fd = new FormData();
     fd.set("content", content);
+    if (dedupeKey) fd.set("dedupeKey", dedupeKey);
     for (const f of files) fd.append("files", f);
     return fetch("/api/items/upload", opts({ method: "POST", body: fd })).then(handle);
   },
