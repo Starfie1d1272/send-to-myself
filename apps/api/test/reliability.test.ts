@@ -255,7 +255,7 @@ test("Raycast and desktop share records, attachments, retries, pagination and to
   const { token } = await issued.json() as { token: string };
   const transport: typeof fetch = async (url, init) => app.request(new Request(String(url), init));
   let lost = true;
-  const client = new InboxClient("http://localhost", token, async (url, init) => {
+  const client = new InboxClient("http://localhost", token, async (url: Parameters<typeof fetch>[0], init?: RequestInit) => {
     const response = await transport(url, init);
     if (lost && init?.method === "POST") { lost = false; throw new Error("reply lost after server commit"); }
     return response;
@@ -264,7 +264,7 @@ test("Raycast and desktop share records, attachments, retries, pagination and to
   const sent = await client.send("Mac → Windows 中文记录", [], "raycast-retry");
   const desktop = await app.request("/api/items", { headers: { cookie: session } });
   const desktopItems = (await desktop.json() as { items: Array<{ id: string }> }).items;
-  assert.equal(desktopItems.length, 1); assert.equal(desktopItems[0].id, sent.id);
+  assert.equal(desktopItems.length, 1); assert.equal(desktopItems[0]!.id, sent.id);
   // Reverse direction: a desktop cookie upload is available through a Raycast bearer.
   const uploaded = await upload([new File(["file contents"], "桌面文件.txt", { type: "text/plain" })], "desktop-file");
   assert.equal(uploaded.status, 201);
