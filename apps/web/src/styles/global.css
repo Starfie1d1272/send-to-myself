@@ -1164,3 +1164,8 @@ body {
 .device-dialog input { display: block; box-sizing: border-box; width: 100%; margin: 6px 0; padding: 8px; }
 .device-dialog button { cursor: pointer; margin-right: 8px; }
 .device-dialog li { display: flex; justify-content: space-between; align-items: center; margin: 12px 0; }
+
+.masthead__devices { flex-shrink: 0; white-space: nowrap; padding: 5px 9px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--ink-soft); font: inherit; font-size: 12px; cursor: pointer; }
+.att__copy { padding: 4px 9px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--ink-soft); }
+.device-dialog button:not(.send) { padding: 5px 9px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--ink-soft); }
+.device-dialog input { border: 1px solid var(--line); border-radius: 6px; background: var(--paper-2); color: var(--ink); font: inherit; font-size: 14px; }

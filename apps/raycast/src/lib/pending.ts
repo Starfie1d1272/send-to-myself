@@ -15,11 +15,14 @@ export async function sendWithRetryKey(api: InboxClient, content: string, files:
   }
   const storageKey = `pending-send:${hash.digest("hex")}`;
   let key: string | undefined;
-  try {
-    const raw = await store.getItem<string>(storageKey);
-    const cached = raw ? JSON.parse(raw) : undefined;
-    if (typeof cached?.key === "string" && cached.key && Date.now() - cached.createdAt < 7 * 86400_000) key = cached.key;
-  } catch { /* replace invalid cache */ }
+  const raw = await store.getItem<string>(storageKey);
+  if (raw) {
+    try {
+      const cached = JSON.parse(raw);
+      if (typeof cached?.key !== "string" || !cached.key || typeof cached.createdAt !== "number") throw new Error("invalid cache");
+      if (Date.now() - cached.createdAt < 7 * 86400_000) key = cached.key;
+    } catch { throw new Error("重试记录损坏，请先检查最近记录是否已收到，再修改内容发送。"); }
+  }
   key ??= randomUUID();
   await store.setItem(storageKey, JSON.stringify({ key, createdAt: Date.now() }));
   const result = await api.send(content, files, key);

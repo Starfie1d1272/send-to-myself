@@ -48,6 +48,7 @@ export async function copyImage(url: string): Promise<boolean> {
     const blob = await response.blob();
     if (!blob.type.startsWith("image/") || blob.size > 50 * 1024 * 1024) return false;
     const png = await asPng(blob);
+    if (png.size > 50 * 1024 * 1024) return false;
     if (invoke) {
       try { await invoke("copy_image", { png: Array.from(new Uint8Array(await png.arrayBuffer())) }); return true; }
       catch { if (!browser) return false; }

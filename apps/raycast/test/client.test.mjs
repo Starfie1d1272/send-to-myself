@@ -77,3 +77,11 @@ test("a changed attachment changes the retry key without losing an earlier faile
   await assert.rejects(send("A")); await assert.rejects(send("B")); await assert.rejects(send("A"));
   assert.notEqual(keys[0], keys[1]); assert.equal(keys[0], keys[2]);
 });
+test("unreadable or corrupt retry storage never silently creates another request", async () => {
+  const { sendWithRetryKey } = await import("../src/lib/pending.ts");
+  const api = new InboxClient("http://localhost", "token", async () => { assert.fail("must not send"); });
+  const store = { getItem: async () => { throw new Error("storage unavailable"); }, setItem: async () => {}, removeItem: async () => {} };
+  await assert.rejects(sendWithRetryKey(api, "hello", [], store), /storage unavailable/);
+  store.getItem = async () => "broken JSON";
+  await assert.rejects(sendWithRetryKey(api, "hello", [], store), /重试记录损坏/);
+});

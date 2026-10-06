@@ -42,7 +42,7 @@ export function TimelinePage() {
           </div>
           <div className="masthead__right">
             <span className="masthead__date">{dateStr}</span>
-            <button className="icon-btn" onClick={() => setDevicesOpen(true)}>设备接入</button>
+            <button className="masthead__devices" onClick={() => setDevicesOpen(true)}>设备接入</button>
             {auth?.authEnabled && (
               <button
                 className="icon-btn"
