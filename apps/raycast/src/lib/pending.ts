@@ -7,7 +7,7 @@ export interface PendingStore {
   removeItem(key: string): Promise<void>;
 }
 /** Each payload gets its own persistent key, so a failed note and failed clipboard send can coexist. */
-export async function sendWithRetryKey(api: InboxClient, content: string, files: File[], store: PendingStore) {
+export async function sendWithRetryKey(api: InboxClient, content: string, files: File[], store: PendingStore, onConfirmed?: () => Promise<void>) {
   const hash = createHash("sha256").update(JSON.stringify([api.server, content]));
   for (const file of files) {
     hash.update(JSON.stringify([file.name, file.type, file.size]));
@@ -26,6 +26,8 @@ export async function sendWithRetryKey(api: InboxClient, content: string, files:
   key ??= randomUUID();
   await store.setItem(storageKey, JSON.stringify({ key, createdAt: Date.now() }));
   const result = await api.send(content, files, key);
+  // Keep retry identity until the caller has also cleared its durable draft.
+  await onConfirmed?.();
   await store.removeItem(storageKey);
   return result;
 }

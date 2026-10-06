@@ -85,3 +85,14 @@ test("unreadable or corrupt retry storage never silently creates another request
   store.getItem = async () => "broken JSON";
   await assert.rejects(sendWithRetryKey(api, "hello", [], store), /重试记录损坏/);
 });
+test("draft cleanup failure keeps retry identity after the server has confirmed", async () => {
+  const { sendWithRetryKey } = await import("../src/lib/pending.ts");
+  const data = new Map();
+  const store = { getItem: async key => data.get(key), setItem: async (key, value) => { data.set(key, value); }, removeItem: async key => { data.delete(key); } };
+  const keys = [];
+  const api = new InboxClient("http://localhost", "token", async (_, init) => { keys.push(JSON.parse(init.body).dedupeKey); return Response.json({ id: "already-sent" }); });
+  await assert.rejects(sendWithRetryKey(api, "draft", [], store, async () => { throw new Error("cannot clear draft"); }), /cannot clear draft/);
+  assert.equal(data.size, 1);
+  await sendWithRetryKey(api, "draft", [], store, async () => {});
+  assert.equal(keys[0], keys[1]); assert.equal(data.size, 0);
+});

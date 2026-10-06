@@ -26,12 +26,12 @@ export default function Command() {
     const toast = await showToast({ style: Toast.Style.Animated, title: "正在发送…" });
     try {
       await writes.current;
-      await send(content, files);
-      await LocalStorage.removeItem("note-draft");
+      await send(content, files, () => LocalStorage.removeItem("note-draft"));
+      setContent(""); setFiles([]);
       toast.style = Toast.Style.Success; toast.title = "已发送到自己";
-      await popToRoot();
+      await popToRoot().catch(() => {});
     } catch (error) {
-      toast.style = Toast.Style.Failure; toast.title = "发送失败，草稿已保留";
+      toast.style = Toast.Style.Failure; toast.title = "未能完成，请检查最近记录后重试";
       toast.message = error instanceof Error ? error.message : "请重试";
     } finally { setSending(false); }
   }
