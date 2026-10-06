@@ -44,7 +44,6 @@ export default function Command() {
     {items.map(item => <List.Item key={item.id} id={item.id} title={item.sensitive ? "敏感内容（在主窗口查看）" : item.content.split("\n")[0] || item.attachments?.[0]?.filename || "附件"} subtitle={item.sensitive ? undefined : item.kind} actions={<ActionPanel>
       {!item.sensitive && item.content && <><Action.CopyToClipboard title="复制内容" content={item.content} /><Action.Paste title="粘贴到当前应用" content={item.content} /></>}
       {!item.sensitive && item.attachments?.map(a => <Action key={a.id} title={`复制文件：${a.filename}`} onAction={() => copyFile(a.id, a.filename)} />)}
-      <Action.OpenInBrowser title="打开主窗口网页" url={client().server} />
       <Action title="刷新记录" onAction={() => setRevision(v => v + 1)} />
     </ActionPanel>} />)}
   </List>;
