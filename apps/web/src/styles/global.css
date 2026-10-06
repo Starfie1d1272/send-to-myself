@@ -1169,3 +1169,9 @@ body {
 .att__copy { padding: 4px 9px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--ink-soft); }
 .device-dialog button:not(.send) { padding: 5px 9px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--ink-soft); }
 .device-dialog input { border: 1px solid var(--line); border-radius: 6px; background: var(--paper-2); color: var(--ink); font: inherit; font-size: 14px; }
+.device-dialog li span { min-width: 0; overflow-wrap: anywhere; }
+@media (max-width: 560px) {
+  .masthead { flex-wrap: wrap; gap: 12px; }
+  .masthead__date { display: none; }
+  .masthead__right { margin-left: auto; }
+}
