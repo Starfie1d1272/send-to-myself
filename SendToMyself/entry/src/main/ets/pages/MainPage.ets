@@ -2,7 +2,7 @@ import { webview } from '@kit.ArkWeb';
 import { loadServerUrl, loadDeviceToken, removeDeviceToken } from '../common/AssetStore';
 import { checkTokenValid, loginAndMintToken } from '../common/AuthService';
 import { startNetMonitor, stopNetMonitor } from '../common/NetMonitor';
-import { processQueue } from '../common/QueueService';
+import { processQueue, queueStatus } from '../common/QueueService';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { DOMAIN, TAG } from '../common/Constants';
 import { common } from '@kit.AbilityKit';
@@ -30,6 +30,9 @@ struct MainPage {
   @State busy: boolean = false;
   @State errorMsg: string = '';
   @State sessionCookie: string = '';
+  @State pendingCount: number = 0;
+  @State queueError: string = '';
+  @State queueBusy: boolean = false;
   private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
 
   private injectCookieToWeb(cookie: string, url: string): void {
@@ -71,10 +74,29 @@ struct MainPage {
     } else {
       this.phase = 'login';
     }
-    startNetMonitor(this.context);
-    processQueue(this.context).catch((err: Error) => {
-      hilog.error(DOMAIN, TAG, 'Initial queue processing failed: %{public}s', err.message);
-    });
+    startNetMonitor(this.context, () => { this.loadQueueStatus(); });
+    this.retryQueue();
+  }
+
+  onPageShow(): void { this.retryQueue(); }
+
+  async loadQueueStatus(): Promise<void> {
+    try {
+      let status = await queueStatus(this.context);
+      this.pendingCount = status.count;
+      this.queueError = status.error;
+    } catch (_error) { this.queueError = '无法读取本地队列，请勿清理应用数据'; }
+  }
+  async retryQueue(): Promise<void> {
+    if (this.queueBusy) return;
+    this.queueBusy = true;
+    try { await processQueue(this.context); }
+    catch (_error) { this.queueError = '补发失败，内容已保留'; }
+    finally { this.queueBusy = false; await this.loadQueueStatus(); }
+    if (this.pendingCount > 0 && !await loadDeviceToken()) {
+      this.errorMsg = '请重新登录，待发送内容已保留';
+      this.phase = 'login';
+    }
   }
 
   aboutToDisappear(): void {
@@ -130,8 +152,8 @@ struct MainPage {
         this.injectCookieToWeb(result.sessionCookie, this.serverUrl);
       }
       this.phase = 'web';
-      startNetMonitor(this.context);
-      processQueue(this.context).catch(() => {});
+      startNetMonitor(this.context, () => { this.loadQueueStatus(); });
+      this.retryQueue();
     } else {
       this.errorMsg = this.mapError(result.errorMessage);
       hilog.error(DOMAIN, TAG, 'Login failed: %{public}s', result.errorMessage ?? 'unknown');
@@ -172,8 +194,10 @@ struct MainPage {
           })
           .onSslErrorEvent((event) => {
             if (event) {
-              hilog.warn(DOMAIN, TAG, 'Web SSL error for %{public}s: %{public}s — allowing', event.url, event.error.toString());
-              event.handler.handleConfirm();
+              hilog.warn(DOMAIN, TAG, 'Web SSL error for %{public}s: %{public}s — blocked', event.url, event.error.toString());
+              event.handler.handleCancel();
+              this.errorMsg = '服务器证书验证失败，请检查证书与服务器地址';
+              this.phase = 'login';
             }
           })
           .onErrorReceive((event) => {
@@ -189,6 +213,17 @@ struct MainPage {
         this.LoginView()
       } else {
         this.SplashView()
+      }
+      if (this.pendingCount > 0 && this.phase === 'web') {
+        Column() {
+          Text(this.queueError || '待发送内容已保存在本机')
+            .fontSize(12).fontColor(C_RED)
+          Button(this.queueBusy ? '补发中…' : '待发送 ' + this.pendingCount.toString() + ' 条 · 重试')
+            .enabled(!this.queueBusy)
+            .onClick(() => { this.retryQueue(); })
+        }
+        .padding(12).backgroundColor(C_CARD).borderRadius(10)
+        .align(Alignment.Bottom).margin({ bottom: 16 })
       }
     }
     .width('100%')

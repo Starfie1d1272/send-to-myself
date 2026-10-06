@@ -131,6 +131,10 @@ export const timelineFilter = z
     isTodo: z.boolean().optional(),
     completed: z.boolean().optional(),
     pinned: z.boolean().optional(),
+    /** Match links even when attachments determine the display kind. */
+    hasLinks: z.boolean().optional(),
+    /** Exclusive upper deadline bound, computed in the client timezone. */
+    dueBefore: isoDateTime.optional(),
     /** 关键词搜索（正文/标题/URL/文件名）。 */
     q: z.string().optional(),
     /** 不透明分页游标，原样回传 nextCursor；兼容历史 ISO 时间。 */

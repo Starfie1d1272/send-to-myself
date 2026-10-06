@@ -63,6 +63,7 @@ export function ItemCard({
   const { update, remove, restore, refetchPreview } = useItemMutations();
   const [revealed, setRevealed] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState("");
   const [dueOpen, setDueOpen] = useState(false);
   const [tagOpen, setTagOpen] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -72,7 +73,8 @@ export function ItemCard({
     update.mutate({ id: item.id, patch: p });
 
   const copy = async () => {
-    // 有文字复制文字；纯图片记录复制图片本体（http 下自动降级为复制图片链接）
+    setCopyError("");
+    // Text and images remain different clipboard payloads.
     const firstImg = (item.attachments ?? []).find((a) => a.mimeType.startsWith("image/"));
     const ok =
       item.content.trim().length > 0
@@ -83,6 +85,8 @@ export function ItemCard({
     if (ok) {
       setCopied(true);
       setTimeout(() => setCopied(false), 1400);
+    } else {
+      setCopyError(firstImg && !item.content.trim() ? "图片复制不可用，请下载图片后发送。" : "复制失败，请重试。");
     }
   };
 
@@ -222,6 +226,7 @@ export function ItemCard({
         </div>
       </div>
 
+      {copyError && <p className="composer__error" role="alert">{copyError}</p>}
       <div className="actions">
         {trash ? (
           <button className="icon-btn" title="恢复" onClick={() => restore.mutate(item.id)}>

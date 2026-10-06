@@ -10,7 +10,8 @@ export default class ShareExtAbility extends ShareExtensionAbility {
     let storageParam: Record<string, Object> = {
       'session': session,
       'shareResult': '',
-      'shareError': ''
+      'shareError': '',
+      'shareMessage': ''
     };
     let storage = new LocalStorage(storageParam);
 
@@ -22,6 +23,7 @@ export default class ShareExtAbility extends ShareExtensionAbility {
       if (result.success) {
         storage.setOrCreate<string>('shareResult', 'success');
       } else if (result.queued) {
+        storage.setOrCreate<string>('shareMessage', result.errorMessage || '已保存在本机，打开应用或恢复网络后重试');
         storage.setOrCreate<string>('shareResult', 'queued');
       } else if (result.needsLogin) {
         storage.setOrCreate<string>('shareResult', 'needsLogin');

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { shareAttachment } from "../lib/share";
 import type { Attachment } from "@sendtomyself/shared";
 import {
   attachmentDownloadUrl,
@@ -11,32 +12,17 @@ import { Lightbox } from "./Lightbox";
 
 const isImage = (a: Attachment) => a.mimeType.startsWith("image/");
 
-/** 移动端系统分享：优先分享文件本体，回退分享链接（SPEC §8）。 */
-async function share(a: Attachment) {
-  const url = new URL(attachmentRawUrl(a.id), location.origin).toString();
-  try {
-    const nav = navigator as Navigator & {
-      canShare?: (d: unknown) => boolean;
-    };
-    if (nav.share) {
-      const res = await fetch(attachmentRawUrl(a.id), { credentials: "include" });
-      const blob = await res.blob();
-      const file = new File([blob], a.filename, { type: a.mimeType });
-      if (nav.canShare?.({ files: [file] })) {
-        await nav.share({ files: [file], title: a.filename });
-        return;
-      }
-      await nav.share({ url, title: a.filename });
-      return;
-    }
-  } catch {
-    /* 用户取消或不支持，忽略 */
-  }
-  window.open(attachmentDownloadUrl(a.id), "_blank");
-}
-
 export function Attachments({ items }: { items: Attachment[] }) {
   // 当前在看大图的原图 URL；null=未打开。单 WebView 壳里 target="_blank" 打不开，故用壳内弹层。
+  const [shareError, setShareError] = useState("");
+  const share = async (attachment: Attachment) => {
+    setShareError("");
+    try {
+      if (await shareAttachment(attachment) === "unsupported") {
+        setShareError("此设备不支持直接分享文件，请下载后发送。");
+      }
+    } catch { setShareError("分享失败，请重试或下载后发送。"); }
+  };
   const [viewing, setViewing] = useState<{ url: string; alt: string } | null>(null);
 
   if (items.length === 0) return null;
@@ -45,6 +31,7 @@ export function Attachments({ items }: { items: Attachment[] }) {
 
   return (
     <div className="att">
+      {shareError && <p className="composer__error" role="alert">{shareError}</p>}
       {images.length > 0 && (
         <div className={`att__grid att__grid--${Math.min(images.length, 3)}`}>
           {images.map((a) => (

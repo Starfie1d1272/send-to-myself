@@ -7,14 +7,14 @@ import { BusinessError } from '@kit.BasicServicesKit';
 
 let netConnection: connection.NetConnection | undefined = undefined;
 
-export function startNetMonitor(context: common.Context): void {
+export function startNetMonitor(context: common.Context, onProcessed?: () => void): void {
   if (netConnection) {
     return;
   }
   netConnection = connection.createNetConnection();
   netConnection.on('netAvailable', () => {
     hilog.info(DOMAIN, TAG, 'Network available, processing queue');
-    processQueue(context).catch((err: Error) => {
+    processQueue(context).then(() => { if (onProcessed) onProcessed(); }).catch((err: Error) => {
       hilog.error(DOMAIN, TAG, 'Queue processing failed: %{public}s', err.message);
     });
   });

@@ -1151,3 +1151,6 @@ body {
     margin-top: 4px;
   }
 }
+
+.timeline__more { display: flex; justify-content: center; padding: 24px 0; }
+.composer__error { color: var(--red); font-size: 13px; margin: 8px 12px; }

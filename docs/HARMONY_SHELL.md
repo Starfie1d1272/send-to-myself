@@ -189,29 +189,26 @@ ShareAbility.onCreate / onNewWant(want):
 
 服务端已用 `dedupeKey` 保证幂等，**客户端可以放心无脑重试**。
 
-```
-队列项结构（存本地 Preferences / 文件，JSON 数组）：
-  { dedupeKey, kind: "text"|"upload", content?, fileUris?[], createdAt }
+队列项包含 `dedupeKey`、`kind`、`content`、`files`（持久路径、原文件名、MIME）、`serverUrl`、`createdAt`、`lastError`。
+兼容读取旧 `fileSandboxPaths`，但旧版缓存中已经被系统清理的文件无法凭代码恢复，原文件名和 MIME 也无法完整回溯。
 
-入队：分享时网络失败 → push 一项
-出队/重试触发：
-  - App 启动时
-  - 注册网络状态监听（@ohos.net.connection），网络恢复回调里触发
-  - （可选）后台任务定时重试
-重试逻辑：
-  for 每个队列项：
-    带原 dedupeKey 重发 →
-      201 或 任意非网络错误的明确响应 → 从队列移除（幂等保证不会重复）
-      仍是网络错误 → 保留，等下次
-```
+- 分享内容先复制到 `filesDir/shared-queue` 并入队、flush，再尝试 HTTP 发送。
+- 进程内串行存储操作；主页面与分享扩展通过同一 `queue.lock` 文件的 OS 文件锁协调，并在锁内移除 Preferences 缓存后重新读取。
+- 网络请求期间不持有存储锁；成功后重新读取最新队列，仅移除该幂等键，再清理对应文件。
+- 只有成功响应可移除记录。401、断网、413 等错误均保留并记录原因；401/断网暂停本次补发。
+- 新队列项绑定服务器地址，切换服务器不会把它发往新地址；旧项没有服务器字段，仍按旧版行为使用当前服务器。
+- 应用启动、进入页面、登录成功、网络恢复触发补发，主界面显示待发送数量/错误及手动重试入口。
+- 分享页显示“已保存在本机”及失败原因。应用关闭后是否能后台补发取决于系统调度，不能保证立即执行。
+- 单条查看/删除待发送内容仍待实现；不要用清理应用数据处理发送失败。
 
-> 因为带的是**同一个 dedupeKey**，即便上一次其实已发成功只是响应没收到，重发也只会命中已有记录、不会产生重复。这是后端 `dedupeKey` 机制存在的全部理由。
+以上非 UI 逻辑有模拟平台回归；文件锁、分享 URI、Preferences 跨进程和 ArkUI 状态更新仍需 SDK 构建及真机验收。
 
 ---
 
 ## 8. WebView（EntryAbility）注意点
 
 - 全屏 `Web({ src: serverUrl, controller })`，启用 `domStorageAccess`、`onlineImageAccess`。
+- TLS 证书错误取消加载，修正证书或服务器地址后重试，不允许无条件放行。
 - 让 WebView 自行处理 cookie（用户在网页里也能登录，cookie 与设备令牌互不干扰）。
 - 处理返回键：WebView 能后退则后退，否则退出。
 - 上传/下载：网页内的文件选择/下载尽量交给 ArkWeb 原生能力，壳不重写。

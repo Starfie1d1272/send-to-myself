@@ -1,12 +1,8 @@
-import { common } from '@kit.AbilityKit';
+import { common, Want } from '@kit.AbilityKit';
 import { systemShare } from '@kit.ShareKit';
-import { Want } from '@kit.AbilityKit';
-import { fileIo, fileUri } from '@kit.CoreFileKit';
-import { postTextItem, postUploadItem, isNetworkError, isAuthError } from './HttpClient';
-import { enqueue, processQueue } from './QueueService';
+import { enqueue, processQueue, isQueued, queueStatus } from './QueueService';
 import { loadDeviceToken, loadServerUrl } from './AssetStore';
-import { hilog } from '@kit.PerformanceAnalysisKit';
-import { DOMAIN, TAG } from './Constants';
+import { SharedFileData, copySharedFile, cleanSharedFiles } from './ShareFiles';
 import { util } from '@kit.ArkTS';
 
 export interface ShareResultData {
@@ -15,119 +11,55 @@ export interface ShareResultData {
   queued: boolean;
   errorMessage?: string;
 }
-
 class ShareResult implements ShareResultData {
-  success: boolean = false;
-  needsLogin: boolean = false;
-  queued: boolean = false;
-  errorMessage?: string = undefined;
-
-  constructor(success: boolean, needsLogin: boolean, queued: boolean, errorMessage?: string) {
-    this.success = success;
-    this.needsLogin = needsLogin;
-    this.queued = queued;
-    this.errorMessage = errorMessage;
+  success: boolean;
+  needsLogin: boolean;
+  queued: boolean;
+  errorMessage?: string;
+  constructor(success: boolean, login: boolean, queued: boolean, error?: string) {
+    this.success = success; this.needsLogin = login; this.queued = queued; this.errorMessage = error;
   }
-}
-
-function generateDedupeKey(): string {
-  return util.generateRandomUUID();
-}
-
-async function copyUriToSandbox(context: common.Context, uri: string): Promise<string> {
-  let srcFile = fileIo.openSync(uri, fileIo.OpenMode.READ_ONLY);
-  let fileName = 'share_file_' + Date.now().toString();
-  let sandboxPath = context.cacheDir + '/' + fileName;
-  let destFile = fileIo.openSync(sandboxPath, fileIo.OpenMode.READ_WRITE | fileIo.OpenMode.CREATE);
-  fileIo.copyFileSync(srcFile.fd, destFile.fd);
-  fileIo.closeSync(srcFile);
-  fileIo.closeSync(destFile);
-  return sandboxPath;
 }
 
 export async function handleShare(want: Want, context: common.Context): Promise<ShareResultData> {
-  let token = await loadDeviceToken();
-  if (!token) {
-    return new ShareResult(false, true, false, 'Not logged in');
-  }
-  let serverUrl = await loadServerUrl();
-  if (!serverUrl) {
-    return new ShareResult(false, true, false, 'Server not configured');
-  }
-
-  let dedupeKey = generateDedupeKey();
-  let textContent: string | undefined = undefined;
-  let fileUris: string[] = [];
-
+  if (!await loadServerUrl()) return new ShareResult(false, true, false, 'Server not configured');
+  let content: string[] = [];
+  let records: systemShare.SharedRecord[] = [];
   try {
-    let sharedData = await systemShare.getSharedData(want);
-    let records = sharedData.getRecords();
-    for (let i = 0; i < records.length; i++) {
-      let record = records[i];
-      if (record.content && record.content.length > 0) {
-        textContent = record.content;
-      }
-      if (record.uri && record.uri.length > 0) {
-        fileUris.push(record.uri);
-      }
-    }
-  } catch (err) {
-    let errMsg = (err as Error).message;
-    hilog.error(DOMAIN, TAG, 'Failed to parse share data: %{public}s', errMsg);
+    records = (await systemShare.getSharedData(want)).getRecords();
+  } catch (_error) {
     if (want.parameters) {
       let params = want.parameters as Record<string, Object>;
-      if (params['content']) {
-        textContent = params['content'] as string;
-      }
+      if (params['content']) content.push(params['content'] as string);
     }
   }
-
-  if (!textContent && fileUris.length === 0) {
-    return new ShareResult(false, false, false, 'No share content');
-  }
-
-  if (fileUris.length === 0 && textContent) {
-    try {
-      let success = await postTextItem(textContent, dedupeKey);
-      if (success) {
-        return new ShareResult(true, false, false);
-      }
-      return new ShareResult(false, true, false);
-    } catch (err) {
-      if (isNetworkError(err as Error)) {
-        await enqueue(context, dedupeKey, 'text', textContent);
-        return new ShareResult(false, false, true);
-      }
-      return new ShareResult(false, false, false, (err as Error).message);
-    }
-  }
-
-  let sandboxPaths: string[] = [];
+  let files: SharedFileData[] = [];
   try {
-    for (let i = 0; i < fileUris.length; i++) {
-      let sandboxPath = await copyUriToSandbox(context, fileUris[i]);
-      sandboxPaths.push(sandboxPath);
+    for (let i = 0; i < records.length; i++) {
+      let record = records[i];
+      if (record.content) content.push(record.content);
+      if (record.uri) {
+        if (/^https?:\/\//i.test(record.uri)) content.push(record.uri);
+        else files.push(copySharedFile(context, record.uri, record.title, record.utd));
+      }
     }
-  } catch (err) {
-    let errMsg = (err as Error).message;
-    hilog.error(DOMAIN, TAG, 'Failed to copy share files: %{public}s', errMsg);
+  } catch (_error) {
+    cleanSharedFiles(files);
     return new ShareResult(false, false, false, 'File access failed');
   }
-
+  let text = content.join('\n');
+  if (!text.trim() && files.length === 0) return new ShareResult(false, false, false, 'No share content');
+  let key = util.generateRandomUUID();
   try {
-    let success = await postUploadItem(textContent, sandboxPaths, dedupeKey);
-    for (let i = 0; i < sandboxPaths.length; i++) {
-      fileIo.unlinkSync(sandboxPaths[i]);
-    }
-    if (success) {
-      return new ShareResult(true, false, false);
-    }
-    return new ShareResult(false, true, false);
-  } catch (err) {
-    if (isNetworkError(err as Error)) {
-      await enqueue(context, dedupeKey, 'upload', textContent, sandboxPaths);
-      return new ShareResult(false, false, true);
-    }
-    return new ShareResult(false, false, false, (err as Error).message);
+    // Persist before the first request; process termination cannot lose accepted shares.
+    await enqueue(context, key, files.length ? 'upload' : 'text', text, files);
+  } catch (_error) {
+    cleanSharedFiles(files);
+    return new ShareResult(false, false, false, '无法保存待发送内容，请重新分享');
   }
+  try { await processQueue(context); }
+  catch (_error) { return new ShareResult(false, false, true, '内容已保留，请打开应用重试'); }
+  if (!await isQueued(context, key)) return new ShareResult(true, false, false);
+  let status = await queueStatus(context);
+  return new ShareResult(false, !await loadDeviceToken(), true, status.error);
 }

@@ -1,4 +1,4 @@
-import { and, desc, eq, exists, isNotNull, isNull, like, lt, or } from "drizzle-orm";
+import { and, desc, eq, exists, isNotNull, isNull, like, lt, or, sql } from "drizzle-orm";
 import { detect } from "@sendtomyself/shared/detect";
 import type {
   CreateItemInput,
@@ -27,6 +27,8 @@ export interface ListFilter {
   completed?: boolean;
   pinned?: boolean;
   sensitive?: boolean;
+  hasLinks?: boolean;
+  dueBefore?: string;
   q?: string;
   cursor?: string; // 不透明的 (createdAt, id) 游标；兼容旧 ISO 游标
   limit?: number;
@@ -187,6 +189,11 @@ export function listItems(f: ListFilter): ListResult {
   if (f.completed !== undefined) cond.push(eq(items.completed, f.completed));
   if (f.pinned !== undefined) cond.push(eq(items.pinned, f.pinned));
   if (f.sensitive !== undefined) cond.push(eq(items.sensitive, f.sensitive));
+  if (f.hasLinks !== undefined) {
+    const count = sql<number>`coalesce(json_array_length(${items.meta}, '$.suggestions.urls'), 0)`;
+    cond.push(f.hasLinks ? sql`${count} > 0` : sql`${count} = 0`);
+  }
+  if (f.dueBefore) cond.push(lt(items.dueAt, isoToSec(f.dueBefore)));
   if (f.q) {
     // 搜索覆盖：正文 + meta（链接标题/描述/URL/域名）+ 附件文件名（SPEC §11）
     const kw = `%${f.q}%`;
