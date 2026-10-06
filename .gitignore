@@ -1,5 +1,7 @@
 # deps
 node_modules/
+oh_modules/
+.ohpmrc
 .pnpm-store/
 
 # build

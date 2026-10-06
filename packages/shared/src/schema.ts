@@ -81,7 +81,7 @@ export const itemSchema = z.object({
   deletedAt: isoDateTime.optional(),
 
   /** 链接预览、自动识别结果等易变字段（Memos payload 模式）。 */
-  meta: z.record(z.unknown()).optional(),
+  meta: z.record(z.string(), z.unknown()).optional(),
 
   /** 同条记录的附件（随时间线一并下发，便于直接渲染）。 */
   attachments: z.array(attachmentSchema).optional(),

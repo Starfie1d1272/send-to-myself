@@ -21,12 +21,14 @@ jobs:
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
-          node-version: 24
+          node-version-file: .node-version
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
 
       - run: pnpm typecheck
+
+      - run: pnpm test
 
       - run: pnpm --filter @sendtomyself/web build
 
