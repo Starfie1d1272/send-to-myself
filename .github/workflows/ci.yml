@@ -40,7 +40,7 @@ jobs:
 
       - name: Package locally installable Raycast extension
         working-directory: apps/raycast
-        run: zip -r ../../sendtomyself-raycast.zip src assets package.json tsconfig.json README.md
+        run: zip -r ../../sendtomyself-raycast.zip src assets package.json tsconfig.json README.md LICENSE
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
