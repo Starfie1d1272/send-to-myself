@@ -35,3 +35,7 @@ uploads/
 apps/android/android/
 apps/desktop/src-tauri/target/
 apps/harmony/build/
+
+# Raycast generated definitions / CI package
+apps/raycast/raycast-env.d.ts
+sendtomyself-raycast.zip

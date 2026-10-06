@@ -9,7 +9,7 @@
     "node": ">=24.21.0 <25 || >=26"
   },
   "scripts": {
-    "test": "pnpm --filter @sendtomyself/shared test && pnpm --filter @sendtomyself/api test && pnpm --filter @sendtomyself/web test && node --test scripts/cloud-sync.test.mjs",
+    "test": "pnpm --filter @sendtomyself/shared test && pnpm --filter @sendtomyself/api test && pnpm --filter @sendtomyself/web test && node --test scripts/cloud-sync.test.mjs && pnpm --filter send-to-myself-raycast test",
     "dev": "pnpm --filter @sendtomyself/api --filter @sendtomyself/web --parallel run dev",
     "typecheck": "pnpm -r run typecheck",
     "test:recovery": "node --test scripts/recovery.test.mjs"

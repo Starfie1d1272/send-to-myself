@@ -36,6 +36,17 @@ jobs:
 
       - run: pnpm --filter desktop build
 
+      - run: pnpm --filter send-to-myself-raycast build
+
+      - name: Package locally installable Raycast extension
+        working-directory: apps/raycast
+        run: zip -r ../../sendtomyself-raycast.zip src assets package.json tsconfig.json README.md
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: sendtomyself-raycast
+          path: sendtomyself-raycast.zip
+
       - run: docker build -t send-to-myself:ci .
 
       - name: Docker backup and restore rehearsal

@@ -53,6 +53,10 @@ jobs:
           # "Completion callback never invoked!" → 强制单线程规避
           npm_config_jobs: 1
 
+      - name: Test native clipboard permissions and image bounds
+        working-directory: apps/desktop/src-tauri
+        run: cargo test --lib --locked
+
       - name: Build app
         working-directory: apps/desktop
         run: pnpm tauri build

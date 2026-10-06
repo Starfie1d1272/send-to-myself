@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { copyImage } from "../lib/clipboard";
 import { shareAttachment } from "../lib/share";
 import type { Attachment } from "@sendtomyself/shared";
 import {
@@ -14,6 +15,7 @@ const isImage = (a: Attachment) => a.mimeType.startsWith("image/");
 
 export function Attachments({ items }: { items: Attachment[] }) {
   // 当前在看大图的原图 URL；null=未打开。单 WebView 壳里 target="_blank" 打不开，故用壳内弹层。
+  const [copied, setCopied] = useState<string | null>(null);
   const [shareError, setShareError] = useState("");
   const share = async (attachment: Attachment) => {
     setShareError("");
@@ -35,8 +37,8 @@ export function Attachments({ items }: { items: Attachment[] }) {
       {images.length > 0 && (
         <div className={`att__grid att__grid--${Math.min(images.length, 3)}`}>
           {images.map((a) => (
+            <div key={a.id}>
             <button
-              key={a.id}
               type="button"
               className="att__img"
               onClick={() => setViewing({ url: attachmentRawUrl(a.id), alt: a.filename })}
@@ -44,6 +46,12 @@ export function Attachments({ items }: { items: Attachment[] }) {
             >
               <img src={attachmentThumbUrl(a.id)} alt={a.filename} loading="lazy" />
             </button>
+            <button className="att__copy" onClick={async () => {
+              setShareError(""); setCopied(null);
+              if (await copyImage(attachmentRawUrl(a.id))) setCopied(a.id);
+              else setShareError("图片复制失败，请更新桌面客户端或下载后使用。");
+            }}>{copied === a.id ? "已复制图片" : "复制图片"}</button>
+            </div>
           ))}
         </div>
       )}
