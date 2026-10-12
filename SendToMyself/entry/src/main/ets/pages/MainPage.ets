@@ -1,6 +1,6 @@
 import { webview } from '@kit.ArkWeb';
 import { loadServerUrl, loadDeviceToken, removeDeviceToken } from '../common/AssetStore';
-import { checkTokenValid, loginAndMintToken } from '../common/AuthService';
+import { checkTokenValid, loginAndMintToken, LoginResultData } from '../common/AuthService';
 import { startNetMonitor, stopNetMonitor } from '../common/NetMonitor';
 import { processQueue, queueStatus } from '../common/QueueService';
 import { hilog } from '@kit.PerformanceAnalysisKit';
@@ -59,7 +59,7 @@ struct MainPage {
     }
     if (url && token) {
       let valid = await checkTokenValid();
-      if (valid) {
+      if (valid !== false) {
         try {
           let existing = webview.WebCookieManager.fetchCookieSync(url);
           hilog.info(DOMAIN, TAG, 'Cold start cookie check: %{public}s', existing ? 'found' : 'empty');
@@ -142,8 +142,16 @@ struct MainPage {
     this.busy = true;
     this.errorMsg = '';
     hilog.info(DOMAIN, TAG, 'Login clicked, url=%{public}s', this.serverUrl);
-    let result = await loginAndMintToken(this.serverUrl, this.password, '鸿蒙手机');
-    this.busy = false;
+    let result: LoginResultData;
+    try {
+      result = await loginAndMintToken(this.serverUrl, this.password, '鸿蒙手机');
+    } catch (_error) {
+      this.errorMsg = '无法完成登录或保存凭据，请重试';
+      hilog.error(DOMAIN, TAG, 'Login or credential storage failed');
+      return;
+    } finally {
+      this.busy = false;
+    }
     if (result.success) {
       this.hasToken = true;
       this.password = '';
