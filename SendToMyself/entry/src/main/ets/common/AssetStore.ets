@@ -58,7 +58,6 @@ export async function saveDeviceToken(token: string): Promise<void> {
   attr.set(asset.Tag.ALIAS, stringToArray(ASSET_ALIAS_DEVICE_TOKEN));
   attr.set(asset.Tag.SECRET, stringToArray(token));
   attr.set(asset.Tag.ACCESSIBILITY, asset.Accessibility.DEVICE_FIRST_UNLOCKED);
-  attr.set(asset.Tag.IS_PERSISTENT, true);
   await asset.add(attr);
 }
 
