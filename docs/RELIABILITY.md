@@ -51,6 +51,8 @@ CI 执行类型检查、以上回归、Web/桌面前端构建、Docker 构建及
 
 ## 鸿蒙真机验收（待完成）
 
+2026-10-12 的 Pura 70 Pro 本机隔离后端实测结果与剩余缺口见 [HARMONY_DEVICE_AUDIT.md](HARMONY_DEVICE_AUDIT.md)。
+
 按 [HARMONY_SHELL.md §10](HARMONY_SHELL.md#10-验收清单) 执行，并记录核心提交/镜像版本、手机型号、系统版本、壳构建版本及结果：
 
 - [ ] 登录成功、冷启动后令牌持久化、WebView 操作正常。
