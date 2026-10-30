@@ -12,7 +12,7 @@ interface CreateDeviceRequestBody {
   name: string;
 }
 
-interface LoginResultData {
+export interface LoginResultData {
   success: boolean;
   errorMessage?: string;
   retryAfter?: number;
@@ -103,7 +103,7 @@ export async function loginAndMintToken(serverUrl: string, password: string, dev
   return new LoginResultClass(true, undefined, undefined, cookie);
 }
 
-export async function checkTokenValid(): Promise<boolean> {
+export async function checkTokenValid(): Promise<boolean | undefined> {
   let token = await loadDeviceToken();
   if (!token) {
     return false;
@@ -111,12 +111,12 @@ export async function checkTokenValid(): Promise<boolean> {
   try {
     let response = await getJson('/api/auth/me');
     if (response.responseCode !== 200) {
-      return false;
+      return undefined;
     }
     let body: AuthMeResponse = JSON.parse(response.result as string) as AuthMeResponse;
     return body.authenticated === true;
   } catch (_e) {
-    return false;
+    return undefined;
   }
 }
 

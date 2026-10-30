@@ -2,7 +2,7 @@
 // This verifies logic, not an SDK build or device behavior.
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFileSync, mkdtempSync, rmSync, openSync, closeSync, copyFileSync, unlinkSync, existsSync, mkdirSync, writeFileSync, readSync } from "node:fs";
+import { constants, readFileSync, mkdtempSync, rmSync, openSync, closeSync, unlinkSync, existsSync, mkdirSync, writeFileSync, readSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, basename } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -39,7 +39,7 @@ function fixture(t) {
     "@kit.CoreFileKit": {
       fileUri: { FileUri: class { constructor(uri) { this.name = basename(uri); } } },
       fileIo: {
-        OpenMode: { READ_ONLY: 0, READ_WRITE: 2, CREATE: 64 },
+        OpenMode: { READ_ONLY: constants.O_RDONLY, READ_WRITE: constants.O_RDWR, CREATE: constants.O_CREAT },
         accessSync: existsSync,
         mkdirSync: (path) => mkdirSync(path, { recursive: true }),
         openSync: (path, flags) => { const fd = openSync(path, flags); openFiles.add(fd); return { fd,
@@ -48,7 +48,7 @@ function fixture(t) {
         }; },
         closeSync: (file) => { closeSync(file.fd); openFiles.delete(file.fd); },
         readSync: (fd, buffer) => readSync(fd, new Uint8Array(buffer), 0, buffer.byteLength, 0),
-        copyFileSync: (from, to) => copyFileSync(`/proc/self/fd/${from}`, `/proc/self/fd/${to}`),
+        copyFileSync: (from, to) => writeFileSync(to, readFileSync(from)),
         unlinkSync,
       },
     },
@@ -72,6 +72,45 @@ function fixture(t) {
 }
 const deferred = () => { let resolve; const promise = new Promise((r) => { resolve = r; }); return { promise, resolve }; };
 
+test("Harmony credentials survive module reload with ordinary encrypted assets", async () => {
+  const entries = new Map();
+  const asset = {
+    Tag: { ALIAS: "alias", SECRET: "secret", RETURN_TYPE: "return", ACCESSIBILITY: "access", IS_PERSISTENT: "persistent" },
+    ReturnType: { ALL: "all" }, Accessibility: { DEVICE_FIRST_UNLOCKED: "unlocked" },
+    add: async (attributes) => {
+      assert.equal(attributes.has("persistent"), false, "ordinary apps must not request uninstall-persistent storage");
+      entries.set(new TextDecoder().decode(attributes.get("alias")), attributes);
+    },
+    remove: async (query) => { entries.delete(new TextDecoder().decode(query.get("alias"))); },
+    query: async (query) => { const value = entries.get(new TextDecoder().decode(query.get("alias"))); return value ? [value] : []; },
+  };
+  const kits = {
+    "@kit.AssetStoreKit": { asset },
+    "@kit.ArkTS": { util: { TextEncoder: class { encodeInto(value) { return new TextEncoder().encode(value); } },
+      TextDecoder: { create: () => ({ decodeToString: (value) => new TextDecoder().decode(value) }) } } },
+  };
+  function load() {
+    const code = transformSync(readFileSync(new URL("AssetStore.ets", source), "utf8"), { loader: "ts", format: "cjs" }).code;
+    const module = { exports: {} };
+    new Function("require", "module", "exports", code)((name) => kits[name] ?? fixtureConstants(), module, module.exports);
+    return module.exports;
+  }
+  function fixtureConstants() {
+    const code = transformSync(readFileSync(new URL("Constants.ets", source), "utf8"), { loader: "ts", format: "cjs" }).code;
+    const module = { exports: {} };
+    new Function("module", "exports", code)(module, module.exports);
+    return module.exports;
+  }
+  const first = load();
+  await first.saveServerUrl("https://device-test.invalid");
+  await first.saveDeviceToken("test-device-token");
+  const restarted = load();
+  assert.equal(await restarted.loadServerUrl(), "https://device-test.invalid");
+  assert.equal(await restarted.loadDeviceToken(), "test-device-token");
+  await restarted.removeDeviceToken();
+  assert.equal(await first.loadDeviceToken(), undefined);
+});
+
 test("Harmony queue preserves concurrent arrivals and serializes overlapping drains", async (t) => {
   const f = fixture(t); const queue = f.load("./QueueService");
   const entered = deferred(); const finish = deferred();
@@ -90,6 +129,21 @@ test("Harmony queue preserves concurrent arrivals and serializes overlapping dra
   await queue.processQueue(f.context);
   assert.equal((await queue.queueStatus(f.context)).count, 0);
   assert.equal(f.requests.length, 3);
+});
+
+test("Harmony cold start distinguishes unreachable auth from an invalid token", async (t) => {
+  const f = fixture(t);
+  const auth = f.load("./AuthService");
+  f.state.respond = async () => { throw new Error("offline"); };
+  assert.equal(await auth.checkTokenValid(), undefined);
+  f.state.respond = async () => ({ responseCode: 503 });
+  assert.equal(await auth.checkTokenValid(), undefined);
+  f.state.respond = async () => ({ responseCode: 200, result: JSON.stringify({ authenticated: false }) });
+  assert.equal(await auth.checkTokenValid(), false);
+  f.state.respond = async () => ({ responseCode: 200, result: JSON.stringify({ authenticated: true }) });
+  assert.equal(await auth.checkTokenValid(), true);
+  f.state.token = undefined;
+  assert.equal(await auth.checkTokenValid(), false);
 });
 
 test("Harmony 401 pauses without dropping records or files; login retry cleans acknowledged files", async (t) => {

@@ -66,11 +66,11 @@ export function copySharedFile(context: common.Context, uri: string, title?: str
   try {
     let destination = fileIo.openSync(path, fileIo.OpenMode.READ_WRITE | fileIo.OpenMode.CREATE);
     try { fileIo.copyFileSync(source.fd, destination.fd); }
-    catch (error) { try { fileIo.unlinkSync(path); } catch (_err) {} throw error; }
+    catch (error) { try { fileIo.unlinkSync(path); } catch (_err) {} throw error as Error; }
     finally { fileIo.closeSync(destination); }
   } finally { fileIo.closeSync(source); }
   try { return new SharedFile(path, filename, sniffMime(path) ?? mimeForFile(filename, utd)); }
-  catch (error) { try { fileIo.unlinkSync(path); } catch (_err) {} throw error; }
+  catch (error) { try { fileIo.unlinkSync(path); } catch (_err) {} throw error as Error; }
 }
 
 export function cleanSharedFiles(files: SharedFileData[]): void {

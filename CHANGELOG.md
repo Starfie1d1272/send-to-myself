@@ -5,6 +5,13 @@
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-10-30
+
+### 安全与维护
+- 将 API 与共享包的 Zod 更新至 4.6.6，修复高危漏洞 GHSA-mrhx-c7xc-m3w5。
+- 更新 CI 与桌面构建使用的 setup-node 和 upload-artifact Actions。
+- 修复鸿蒙登录凭据持久化、忙碌状态恢复及离线认证判定；设备审计和未验收范围见 [鸿蒙设备审计](docs/HARMONY_DEVICE_AUDIT.md)。
+
 ### Raycast 与桌面主动复制
 
 - 新增 Mac / Windows Raycast 本地扩展：发送剪贴板文字/文件、带附件随手记录、分页搜索最近记录、复制文字或粘贴到当前应用。保留草稿及失败请求幂等键。
@@ -66,3 +73,4 @@
 [1.0.0]: https://github.com/Starfie1d1272/send-to-myself/releases/tag/v1.0.0
 
 [1.0.1]: https://github.com/Starfie1d1272/send-to-myself/releases/tag/v1.0.1
+[1.0.2]: https://github.com/Starfie1d1272/send-to-myself/releases/tag/v1.0.2
