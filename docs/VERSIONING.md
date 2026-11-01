@@ -14,7 +14,7 @@
 |---|---|---|
 | 核心（api / web / 根） | `package.json` 的 `version` | 1.0.2 |
 | 桌面壳（Tauri） | `apps/desktop/src-tauri/tauri.conf.json` + `Cargo.toml` 的 `version` | 1.0.0 |
-| 鸿蒙壳（ArkTS） | `SendToMyself/AppScope/app.json5` 的 `versionName` / `versionCode` | 1.1.0（开发中，待真机验收） |
+| 鸿蒙壳（ArkTS） | `SendToMyself/AppScope/app.json5` 的 `versionName` / `versionCode` | 1.1.0（RC 预发布，待真机验收） |
 
 ## Git Tag 与发布
 
@@ -22,7 +22,7 @@
 |---|---|---|---|
 | 核心 | `v<x.y.z>`，如 `v1.0.0` | `docker-image.yml` | GHCR 多架构镜像 `:x.y.z` + `:latest` |
 | 桌面壳 | `desktop-v<x.y.z>`，如 `desktop-v1.0.0` | `desktop-build.yml` | GitHub Release + DMG / MSI / EXE |
-| 鸿蒙壳 | 不打 git tag | — | DevEco 打包，本地安装 / 应用市场 |
+| 鸿蒙壳 | `harmony-v<x.y.z>`；预发布追加 `-rc.N` | — | GitHub Release 附未签名 HAP；本地签名包用于设备安装 |
 
 > 两个 workflow 的 tag 触发已分离：打核心 `v*` 不会连带触发桌面打包，反之亦然。任一 workflow 仍可用手动触发（workflow_dispatch）随时自测。
 
@@ -46,7 +46,7 @@ git tag desktop-v1.0.1 && git push origin desktop-v1.0.1
 # → 自动构建 DMG / MSI / EXE 并附到 GitHub Release
 ```
 
-**发鸿蒙壳版本**：在 DevEco 里改 `app.json5` 的 `versionName` / `versionCode`，打包签名后分发。
+**发鸿蒙壳版本**：在 DevEco 里更新 `app.json5` 的 `versionName` / `versionCode`，构建 HAP。真机验收前使用 `harmony-v<x.y.z>-rc.N` 标签和 GitHub prerelease。公开附件提供未签名 HAP、配套 Web 产物、校验和及验收说明；设备绑定的调试签名包留在本地。应用市场上架单独处理。
 
 ## 改 bug 发 patch
 
