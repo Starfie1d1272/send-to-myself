@@ -127,7 +127,7 @@ export function Composer() {
       <textarea
         ref={ref}
         className="composer__input"
-        placeholder="写点什么，发给自己…（可粘贴 / 拖拽图片文件）"
+        placeholder="写点什么，发给自己…"
         value={value}
         rows={1}
         disabled={pending || !ready}

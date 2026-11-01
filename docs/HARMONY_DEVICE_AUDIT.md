@@ -1,5 +1,44 @@
 # Pura 70 Pro 适配调查
 
+## 2026-11-01：手机布局与 ArkWeb 操作补充
+
+- 消息操作栏默认显示，移除 hover 才显示的规则；手机输入区隐藏键盘快捷键提示，发送按钮保持横排。NAS 使用核心 1.0.2 加本次 Web 构建的本地预览镜像，保留原部署配置以供回退。
+- Web 构建和鸿蒙 assembleHap / SignHap 通过，覆盖安装到同一 Pura 70 Pro。真机截图确认操作栏可见、输入法弹出时按钮布局正常。
+- 登录令牌在线校验成功后，首页附带启动标记以避开旧 HTML 缓存；网络校验不确定时保留原始入口。增加原生下拉刷新，真机日志确认触发重新加载并到达 onPageEnd / 100%。
+- 图片原图长按菜单增加 ArkWeb copyImage；跨应用粘贴未验收通过。保存原图沿用 startDownload + 系统保存选择器，本轮确认选择器再次出现并取消。
+- API 24 的 saveImage 曾尝试接入，但该真机未观察到保存选择器，最终代码保留已验证的下载路径。API 存在不代表当前集成完成验收。
+- 本轮界面修改未新增或运行自动化测试。深色、大字体、横屏与跨应用图片复制仍待验收。
+
+后续优先级：先完成原生向外分享和队列逐条管理；大附件传输再评估系统传输代理；最后评估快速发送卡片与小艺意图。当前主体是 ArkWeb，target SDK 升级本身不会重做网页交互。
+
+参考：[ArkWeb 上下文菜单接口](https://developer.huawei.com/consumer/cn/doc/doccenter-references/api/arkts-basic-components-web-webcontextmenuresult)、[Intents Kit](https://developer.huawei.com/consumer/cn/sdk/intents-kit)。
+
+## 2026-11-01：NAS 附件收发与恢复验收
+
+本节更新 NAS、文件保存和离线附件的验收状态；下方 2026-10-12 内容保留为历史记录。
+
+- 设备：HUAWEI Pura 70 Pro，OpenHarmony-7.0.0.111；HoKit HDC 服务端口 18710。
+- 服务：同一 NAS 的 `http://192.168.144.1:8799`，核心 1.0.2；原生登录及覆盖安装后登录保持通过。
+- 客户端：基于 main `b604a8c` 修复，鸿蒙壳 1.0.1 / 1000001。本机已有 HarmonyOS Command Line Tools 完成 assembleHap 与 SignHap，HDC replace 安装。
+- NAS 创建专用 PNG/PDF 后，手机时间线实时显示，图片可打开大图。
+- PDF 下载此前没有保存入口；新增 WebDownloadDelegate，下载完成后经 DocumentViewPicker 保存。图片可长按保存原图，缩略图入口也下载原图。
+- 两个文件保存到手机 Download 后，通过 WebView 系统文件选择器多选并上传；NAS 读回原始字节和 SHA-256 均一致。
+- 系统文件管理中混合选择 PNG/PDF 时，原分享声明未覆盖 PDF 所属的 `general.composite-object`。补齐后“发给自己”出现在分享面板。
+- 原生分享上传曾返回 HTTP 400：补充 multipart Content-Type，并将正文和 dedupeKey 改为字符串；仅补请求头仍会失败，两项均需修正。
+- 短暂停止 NAS 的 sendtomyself 容器，HTTP 探测确认服务不可达；附件队列在 force-stop、冷启动后仍显示 1 条。服务恢复后的 HTTP 400 也保留该条；覆盖安装修复包后，启动自动补发成功。
+- 该条包含两个文件；补发字节哈希一致，队列清空，再次 force-stop/冷启动未新增记录。该用例覆盖服务不可达及恢复后启动补发，未验证飞行模式切换或后台网络回调自动补发。
+- 取消系统保存选择器后，下一次下载能再次打开选择器。
+- 11 项鸿蒙定向模拟回归通过，新增 multipart 文本与去重键编码回归。仓库未安装 esbuild，使用临时目录安装的 esbuild 0.25.12 执行同一测试及仓库 ArkTS 源码；真机与 SDK 构建证据独立于模拟测试。
+
+| 文件 | 字节数 | 原件、WebView 回传、原生队列补发的 SHA-256 |
+|---|---:|---|
+| phone-check.png | 405 | `3290f7f25d0e1a5b7e12ba3d513fbcc9d42065a545dcfaa2e44996728ea448ad` |
+| phone-check.pdf | 606 | `da8d1c67a0d100e5f37586be5082b230aa7843b0e03523e605a556084ed313c4` |
+
+剩余：原生向外直接分享、HTTP 图片剪贴板、逐条队列管理、后台网络切换、深色/键盘/大字体与大附件仍需独立验收。小附件通过不代表这些场景已通过。
+
+## 2026-10-12 历史调查
+
 调查日期：2026-10-12。代码基线：`main` 的 `53d0645`，修复提交 `2dbf787` 包含本次 ArkTS 编译、凭据保存和离线启动修复。
 
 ## 已取得的证据

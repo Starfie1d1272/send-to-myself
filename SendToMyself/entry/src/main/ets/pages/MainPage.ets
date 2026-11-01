@@ -6,6 +6,8 @@ import { processQueue, queueStatus } from '../common/QueueService';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { DOMAIN, TAG } from '../common/Constants';
 import { common } from '@kit.AbilityKit';
+import { WebDownloads } from '../common/WebDownloads';
+import { promptAction } from '@kit.ArkUI';
 
 // 与 Web 端 (apps/web/src/styles/global.css) 共用的设计语言
 const C_PAPER = '#f2ece1';
@@ -33,7 +35,11 @@ struct MainPage {
   @State pendingCount: number = 0;
   @State queueError: string = '';
   @State queueBusy: boolean = false;
+  @State refreshing: boolean = false;
+  private pageRevision: number = Date.now();
+  private useFreshEntry: boolean = false;
   private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+  private downloads: WebDownloads = new WebDownloads(this.context);
 
   private injectCookieToWeb(cookie: string, url: string): void {
     if (!cookie || !url) {
@@ -60,6 +66,7 @@ struct MainPage {
     if (url && token) {
       let valid = await checkTokenValid();
       if (valid !== false) {
+        this.useFreshEntry = valid === true;
         try {
           let existing = webview.WebCookieManager.fetchCookieSync(url);
           hilog.info(DOMAIN, TAG, 'Cold start cookie check: %{public}s', existing ? 'found' : 'empty');
@@ -153,6 +160,7 @@ struct MainPage {
       this.busy = false;
     }
     if (result.success) {
+      this.useFreshEntry = true;
       this.hasToken = true;
       this.password = '';
       if (result.sessionCookie) {
@@ -168,55 +176,102 @@ struct MainPage {
     }
   }
 
+  private entryUrl(): string {
+    if (!this.useFreshEntry) return this.serverUrl;
+    const parts = this.serverUrl.split('#');
+    const separator = parts[0].includes('?') ? '&' : '?';
+    return parts[0] + separator + '_appLoad=' + this.pageRevision.toString() +
+      (parts.length > 1 ? '#' + parts.slice(1).join('#') : '');
+  }
+
   build() {
     Stack() {
       if (this.phase === 'web' && this.serverUrl.length > 0) {
-        Web({ src: this.serverUrl, controller: this.controller })
-          .domStorageAccess(true)
-          .onlineImageAccess(true)
-          .javaScriptAccess(true)
-          .mixedMode(MixedMode.All)
-          .mediaPlayGestureAccess(false)
-          .width('100%')
-          .height('100%')
-          .onLoadIntercept((event) => {
-            if (event) {
-              hilog.info(DOMAIN, TAG, 'Web onLoadIntercept: %{public}s', event.data.getRequestUrl());
-            }
-            return false;
-          })
-          .onPageBegin((event) => {
-            if (event) {
-              hilog.info(DOMAIN, TAG, 'Web onPageBegin: %{public}s', event.url);
-            }
-          })
-          .onPageEnd((event) => {
-            if (event) {
-              hilog.info(DOMAIN, TAG, 'Web onPageEnd: %{public}s', event.url);
-            }
-          })
-          .onProgressChange((event) => {
-            if (event) {
-              hilog.info(DOMAIN, TAG, 'Web progress: %{public}d', event.newProgress);
-            }
-          })
-          .onSslErrorEvent((event) => {
-            if (event) {
-              hilog.warn(DOMAIN, TAG, 'Web SSL error for %{public}s: %{public}s — blocked', event.url, event.error.toString());
-              event.handler.handleCancel();
-              this.errorMsg = '服务器证书验证失败，请检查证书与服务器地址';
-              this.phase = 'login';
-            }
-          })
-          .onErrorReceive((event) => {
-            if (event && event.request.isMainFrame()) {
-              let info = event.error.getErrorInfo();
-              let code = event.error.getErrorCode();
-              hilog.error(DOMAIN, TAG, 'Web main frame load failed [%{public}d]: %{public}s', code, info);
-              this.errorMsg = '页面加载失败 (' + code.toString() + ')';
-              this.phase = 'login';
-            }
-          })
+        Refresh({ refreshing: $$this.refreshing }) {
+          Web({ src: this.entryUrl(), controller: this.controller })
+            .nestedScroll({ scrollForward: NestedScrollMode.SELF_FIRST, scrollBackward: NestedScrollMode.SELF_FIRST })
+            .onControllerAttached(() => { this.downloads.attach(this.controller); })
+            .onContextMenuShow((event) => {
+              if (!event || event.param.getMediaType() !== ContextMenuMediaType.Image) return false;
+              const source = event.param.getSourceUrl();
+              const prefix = this.serverUrl.replace(/\/$/, '') + '/api/attachments/';
+              if (!source.startsWith(prefix)) return false;
+              const originalImage = /\/raw(\?.*)?$/.test(source);
+              const downloadUrl = source.replace(/\/(thumb|raw)(\?.*)?$/, '/raw?download=1');
+              const actions: SheetInfo[] = [];
+              if (originalImage) {
+                actions.push({ title: '复制图片', action: () => {
+                  try { event.result.copyImage(); }
+                  finally { event.result.closeContextMenu(); }
+                } });
+              }
+              actions.push({ title: '保存原图', action: () => {
+                try {
+                  this.controller.startDownload(downloadUrl);
+                } catch (_error) {
+                  promptAction.showToast({ message: '无法开始下载，请重试' });
+                } finally { event.result.closeContextMenu(); }
+              } });
+              this.getUIContext().showActionSheet({
+                title: '图片',
+                message: originalImage ? '复制到其他应用，或保存到文件夹' : '保存原始图片到文件夹',
+                sheets: actions,
+                cancel: () => { event.result.closeContextMenu(); }
+              });
+              return true;
+            })
+            .domStorageAccess(true)
+            .onlineImageAccess(true)
+            .javaScriptAccess(true)
+            .mixedMode(MixedMode.All)
+            .mediaPlayGestureAccess(false)
+            .width('100%')
+            .height('100%')
+            .onLoadIntercept((event) => {
+              if (event) {
+                hilog.info(DOMAIN, TAG, 'Web onLoadIntercept: %{public}s', event.data.getRequestUrl());
+              }
+              return false;
+            })
+            .onPageBegin((event) => {
+              if (event) {
+                hilog.info(DOMAIN, TAG, 'Web onPageBegin: %{public}s', event.url);
+              }
+            })
+            .onPageEnd((event) => {
+              this.refreshing = false;
+              if (event) {
+                hilog.info(DOMAIN, TAG, 'Web onPageEnd: %{public}s', event.url);
+              }
+            })
+            .onProgressChange((event) => {
+              if (event) {
+                hilog.info(DOMAIN, TAG, 'Web progress: %{public}d', event.newProgress);
+              }
+            })
+            .onSslErrorEvent((event) => {
+              if (event) {
+                hilog.warn(DOMAIN, TAG, 'Web SSL error for %{public}s: %{public}s — blocked', event.url, event.error.toString());
+                event.handler.handleCancel();
+                this.errorMsg = '服务器证书验证失败，请检查证书与服务器地址';
+                this.phase = 'login';
+              }
+            })
+            .onErrorReceive((event) => {
+              this.refreshing = false;
+              if (event && event.request.isMainFrame()) {
+                let info = event.error.getErrorInfo();
+                let code = event.error.getErrorCode();
+                hilog.error(DOMAIN, TAG, 'Web main frame load failed [%{public}d]: %{public}s', code, info);
+                this.errorMsg = '页面加载失败 (' + code.toString() + ')';
+                this.phase = 'login';
+              }
+            })
+        }
+        .width('100%').height('100%')
+        .onRefreshing(() => {
+          this.controller.refresh();
+        })
       } else if (this.phase === 'login') {
         this.LoginView()
       } else {

@@ -1,6 +1,5 @@
 import { http } from '@kit.NetworkKit';
 import { loadDeviceToken, removeDeviceToken, loadServerUrl } from './AssetStore';
-import { util } from '@kit.ArkTS';
 import { SharedFileData } from './ShareFiles';
 
 class HttpError extends Error {
@@ -74,13 +73,13 @@ export async function postTextItem(content: string, dedupeKey: string): Promise<
 export async function postUploadItem(content: string | undefined, files: SharedFileData[], dedupeKey: string): Promise<boolean> {
   let token = await requireToken();
   let parts: http.MultiFormData[] = [];
-  if (content && content.length > 0) parts.push({ name: 'content', contentType: 'text/plain', data: stringToArray(content) });
+  if (content && content.length > 0) parts.push({ name: 'content', contentType: 'text/plain', data: content });
   for (let i = 0; i < files.length; i++) {
     parts.push({ name: 'files', contentType: files[i].mimeType, filePath: files[i].path, remoteFileName: files[i].filename });
   }
-  parts.push({ name: 'dedupeKey', contentType: 'text/plain', data: stringToArray(dedupeKey) });
+  parts.push({ name: 'dedupeKey', contentType: 'text/plain', data: dedupeKey });
   return accepted(await request('/api/items/upload', { method: http.RequestMethod.POST,
-    header: { 'Authorization': 'Bearer ' + token }, multiFormDataList: parts,
+    header: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'multipart/form-data' }, multiFormDataList: parts,
     connectTimeout: 60000, readTimeout: 60000 }));
 }
 
@@ -105,9 +104,4 @@ export function extractCookieFromResponse(response: http.HttpResponse): string {
     return result;
   }
   return '';
-}
-
-function stringToArray(str: string): Uint8Array {
-  let textEncoder = new util.TextEncoder();
-  return textEncoder.encodeInto(str);
 }

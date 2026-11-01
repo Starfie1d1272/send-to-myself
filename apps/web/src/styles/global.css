@@ -145,6 +145,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   margin-top: 10px;
   padding-top: 10px;
   border-top: 1px solid var(--line);
@@ -158,6 +159,8 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 7px;
+  flex-shrink: 0;
+  white-space: nowrap;
   border: none;
   border-radius: 999px;
   padding: 9px 18px;
@@ -588,17 +591,6 @@ body {
   align-items: center;
   gap: 2px;
   flex: none;
-}
-@media (hover: hover) {
-  .actions {
-    opacity: 0;
-    transform: translateX(4px);
-    transition: opacity 0.16s, transform 0.16s;
-  }
-  .item:hover .actions {
-    opacity: 1;
-    transform: none;
-  }
 }
 .icon-btn {
   display: grid;
@@ -1149,6 +1141,24 @@ body {
   .actions {
     align-self: flex-end;
     margin-top: 4px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    max-width: 100%;
+  }
+  .actions .icon-btn {
+    width: 36px;
+    height: 40px;
+    color: var(--ink-soft);
+  }
+  .composer__hint {
+    display: none;
+  }
+  .attach-btn {
+    width: 40px;
+    height: 40px;
+  }
+  .send {
+    min-height: 40px;
   }
 }
 
