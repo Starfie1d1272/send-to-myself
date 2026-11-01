@@ -43,6 +43,15 @@ struct MainPage {
   private downloads: WebDownloads = new WebDownloads(this.context);
   private nativeBridge: NativeBridge = new NativeBridge(this.context, this.controller, async (id: string, action: string) => {
     await this.getUIContext().getRouter().pushUrl({ url: 'pages/TransfersPage', params: { downloadId: id, action: action } });
+  }, () => {
+    this.getUIContext().showActionSheet({
+      title: '文件与传输', message: '',
+      sheets: [
+        { title: '发送文件', action: () => { this.getUIContext().getRouter().pushUrl({ url: 'pages/UploadPage' }); } },
+        { title: this.pendingCount > 0 ? '传输记录 · ' + this.pendingCount.toString() + ' 条待发送' : '传输记录',
+          action: () => { this.getUIContext().getRouter().pushUrl({ url: 'pages/TransfersPage' }); } }
+      ]
+    });
   });
 
   private injectCookieToWeb(cookie: string, url: string): void {
@@ -192,12 +201,6 @@ struct MainPage {
     Stack() {
       if (this.phase === 'web' && this.serverUrl.length > 0) {
         Column() {
-          Row({ space: 8 }) {
-            Button('后台发送文件').fontSize(13)
-              .onClick(() => { this.getUIContext().getRouter().pushUrl({ url: 'pages/UploadPage' }); })
-            Button(this.pendingCount > 0 ? '传输 · ' + this.pendingCount.toString() + ' 条待发送' : '传输与待发送').fontSize(13)
-              .onClick(() => { this.getUIContext().getRouter().pushUrl({ url: 'pages/TransfersPage' }); })
-          }.padding(8).width('100%').justifyContent(FlexAlign.End)
           Refresh({ refreshing: $$this.refreshing }) {
             Web({ src: this.entryUrl(), controller: this.controller })
               .nestedScroll({ scrollForward: NestedScrollMode.SELF_FIRST, scrollBackward: NestedScrollMode.SELF_FIRST })
@@ -205,7 +208,7 @@ struct MainPage {
                 this.downloads.attach(this.controller);
                 try {
                   this.controller.registerJavaScriptProxy(this.nativeBridge, 'stmNative', [],
-                    ['shareAttachment', 'saveAttachment'], bridgePermission(this.serverUrl));
+                    ['shareAttachment', 'saveAttachment', 'openTools'], bridgePermission(this.serverUrl));
                 } catch (_error) { promptAction.showToast({ message: '原生分享入口暂不可用，请重新打开应用' }); }
               })
               .onContextMenuShow((event) => {

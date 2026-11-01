@@ -22,10 +22,18 @@ export class NativeBridge {
   private context: common.UIAbilityContext;
   private controller: webview.WebviewController;
   private open: (id: string, action: string) => Promise<void>;
+  private showTools: () => void;
   private busy: boolean = false;
   constructor(context: common.UIAbilityContext, controller: webview.WebviewController,
-    open: (id: string, action: string) => Promise<void>) {
-    this.context = context; this.controller = controller; this.open = open;
+    open: (id: string, action: string) => Promise<void>, showTools: () => void = () => {}) {
+    this.context = context; this.controller = controller; this.open = open; this.showTools = showTools;
+  }
+  async openTools(): Promise<string> {
+    const server = await loadServerUrl();
+    if (!server || new url.URL(this.controller.getUrl()).origin !== new url.URL(server).origin ||
+      AppStorage.get<boolean>('appForeground') === false) throw new Error('请回到应用首页操作');
+    this.showTools();
+    return 'opened';
   }
   private async prepare(id: string, filename: string, mimeType: string, size: number, action: string): Promise<string> {
     if (this.busy) throw new Error('正在准备附件，请稍后');

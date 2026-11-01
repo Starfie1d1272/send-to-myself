@@ -521,3 +521,21 @@ test("download filenames stay within the local UTF-8 name limit and retain their
   assert.ok(name.endsWith(".pdf"));
   assert.equal(safeFilename(".."), "attachment");
 });
+
+test("native tools menu requires the configured origin and foreground app", async (t) => {
+  const f = fixture(t);
+  const { NativeBridge } = f.load("./NativeBridge");
+  const previous = globalThis.AppStorage;
+  let foreground = true;
+  let current = f.state.server;
+  let opened = 0;
+  globalThis.AppStorage = { get: () => foreground };
+  t.after(() => { globalThis.AppStorage = previous; });
+  const bridge = new NativeBridge(f.context, { getUrl: () => current }, async () => {}, () => { opened++; });
+  assert.equal(await bridge.openTools(), "opened");
+  current = "https://evil.invalid";
+  await assert.rejects(bridge.openTools(), /首页/);
+  current = f.state.server; foreground = false;
+  await assert.rejects(bridge.openTools(), /首页/);
+  assert.equal(opened, 1);
+});
