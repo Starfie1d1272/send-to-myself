@@ -1,5 +1,18 @@
 # Pura 70 Pro 适配调查
 
+## 2026-11-01：手机布局与 ArkWeb 操作补充
+
+- 消息操作栏默认显示，移除 hover 才显示的规则；手机输入区隐藏键盘快捷键提示，发送按钮保持横排。NAS 使用核心 1.0.2 加本次 Web 构建的本地预览镜像，保留原部署配置以供回退。
+- Web 构建和鸿蒙 assembleHap / SignHap 通过，覆盖安装到同一 Pura 70 Pro。真机截图确认操作栏可见、输入法弹出时按钮布局正常。
+- 登录令牌在线校验成功后，首页附带启动标记以避开旧 HTML 缓存；网络校验不确定时保留原始入口。增加原生下拉刷新，真机日志确认触发重新加载并到达 onPageEnd / 100%。
+- 图片原图长按菜单增加 ArkWeb copyImage；跨应用粘贴未验收通过。保存原图沿用 startDownload + 系统保存选择器，本轮确认选择器再次出现并取消。
+- API 24 的 saveImage 曾尝试接入，但该真机未观察到保存选择器，最终代码保留已验证的下载路径。API 存在不代表当前集成完成验收。
+- 本轮界面修改未新增或运行自动化测试。深色、大字体、横屏与跨应用图片复制仍待验收。
+
+后续优先级：先完成原生向外分享和队列逐条管理；大附件传输再评估系统传输代理；最后评估快速发送卡片与小艺意图。当前主体是 ArkWeb，target SDK 升级本身不会重做网页交互。
+
+参考：[ArkWeb 上下文菜单接口](https://developer.huawei.com/consumer/cn/doc/doccenter-references/api/arkts-basic-components-web-webcontextmenuresult)、[Intents Kit](https://developer.huawei.com/consumer/cn/sdk/intents-kit)。
+
 ## 2026-11-01：NAS 附件收发与恢复验收
 
 本节更新 NAS、文件保存和离线附件的验收状态；下方 2026-10-12 内容保留为历史记录。
