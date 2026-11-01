@@ -131,6 +131,26 @@ test("Harmony queue preserves concurrent arrivals and serializes overlapping dra
   assert.equal(f.requests.length, 3);
 });
 
+test("Harmony multipart preserves text and dedupe keys as UTF-8 fields", async (t) => {
+  const f = fixture(t);
+  const client = f.load("./HttpClient");
+  const key = randomUUID();
+  f.state.respond = async (_url, options) => {
+    assert.equal(options.header["Content-Type"], "multipart/form-data");
+    const form = new FormData();
+    for (const part of options.multiFormDataList) {
+      // Native multipart accepts strings or ArrayBuffer; typed arrays are objects.
+      assert.equal(typeof part.data, "string");
+      form.append(part.name, part.data);
+    }
+    const parsed = await new Request("https://server.invalid", { method: "POST", body: form }).formData();
+    assert.equal(parsed.get("content"), "手机附件 · 中文正文");
+    assert.equal(parsed.get("dedupeKey"), key);
+    return { responseCode: 201 };
+  };
+  assert.equal(await client.postUploadItem("手机附件 · 中文正文", [], key), true);
+});
+
 test("Harmony cold start distinguishes unreachable auth from an invalid token", async (t) => {
   const f = fixture(t);
   const auth = f.load("./AuthService");

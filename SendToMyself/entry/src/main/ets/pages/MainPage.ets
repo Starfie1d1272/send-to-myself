@@ -6,6 +6,7 @@ import { processQueue, queueStatus } from '../common/QueueService';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { DOMAIN, TAG } from '../common/Constants';
 import { common } from '@kit.AbilityKit';
+import { WebDownloads } from '../common/WebDownloads';
 
 // 与 Web 端 (apps/web/src/styles/global.css) 共用的设计语言
 const C_PAPER = '#f2ece1';
@@ -34,6 +35,7 @@ struct MainPage {
   @State queueError: string = '';
   @State queueBusy: boolean = false;
   private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+  private downloads: WebDownloads = new WebDownloads(this.context);
 
   private injectCookieToWeb(cookie: string, url: string): void {
     if (!cookie || !url) {
@@ -172,6 +174,21 @@ struct MainPage {
     Stack() {
       if (this.phase === 'web' && this.serverUrl.length > 0) {
         Web({ src: this.serverUrl, controller: this.controller })
+          .onControllerAttached(() => { this.downloads.attach(this.controller); })
+          .onContextMenuShow((event) => {
+            if (!event || event.param.getMediaType() !== ContextMenuMediaType.Image) return false;
+            const source = event.param.getSourceUrl();
+            const prefix = this.serverUrl.replace(/\/$/, '') + '/api/attachments/';
+            if (!source.startsWith(prefix)) return false;
+            const downloadUrl = source.replace(/\/(thumb|raw)(\?.*)?$/, '/raw?download=1');
+            AlertDialog.show({
+              title: '保存图片',
+              message: '将原图保存到所选文件夹',
+              primaryButton: { value: '取消', action: () => {} },
+              secondaryButton: { value: '保存', action: () => { this.controller.startDownload(downloadUrl); } }
+            });
+            return true;
+          })
           .domStorageAccess(true)
           .onlineImageAccess(true)
           .javaScriptAccess(true)
