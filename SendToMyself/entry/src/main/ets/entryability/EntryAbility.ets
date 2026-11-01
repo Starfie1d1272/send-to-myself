@@ -34,10 +34,12 @@ export default class EntryAbility extends UIAbility {
   }
 
   onForeground(): void {
+    AppStorage.setOrCreate('appForeground', true);
     hilog.info(DOMAIN, 'SendToMyself', 'EntryAbility onForeground');
   }
 
   onBackground(): void {
+    AppStorage.setOrCreate('appForeground', false);
     hilog.info(DOMAIN, 'SendToMyself', 'EntryAbility onBackground');
   }
 }

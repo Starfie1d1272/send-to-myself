@@ -1,47 +1,31 @@
-# HarmonyOS NEXT 原生薄壳 — 实现交接文档
+# HarmonyOS 客户端实现与接口契约
 
-> 这份文档是给 **DevEco Code / DevEco Studio AI 助手** 的完整契约，用来生成 SendToMyself 的鸿蒙原生壳。
-> 把整篇喂给它即可，无需它去猜后端。读者假定熟悉 ArkTS / ArkUI / Stage 模型，但**不了解本项目后端**。
->
-> 配套：产品边界见 `docs/SPEC.md`（尤其 §12 认证/部署、§14 客户端策略）；数据契约以 `packages/shared/src/schema.ts` 为最终事实来源。
+截至 2026-11-01，客户端主体为 ArkWeb，原生侧负责登录、系统分享与持久传输。1.1.0 的后台任务、逐条管理与向外分享已实现，待真机验收；详见 [传输实现与验收清单](HARMONY_TRANSFERS.md)。历史设备证据见 [设备审计](HARMONY_DEVICE_AUDIT.md)。
 
----
+产品边界见 `docs/SPEC.md`，数据契约以 `packages/shared/src/schema.ts` 为准。
 
-## 0. 这个壳要做什么（一句话）
+## 0. 客户端职责
 
-**它不是一个 App，是一层壳。** 业务逻辑 100% 在服务端，壳只干四件事：
-
-1. **登录**：首次输入服务器地址 + 口令，拿到「设备令牌」并安全保存。
-2. **展示**：一个全屏 `Web` 组件（ArkWeb）加载部署好的网页，用户日常就在里面用。
-3. **接收系统分享**：从别的 App（浏览器、微信、相册…）分享文字/图片/文件进来 → 直接上传到服务端。
-4. **离线补发**：分享时若断网，排队，联网后自动重发。
-
-> **核心原则**：能在 WebView 里做的，绝不在原生侧重写。原生侧只写「分享桥 + 令牌存储 + 离线队列」这三块 WebView 做不到的。
-
----
+1. 登录并在关键资产中保存服务器与设备令牌。
+2. 用 ArkWeb 展示服务端网页，原生工具栏提供后台发送和传输管理入口。
+3. 通过 ShareExtensionAbility 接收系统分享，内容先持久化后发送。
+4. 用系统传输代理管理附件后台上传/下载，支持逐条查看、重试和取消。
+5. 将下载完成的附件通过文件 URI 交给系统分享，或通过文件选择器保存。
 
 ## 1. 整体架构
 
-```
-┌─────────────────────────── 鸿蒙原生壳 (ArkTS) ───────────────────────────┐
-│                                                                          │
-│  EntryAbility (UIAbility)                                                 │
-│    └─ 全屏 Web 组件  ──────────────►  加载 https://<你的域名>/             │
-│                                       (用户日常就在这个 WebView 里)        │
-│                                                                          │
-│  ShareAbility (UIAbility, 处理系统分享 want)                              │
-│    ├─ 解析 want.parameters 里的分享内容（文本 / 图片 / 文件）              │
-│    ├─ 读取本地保存的设备令牌                                              │
-│    ├─ POST 到服务端 API（带 Authorization: Bearer）                        │
-│    └─ 失败 → 写入离线队列，注册网络恢复回调重试                            │
-│                                                                          │
-│  本地存储                                                                 │
-│    ├─ Preferences(加密) / 关键资产：serverUrl + deviceToken               │
-│    └─ Preferences / 文件：离线发送队列                                     │
-└──────────────────────────────────────────────────────────────────────────┘
-                                    │ HTTPS
-                                    ▼
-                        现有 Hono 后端（无需改动，已支持 Bearer + 幂等）
+```text
+EntryAbility / MainPage
+  ├─ ArkWeb → 时间线、搜索、普通网页输入
+  ├─ UploadPage → 文件选择、持久化、后台上传
+  ├─ TransfersPage → 逐条队列、进度、下载完成后的分享/保存
+  └─ NativeBridge → 受来源限制的网页附件操作
+
+ShareExtAbility.onSessionCreate
+  └─ ShareHandler → ShareFiles → QueueService → request.agent / HTTP
+
+关键资产：serverUrl、deviceToken
+Preferences + filesDir：发送队列、下载记录、持久文件
 ```
 
 **两个 Ability 共享同一份令牌存储**：WebView 自己持 cookie，但分享路径不经过 WebView，必须用 Bearer 令牌独立认证。这是整个设计的关键。
@@ -149,30 +133,11 @@ Base URL = 用户填的服务器地址，例如 `https://stm.example.com`。所�
 
 ---
 
-## 5. 系统分享接入（ShareAbility）
+## 5. 系统分享接入（ShareExtAbility）
 
-### 5.1 注册分享入口
-在 `module.json5` 声明一个 UIAbility，通过 `skills` 注册接收分享意图，声明支持的 `uri` / `mimeType`（`text/plain`、`image/*`、`application/*` 等）。其他 App 的「分享」面板里就会出现本应用。
+`module.json5` 中的 `ShareExtensionAbility` 声明 `ohos.want.action.sendData`，通过 `utd` 匹配文本、图片、文件及 PDF 所属的组合文档类型。
 
-### 5.2 处理流程
-```
-ShareAbility.onCreate / onNewWant(want):
-  1. 从 want.parameters 解析分享内容：
-       - 纯文本 → 取文本字符串
-       - 图片/文件 → 取 uri 列表，用文件接口读成可上传的数据
-  2. 生成 dedupeKey = 一个 uuid（util.generateRandomUUID()）
-  3. 读取本地 serverUrl + deviceToken（§6）
-       - 若无令牌 → 提示「请先在应用内登录」，拉起 EntryAbility 登录
-  4. 发送：
-       - 纯文本 → POST /api/items   {content, dedupeKey}
-       - 含文件 → POST /api/items/upload  (multipart: content?, files[], dedupeKey)
-       并带 Authorization: Bearer <token>
-  5. 成功(201) → toast「已发送」，结束 Ability（terminateSelf）
-     网络失败 → 写入离线队列（§7），toast「已加入待发送，联网后自动发送」，结束
-     401 → 清令牌，提示重新登录
-```
-
-> **体验要点**：分享应「一闪而过」——不弹自己的 UI，发完即关，像微信分享那样无感。只在「未登录」或「需要展示队列」时才显界面。
+`onSessionCreate` 加载 SharePage，并通过 `systemShare.getSharedData(want)` 读取记录。链接归入文本，文件 URI 通过异步复制转成持久副本；先保存队列，再派发对应的上传或文字请求。成功完成的文字请求显示“已发送”；后台任务显示当前状态，之后可在传输页查看。
 
 ---
 
@@ -185,23 +150,15 @@ ShareAbility.onCreate / onNewWant(want):
 
 ---
 
-## 7. 离线发送队列（§16 第 1 项，超越微信的关键体验）
+## 7. 持久队列与后台附件传输
 
-服务端已用 `dedupeKey` 保证幂等，**客户端可以放心无脑重试**。
+文本分享先入队再发送短 HTTP 请求；附件分享或原生文件选择通过 `request.agent` 的后台任务上传。`QueueService.ets` 保存内容、文件元数据、服务器、去重键和系统任务 ID，并兼容旧 `fileSandboxPaths`。
 
-队列项包含 `dedupeKey`、`kind`、`content`、`files`（持久路径、原文件名、MIME）、`serverUrl`、`createdAt`、`lastError`。
-兼容读取旧 `fileSandboxPaths`，但旧版缓存中已经被系统清理的文件无法凭代码恢复，原文件名和 MIME 也无法完整回溯。
+存储更新与逐条派发/删除均有跨进程文件锁。任务 ID 落盘后才开始传输；应用重启重新查询系统状态。成功确认后清理发送副本，失败保留；取消意图先持久化，系统任务移除成功后才删除文件。暂停/继续复用任务，失败重试保持去重键。
 
-- 分享内容先复制到 `filesDir/shared-queue` 并入队、flush，再尝试 HTTP 发送。
-- 进程内串行存储操作；主页面与分享扩展通过同一 `queue.lock` 文件的 OS 文件锁协调，并在锁内移除 Preferences 缓存后重新读取。
-- 网络请求期间不持有存储锁；成功后重新读取最新队列，仅移除该幂等键，再清理对应文件。
-- 只有成功响应可移除记录。401、断网、413 等错误均保留并记录原因；401/断网暂停本次补发。
-- 新队列项绑定服务器地址，切换服务器不会把它发往新地址；旧项没有服务器字段，仍按旧版行为使用当前服务器。
-- 应用启动、进入页面、登录成功、网络恢复触发补发，主界面显示待发送数量/错误及手动重试入口。
-- 分享页显示“已保存在本机”及失败原因。应用关闭后是否能后台补发取决于系统调度，不能保证立即执行。
-- 单条查看/删除待发送内容仍待实现；不要用清理应用数据处理发送失败。
+应用启动、网络恢复和明确重试触发队列处理。传输页轮询状态，失败文字项不会随进度轮询反复发送。终止的上传任务可逐条重试；当前没有服务端分片续传协议。
 
-以上非 UI 逻辑有模拟平台回归；文件锁、分享 URI、Preferences 跨进程和 ArkUI 状态更新仍需 SDK 构建及真机验收。
+系统后台执行、目标应用 URI 接收和完整恢复场景仍待真机验收；实现和限制见 [HARMONY_TRANSFERS.md](HARMONY_TRANSFERS.md)。
 
 ---
 
@@ -211,20 +168,14 @@ ShareAbility.onCreate / onNewWant(want):
 - TLS 证书错误取消加载，修正证书或服务器地址后重试，不允许无条件放行。
 - 让 WebView 自行处理 cookie（用户在网页里也能登录，cookie 与设备令牌互不干扰）。
 - 处理返回键：WebView 能后退则后退，否则退出。
-- 上传/下载：网页内的文件选择/下载尽量交给 ArkWeb 原生能力，壳不重写。
-- 深色模式：跟随系统，网页自身已响应式（SPEC §15 第 20 项），壳不用管样式。
+- 普通网页上传保留 WebView 路径；原生后台发送入口与附件分享/保存使用系统传输代理。新桥接限定当前服务器来源，原生构造附件请求地址。
+- 深色、大字体与键盘适配需覆盖网页及原生页面，真机状态以设备审计记录为准。
 
 ---
 
-## 9. 给 AI 助手的实现顺序建议
+## 9. 开发验证
 
-1. **先跑通 WebView 主界面**（EntryAbility + Web 组件 + serverUrl 输入）——立刻能用，等于一个套壳浏览器。
-2. **再做登录拿令牌**（§4）+ 加密存储（§6）。
-3. **再做分享桥**（§5）——纯文本分享优先，跑通 `POST /api/items`。
-4. **加图片/文件分享**（`/api/items/upload`）。
-5. **最后加离线队列**（§7）。
-
-每步都可独立验证，不必一次做完。
+Web 构建检查桥接调用与页面类型；官方 SDK 的 `assembleHap` 检查 ArkTS 与平台接口。`apps/web/test/harmony.test.mjs` 对非 UI 模块做恢复、并发与权限范围的定向模拟验证。系统分享面板、真实文件 URI 和后台调度必须另做真机验收。
 
 ---
 
