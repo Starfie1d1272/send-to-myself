@@ -1,8 +1,8 @@
 import { common, Want } from '@kit.AbilityKit';
 import { systemShare } from '@kit.ShareKit';
-import { enqueue, processQueue, isQueued, queueStatus } from './QueueService';
+import { enqueue, retryQueueItem, isQueued, listQueue, QueueRow } from './QueueService';
 import { loadDeviceToken, loadServerUrl } from './AssetStore';
-import { SharedFileData, copySharedFile, cleanSharedFiles } from './ShareFiles';
+import { SharedFileData, copySharedFileAsync, cleanSharedFiles } from './ShareFiles';
 import { util } from '@kit.ArkTS';
 
 export interface ShareResultData {
@@ -40,7 +40,7 @@ export async function handleShare(want: Want, context: common.Context): Promise<
       if (record.content) content.push(record.content);
       if (record.uri) {
         if (/^https?:\/\//i.test(record.uri)) content.push(record.uri);
-        else files.push(copySharedFile(context, record.uri, record.title, record.utd));
+        else files.push(await copySharedFileAsync(context, record.uri, record.title, record.utd));
       }
     }
   } catch (_error) {
@@ -57,9 +57,9 @@ export async function handleShare(want: Want, context: common.Context): Promise<
     cleanSharedFiles(files);
     return new ShareResult(false, false, false, '无法保存待发送内容，请重新分享');
   }
-  try { await processQueue(context); }
+  try { await retryQueueItem(context, key); }
   catch (_error) { return new ShareResult(false, false, true, '内容已保留，请打开应用重试'); }
   if (!await isQueued(context, key)) return new ShareResult(true, false, false);
-  let status = await queueStatus(context);
-  return new ShareResult(false, !await loadDeviceToken(), true, status.error);
+  let row = (await listQueue(context)).find((item: QueueRow) => item.key === key);
+  return new ShareResult(false, !await loadDeviceToken(), true, row?.status || '已加入后台传输，可在应用内查看进度');
 }

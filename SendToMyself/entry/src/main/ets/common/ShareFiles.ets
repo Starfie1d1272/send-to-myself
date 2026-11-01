@@ -52,7 +52,7 @@ function sniffMime(path: string): string | undefined {
   return undefined;
 }
 
-export function copySharedFile(context: common.Context, uri: string, title?: string, utd?: string): SharedFileData {
+export async function copySharedFileAsync(context: common.Context, uri: string, title?: string, utd?: string): Promise<SharedFileData> {
   let filename = title ?? '';
   try {
     let uriName = new fileUri.FileUri(uri).name;
@@ -65,7 +65,7 @@ export function copySharedFile(context: common.Context, uri: string, title?: str
   let source = fileIo.openSync(uri, fileIo.OpenMode.READ_ONLY);
   try {
     let destination = fileIo.openSync(path, fileIo.OpenMode.READ_WRITE | fileIo.OpenMode.CREATE);
-    try { fileIo.copyFileSync(source.fd, destination.fd); }
+    try { await fileIo.copyFile(source.fd, destination.fd); }
     catch (error) { try { fileIo.unlinkSync(path); } catch (_err) {} throw error as Error; }
     finally { fileIo.closeSync(destination); }
   } finally { fileIo.closeSync(source); }

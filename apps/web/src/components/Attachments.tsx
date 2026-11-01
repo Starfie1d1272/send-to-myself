@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { copyImage } from "../lib/clipboard";
-import { shareAttachment } from "../lib/share";
+import { shareAttachment, saveAttachment, hasNativeDownload } from "../lib/share";
 import type { Attachment } from "@sendtomyself/shared";
 import {
   attachmentDownloadUrl,
@@ -17,13 +17,26 @@ export function Attachments({ items }: { items: Attachment[] }) {
   // 当前在看大图的原图 URL；null=未打开。单 WebView 壳里 target="_blank" 打不开，故用壳内弹层。
   const [copied, setCopied] = useState<string | null>(null);
   const [shareError, setShareError] = useState("");
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [notice, setNotice] = useState("");
+  const download = async (attachment: Attachment) => {
+    if (busyId) return;
+    setBusyId(attachment.id); setShareError(""); setNotice("");
+    try { await saveAttachment(attachment); }
+    catch { setShareError("无法开始下载，请在传输页查看或重试。"); }
+    finally { setBusyId(null); }
+  };
   const share = async (attachment: Attachment) => {
-    setShareError("");
+    if (busyId) return;
+    setBusyId(attachment.id); setShareError(""); setNotice("");
     try {
-      if (await shareAttachment(attachment) === "unsupported") {
+      const result = await shareAttachment(attachment);
+      if (result === "queued") setNotice("已加入传输，下载完成后打开系统分享。");
+      if (result === "unsupported") {
         setShareError("此设备不支持直接分享文件，请下载后发送。");
       }
     } catch { setShareError("分享失败，请重试或下载后发送。"); }
+    finally { setBusyId(null); }
   };
   const [viewing, setViewing] = useState<{ url: string; alt: string } | null>(null);
 
@@ -33,6 +46,7 @@ export function Attachments({ items }: { items: Attachment[] }) {
 
   return (
     <div className="att">
+      {notice && <p role="status">{notice}</p>}
       {shareError && <p className="composer__error" role="alert">{shareError}</p>}
       {images.length > 0 && (
         <div className={`att__grid att__grid--${Math.min(images.length, 3)}`}>
@@ -51,6 +65,11 @@ export function Attachments({ items }: { items: Attachment[] }) {
               if (await copyImage(attachmentRawUrl(a.id))) setCopied(a.id);
               else setShareError("图片复制失败，请更新桌面客户端或下载后使用。");
             }}>{copied === a.id ? "已复制图片" : "复制图片"}</button>
+            <button className="att__copy" disabled={busyId !== null} onClick={() => share(a)}>分享图片</button>
+            <a className="att__copy" href={attachmentDownloadUrl(a.id)} download={a.filename}
+              onClick={(event) => {
+                if (hasNativeDownload()) { event.preventDefault(); void download(a); }
+              }}>保存图片</a>
             </div>
           ))}
         </div>
@@ -71,10 +90,13 @@ export function Attachments({ items }: { items: Attachment[] }) {
               href={attachmentDownloadUrl(a.id)}
               title="下载"
               download={a.filename}
+              onClick={(event) => {
+                if (hasNativeDownload()) { event.preventDefault(); void download(a); }
+              }}
             >
               <IconDownload width={17} height={17} />
             </a>
-            <button className="icon-btn" title="分享" onClick={() => share(a)}>
+            <button className="icon-btn" title="分享" disabled={busyId !== null} onClick={() => share(a)}>
               <IconShare width={17} height={17} />
             </button>
           </div>

@@ -8,6 +8,7 @@ import { DOMAIN, TAG } from '../common/Constants';
 import { common } from '@kit.AbilityKit';
 import { WebDownloads } from '../common/WebDownloads';
 import { promptAction } from '@kit.ArkUI';
+import { NativeBridge, bridgePermission } from '../common/NativeBridge';
 
 // 与 Web 端 (apps/web/src/styles/global.css) 共用的设计语言
 const C_PAPER = '#f2ece1';
@@ -40,6 +41,9 @@ struct MainPage {
   private useFreshEntry: boolean = false;
   private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
   private downloads: WebDownloads = new WebDownloads(this.context);
+  private nativeBridge: NativeBridge = new NativeBridge(this.context, this.controller, async (id: string, action: string) => {
+    await this.getUIContext().getRouter().pushUrl({ url: 'pages/TransfersPage', params: { downloadId: id, action: action } });
+  });
 
   private injectCookieToWeb(cookie: string, url: string): void {
     if (!cookie || !url) {
@@ -187,91 +191,105 @@ struct MainPage {
   build() {
     Stack() {
       if (this.phase === 'web' && this.serverUrl.length > 0) {
-        Refresh({ refreshing: $$this.refreshing }) {
-          Web({ src: this.entryUrl(), controller: this.controller })
-            .nestedScroll({ scrollForward: NestedScrollMode.SELF_FIRST, scrollBackward: NestedScrollMode.SELF_FIRST })
-            .onControllerAttached(() => { this.downloads.attach(this.controller); })
-            .onContextMenuShow((event) => {
-              if (!event || event.param.getMediaType() !== ContextMenuMediaType.Image) return false;
-              const source = event.param.getSourceUrl();
-              const prefix = this.serverUrl.replace(/\/$/, '') + '/api/attachments/';
-              if (!source.startsWith(prefix)) return false;
-              const originalImage = /\/raw(\?.*)?$/.test(source);
-              const downloadUrl = source.replace(/\/(thumb|raw)(\?.*)?$/, '/raw?download=1');
-              const actions: SheetInfo[] = [];
-              if (originalImage) {
-                actions.push({ title: '复制图片', action: () => {
-                  try { event.result.copyImage(); }
-                  finally { event.result.closeContextMenu(); }
-                } });
-              }
-              actions.push({ title: '保存原图', action: () => {
+        Column() {
+          Row({ space: 8 }) {
+            Button('后台发送文件').fontSize(13)
+              .onClick(() => { this.getUIContext().getRouter().pushUrl({ url: 'pages/UploadPage' }); })
+            Button(this.pendingCount > 0 ? '传输 · ' + this.pendingCount.toString() + ' 条待发送' : '传输与待发送').fontSize(13)
+              .onClick(() => { this.getUIContext().getRouter().pushUrl({ url: 'pages/TransfersPage' }); })
+          }.padding(8).width('100%').justifyContent(FlexAlign.End)
+          Refresh({ refreshing: $$this.refreshing }) {
+            Web({ src: this.entryUrl(), controller: this.controller })
+              .nestedScroll({ scrollForward: NestedScrollMode.SELF_FIRST, scrollBackward: NestedScrollMode.SELF_FIRST })
+              .onControllerAttached(() => {
+                this.downloads.attach(this.controller);
                 try {
-                  this.controller.startDownload(downloadUrl);
-                } catch (_error) {
-                  promptAction.showToast({ message: '无法开始下载，请重试' });
-                } finally { event.result.closeContextMenu(); }
-              } });
-              this.getUIContext().showActionSheet({
-                title: '图片',
-                message: originalImage ? '复制到其他应用，或保存到文件夹' : '保存原始图片到文件夹',
-                sheets: actions,
-                cancel: () => { event.result.closeContextMenu(); }
-              });
-              return true;
-            })
-            .domStorageAccess(true)
-            .onlineImageAccess(true)
-            .javaScriptAccess(true)
-            .mixedMode(MixedMode.All)
-            .mediaPlayGestureAccess(false)
-            .width('100%')
-            .height('100%')
-            .onLoadIntercept((event) => {
-              if (event) {
-                hilog.info(DOMAIN, TAG, 'Web onLoadIntercept: %{public}s', event.data.getRequestUrl());
-              }
-              return false;
-            })
-            .onPageBegin((event) => {
-              if (event) {
-                hilog.info(DOMAIN, TAG, 'Web onPageBegin: %{public}s', event.url);
-              }
-            })
-            .onPageEnd((event) => {
-              this.refreshing = false;
-              if (event) {
-                hilog.info(DOMAIN, TAG, 'Web onPageEnd: %{public}s', event.url);
-              }
-            })
-            .onProgressChange((event) => {
-              if (event) {
-                hilog.info(DOMAIN, TAG, 'Web progress: %{public}d', event.newProgress);
-              }
-            })
-            .onSslErrorEvent((event) => {
-              if (event) {
-                hilog.warn(DOMAIN, TAG, 'Web SSL error for %{public}s: %{public}s — blocked', event.url, event.error.toString());
-                event.handler.handleCancel();
-                this.errorMsg = '服务器证书验证失败，请检查证书与服务器地址';
-                this.phase = 'login';
-              }
-            })
-            .onErrorReceive((event) => {
-              this.refreshing = false;
-              if (event && event.request.isMainFrame()) {
-                let info = event.error.getErrorInfo();
-                let code = event.error.getErrorCode();
-                hilog.error(DOMAIN, TAG, 'Web main frame load failed [%{public}d]: %{public}s', code, info);
-                this.errorMsg = '页面加载失败 (' + code.toString() + ')';
-                this.phase = 'login';
-              }
-            })
-        }
-        .width('100%').height('100%')
-        .onRefreshing(() => {
-          this.controller.refresh();
-        })
+                  this.controller.registerJavaScriptProxy(this.nativeBridge, 'stmNative', [],
+                    ['shareAttachment', 'saveAttachment'], bridgePermission(this.serverUrl));
+                } catch (_error) { promptAction.showToast({ message: '原生分享入口暂不可用，请重新打开应用' }); }
+              })
+              .onContextMenuShow((event) => {
+                if (!event || event.param.getMediaType() !== ContextMenuMediaType.Image) return false;
+                const source = event.param.getSourceUrl();
+                const prefix = this.serverUrl.replace(/\/$/, '') + '/api/attachments/';
+                if (!source.startsWith(prefix)) return false;
+                const originalImage = /\/raw(\?.*)?$/.test(source);
+                const downloadUrl = source.replace(/\/(thumb|raw)(\?.*)?$/, '/raw?download=1');
+                const actions: SheetInfo[] = [];
+                if (originalImage) {
+                  actions.push({ title: '复制图片', action: () => {
+                    try { event.result.copyImage(); }
+                    finally { event.result.closeContextMenu(); }
+                  } });
+                }
+                actions.push({ title: '保存原图', action: () => {
+                  try {
+                    this.controller.startDownload(downloadUrl);
+                  } catch (_error) {
+                    promptAction.showToast({ message: '无法开始下载，请重试' });
+                  } finally { event.result.closeContextMenu(); }
+                } });
+                this.getUIContext().showActionSheet({
+                  title: '图片',
+                  message: originalImage ? '复制到其他应用，或保存到文件夹' : '保存原始图片到文件夹',
+                  sheets: actions,
+                  cancel: () => { event.result.closeContextMenu(); }
+                });
+                return true;
+              })
+              .domStorageAccess(true)
+              .onlineImageAccess(true)
+              .javaScriptAccess(true)
+              .mixedMode(MixedMode.All)
+              .mediaPlayGestureAccess(false)
+              .width('100%')
+              .height('100%')
+              .onLoadIntercept((event) => {
+                if (event) {
+                  hilog.info(DOMAIN, TAG, 'Web onLoadIntercept: %{public}s', event.data.getRequestUrl());
+                }
+                return false;
+              })
+              .onPageBegin((event) => {
+                if (event) {
+                  hilog.info(DOMAIN, TAG, 'Web onPageBegin: %{public}s', event.url);
+                }
+              })
+              .onPageEnd((event) => {
+                this.refreshing = false;
+                if (event) {
+                  hilog.info(DOMAIN, TAG, 'Web onPageEnd: %{public}s', event.url);
+                }
+              })
+              .onProgressChange((event) => {
+                if (event) {
+                  hilog.info(DOMAIN, TAG, 'Web progress: %{public}d', event.newProgress);
+                }
+              })
+              .onSslErrorEvent((event) => {
+                if (event) {
+                  hilog.warn(DOMAIN, TAG, 'Web SSL error for %{public}s: %{public}s — blocked', event.url, event.error.toString());
+                  event.handler.handleCancel();
+                  this.errorMsg = '服务器证书验证失败，请检查证书与服务器地址';
+                  this.phase = 'login';
+                }
+              })
+              .onErrorReceive((event) => {
+                this.refreshing = false;
+                if (event && event.request.isMainFrame()) {
+                  let info = event.error.getErrorInfo();
+                  let code = event.error.getErrorCode();
+                  hilog.error(DOMAIN, TAG, 'Web main frame load failed [%{public}d]: %{public}s', code, info);
+                  this.errorMsg = '页面加载失败 (' + code.toString() + ')';
+                  this.phase = 'login';
+                }
+              })
+          }
+          .width('100%').layoutWeight(1)
+          .onRefreshing(() => {
+            this.controller.refresh();
+          })
+        }.width('100%').height('100%')
       } else if (this.phase === 'login') {
         this.LoginView()
       } else {
@@ -281,9 +299,9 @@ struct MainPage {
         Column() {
           Text(this.queueError || '待发送内容已保存在本机')
             .fontSize(12).fontColor(C_RED)
-          Button(this.queueBusy ? '补发中…' : '待发送 ' + this.pendingCount.toString() + ' 条 · 重试')
+          Button(this.queueBusy ? '补发中…' : '待发送 ' + this.pendingCount.toString() + ' 条 · 查看')
             .enabled(!this.queueBusy)
-            .onClick(() => { this.retryQueue(); })
+            .onClick(() => { this.getUIContext().getRouter().pushUrl({ url: 'pages/TransfersPage' }); })
         }
         .padding(12).backgroundColor(C_CARD).borderRadius(10)
         .align(Alignment.Bottom).margin({ bottom: 16 })
