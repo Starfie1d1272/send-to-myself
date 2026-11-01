@@ -11,6 +11,8 @@ import { IconLogout } from "../components/icons";
 import { useAuth, useAuthActions } from "../hooks/useAuth";
 
 export function TimelinePage() {
+  const [toolsError, setToolsError] = useState("");
+  const native = (window as Window & { stmNative?: { openTools?: () => Promise<string> } }).stmNative;
   const [devicesOpen, setDevicesOpen] = useState(false);
   const [filter, setFilter] = useState<FilterKey>("all");
   const [query, setQuery] = useState("");
@@ -43,6 +45,14 @@ export function TimelinePage() {
           <div className="masthead__right">
             <span className="masthead__date">{dateStr}</span>
             <button className="masthead__devices" onClick={() => setDevicesOpen(true)}>设备接入</button>
+            {typeof native?.openTools === "function" && (
+              <button className="icon-btn" aria-label="文件与传输" title="文件与传输"
+                onClick={() => { setToolsError(""); void native.openTools!().catch(() => setToolsError("暂时无法打开传输菜单，请重试")); }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" />
+                </svg>
+              </button>
+            )}
             {auth?.authEnabled && (
               <button
                 className="icon-btn"
@@ -56,6 +66,7 @@ export function TimelinePage() {
         </header>
 
         {devicesOpen && <DeviceAccess onClose={() => setDevicesOpen(false)} />}
+        {toolsError && <p role="alert">{toolsError}</p>}
         <Composer />
         <FilterBar active={filter} onChange={setFilter} query={query} onQuery={setQuery} />
         {isError && (

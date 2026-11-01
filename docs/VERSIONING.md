@@ -14,7 +14,7 @@
 |---|---|---|
 | 核心（api / web / 根） | `package.json` 的 `version` | 1.0.2 |
 | 桌面壳（Tauri） | `apps/desktop/src-tauri/tauri.conf.json` + `Cargo.toml` 的 `version` | 1.0.0 |
-| 鸿蒙壳（ArkTS） | `SendToMyself/AppScope/app.json5` 的 `versionName` / `versionCode` | 1.1.0（RC 预发布，待真机验收） |
+| 鸿蒙壳（ArkTS） | `SendToMyself/AppScope/app.json5` 的 `versionName` / `versionCode` | 1.1.1（RC 预发布，完整传输验收待完成） |
 
 ## Git Tag 与发布
 
