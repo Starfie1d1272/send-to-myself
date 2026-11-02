@@ -11,4 +11,19 @@
 | 核心 1.1.0 / 本地隔离构建 | 本地 amd64 镜像，无公开下载 | 构建源码 `d82e7759a3a0ce06346db73353af8f42ee5946b3`，本地镜像 ID `sha256:0ad96b943f38a21530baa64d77be2d1cacc21b3261a6a5ac7ad84482144cd325`；这不是已推送镜像 digest | 本地启动与原生依赖检查通过；备份恢复演练在提交前的另一份本地镜像通过。构建上下文中 Dockerfile、核心 API/Web、shared、工作区配置和锁文件与合并源码 `a069b8598f0a01c28430662d316ce907eda21939` 相同，但镜像身份与构建 SHA 不同。arm64、真实 NAS 未验 |
 | 当前主线 / 源码 | [仓库](../README.md) | 本轮核心 1.1.0、桌面 1.1.0、鸿蒙 1.2.0 为源码版本；不代表已正式发布。候选及本地构建记录见上，真实发布 digest 尚未取得 | 鸿蒙 SDK 构建及实机、真实 NAS、arm64 镜像启动、完整设备旅程和 HTTPS/PWA 旧页与草稿升级行为未验证 |
 
-历史设备结果按版本与环境记录在 [HARMONY_DEVICE_AUDIT.md](HARMONY_DEVICE_AUDIT.md)，不能外推到新构件。NAS 运维 ZIP 是本轮计划产物，尚未作为公开下载提供；生成后需在解压目录验证路径、脚本与镜像身份，再登记其来源、digest 和结果。
+历史设备结果按版本与环境记录在 [HARMONY_DEVICE_AUDIT.md](HARMONY_DEVICE_AUDIT.md)，不能外推到新构件。NAS 运维 ZIP 的生成器已在主线，尚无新核心公开 Release 资产；候选发布后需在解压目录验证路径、脚本与镜像身份，再登记其来源、digest 和结果。
+
+## 下一批 RC 计划（尚未发布）
+
+以下是供合流审查的候选清单，不是下载链接。最终修复合流并验证后，在同一记录中登记实际提交、运行、资产、digest 和设备结果；不要沿用旧 Actions 构件冒充新构建。
+
+| 组件 | 建议候选和构件 | 发行前核对 |
+|---|---|---|
+| 核心 | `v1.1.0-rc.1`，镜像 `:1.1.0-rc.1`（amd64、arm64）、`sendtomyself-nas-1.1.0-rc.1.zip` 及 ZIP SHA256 | 根/API/Web 版本需与完整 tag 一致，添加对应 `core-1.1.0-rc.1` 变更段；workflow 推送固定 tag、构建实际 digest、生成运维包并标记 prerelease，不更新 `latest`。核对两架构镜像、解压文件及脚本，登记 SHA/digest |
+| 桌面 | `desktop-v1.1.0-rc.1`，Apple Silicon DMG、Windows x64 EXE/MSI | Tauri 内部版本使用 `1.1.0`，workflow 将 tag 去后缀与内部版本比较；需有 `desktop-1.1.0-rc.1` 变更段，发布标记 prerelease。记录构建 SHA、最低核心要求和各资产校验；未验 Intel Mac |
+| 鸿蒙 | 另行准备 `harmony-v1.2.0-rc.1` 未签名 HAP、配套 web-dist 与 SHA256 | 当前主线 `versionName` 1.2.0、`versionCode` 1002000；覆盖安装前须相对实际已安装包递增 code。手动 SDK 构建与签名流程、对应 SHA 和核心版本需单独登记；不得公开设备签名材料，不能以 Mac 验收代替真机 |
+| Raycast | 对最终提交的 CI `sendtomyself-raycast` ZIP 本地导入 | 扩展 package 版本为 1.0.0，当前没有独立公开 Release；记录 CI run、提交与构件有效期，实际 Mac 授权和粘贴需验收 |
+
+最终 tag 名称应再次检查是否已被占用；不得覆盖已有 tag。核心 tag 要求完整预发布版本写入三个 package 版本，而桌面内部版本不含 RC 后缀；两者都需对应组件专属 changelog 段，现有 1.1.0 段不能直接满足 RC 提取。鸿蒙采用手动流程。自动构建成功也不代表发布资产已核对或真机通过。
+
+Mac 的具体测试顺序见 [部署指南 RC 路线](DEPLOY.md#rc-验收路线候选发布后执行)：候选 NAS 与 Apple Silicon 桌面配套、记录版本及结果，再导入同提交 Raycast 构件。不存在对应资产前不得将以上名称写成可下载链接。

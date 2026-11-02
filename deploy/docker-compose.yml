@@ -10,7 +10,7 @@ services:
     environment:
       AUTH_PASSWORD: "必须替换为自己的强口令"
       SECURE_COOKIE: "false"
-      TRASH_RETENTION_DAYS: "30" # 0 关闭自动到期选取；已开始的清理仍继续
+      TRASH_RETENTION_DAYS: "30" # 行为随核心版本不同；1.0.2 不执行自动清理，详见部署指南
       MAX_UPLOAD_BYTES: "52428800" # 单文件 50 MiB
     ports:
       - "8787:8787" # 只在冲突时修改左侧；右侧保持 8787
