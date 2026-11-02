@@ -8,26 +8,27 @@ const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDat
 /** DDL 到期分桶（SPEC §4）。 */
 export function dueBucket(dueAt: string | undefined, now = new Date()): DueBucket {
   if (!dueAt) return "none";
+  if (new Date(dueAt).getTime() < now.getTime()) return "overdue";
   const diff = Math.round((startOfDay(new Date(dueAt)) - startOfDay(now)) / DAY);
   if (diff < 0) return "overdue";
   if (diff === 0) return "today";
   if (diff === 1) return "tomorrow";
-  if (diff <= 7) return "this_week";
+  if (new Date(dueAt).getTime() < now.getTime() + 7 * DAY) return "this_week";
   return "later";
 }
 
 export const dueLabel: Record<Exclude<DueBucket, "none">, string> = {
-  overdue: "已过期",
+  overdue: "已逾期",
   today: "今天截止",
   tomorrow: "明天截止",
-  this_week: "本周截止",
-  later: "更晚",
+  this_week: "7天内截止",
+  later: "截止",
 };
 
 /** 截止时间的简短展示，如「6月25日」。 */
 export function formatDue(dueAt: string): string {
   const d = new Date(dueAt);
-  return `${d.getMonth() + 1}月${d.getDate()}日`;
+  return `${d.getFullYear() !== new Date().getFullYear() ? `${d.getFullYear()}年` : ""}${d.getMonth() + 1}月${d.getDate()}日 ${formatTime(dueAt)}`;
 }
 
 /** 一天内的时间 HH:MM。 */
@@ -85,10 +86,10 @@ export function quickDue(kind: "today" | "tomorrow" | "sunday"): string {
   const d = new Date();
   if (kind === "tomorrow") d.setDate(d.getDate() + 1);
   if (kind === "sunday") {
-    const toSunday = (7 - d.getDay()) % 7 || 7; // 下一个周日
+    const toSunday = (7 - d.getDay()) % 7; // 下一个周日
     d.setDate(d.getDate() + toSunday);
   }
-  d.setHours(18, 0, 0, 0);
+  d.setHours(23, 59, 0, 0);
   return d.toISOString();
 }
 

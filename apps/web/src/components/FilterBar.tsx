@@ -1,66 +1,24 @@
+import { useState } from "react";
+import type { TimelineViewState } from "../lib/timeline";
 import { IconSearch } from "./icons";
 
-export type FilterKey =
-  | "all"
-  | "todo"
-  | "due"
-  | "idea"
-  | "read_later"
-  | "link"
-  | "image"
-  | "file"
-  | "secret"
-  | "pinned"
-  | "completed"
-  | "trash";
-
-export const FILTERS: { key: FilterKey; label: string }[] = [
-  { key: "all", label: "全部" },
-  { key: "todo", label: "待办" },
-  { key: "due", label: "即将截止" },
-  { key: "idea", label: "想法" },
-  { key: "read_later", label: "稍后看" },
-  { key: "link", label: "链接" },
-  { key: "image", label: "图片" },
-  { key: "file", label: "文件" },
-  { key: "secret", label: "密钥" },
-  { key: "pinned", label: "置顶" },
-  { key: "completed", label: "已完成" },
-  { key: "trash", label: "回收站" },
-];
-
-export function FilterBar({
-  active,
-  onChange,
-  query,
-  onQuery,
-}: {
-  active: FilterKey;
-  onChange: (k: FilterKey) => void;
-  query: string;
-  onQuery: (q: string) => void;
-}) {
-  return (
-    <div className="filterbar">
-      <div className="chips chips--filter">
-        {FILTERS.map((f) => (
-          <button
-            key={f.key}
-            className={`chip${active === f.key ? " chip--on" : ""}`}
-            onClick={() => onChange(f.key)}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
-      <label className="search">
-        <IconSearch width={16} height={16} />
-        <input
-          placeholder="搜索正文、链接、文件名…"
-          value={query}
-          onChange={(e) => onQuery(e.target.value)}
-        />
-      </label>
+export function FilterBar({ state, onChange }: { state: TimelineViewState; onChange: (state: TimelineViewState) => void }) {
+  const [open, setOpen] = useState(false);
+  const set = (patch: Partial<TimelineViewState>) => onChange({ ...state, ...patch });
+  const filtered = state.contentType !== "all" || state.category !== "all" || state.sensitiveOnly;
+  return <div className="filterbar">
+    <div className="chips chips--filter">
+      {([['all','全部'],['todo','待办'],['favorites','收藏']] as const).map(([key,label]) => <button key={key} className={`chip${state.view === key ? ' chip--on' : ''}`} onClick={() => set(state.view === 'trash' ? { view: key, query: '', contentType: 'all', category: 'all', sensitiveOnly: false } : { view: key })}>{label}</button>)}
+      {state.view === 'trash' && <span>回收站</span>}
     </div>
-  );
+    {state.view === 'todo' && <div className="chips">{([['open','未完成'],['next7days','未来7天'],['completed','已完成']] as const).map(([key,label]) => <button key={key} className={`chip${state.todoScope === key ? ' chip--on' : ''}`} onClick={() => set({todoScope:key})}>{label}</button>)}</div>}
+    <label className="search"><IconSearch width={16} height={16}/><input placeholder="搜索正文、链接、文件名…" value={state.query} onChange={e => set({query:e.target.value})}/></label>
+    <button onClick={() => setOpen(!open)} aria-expanded={open}>筛选</button>
+    {open && <div className="filter-panel">
+      <div>内容 {([['all','全部'],['link','链接'],['image','图片'],['file','文件']] as const).map(([key,label]) => <button key={key} className={`chip${state.contentType === key ? ' chip--on' : ''}`} onClick={() => set({contentType:key})}>{label}</button>)}</div>
+      <div>标记 {([['all','全部'],['idea','想法'],['read_later','稍后看']] as const).map(([key,label]) => <button key={key} className={`chip${state.category === key ? ' chip--on' : ''}`} onClick={() => set({category:key})}>{label}</button>)}</div>
+      <label><input type="checkbox" checked={state.sensitiveOnly} onChange={e => set({sensitiveOnly:e.target.checked})}/> 仅敏感内容</label>
+    </div>}
+    {filtered && <div className="chips">{state.contentType !== 'all' && <button onClick={() => set({contentType:'all'})}>{{link:'链接',image:'图片',file:'文件'}[state.contentType]} ×</button>}{state.category !== 'all' && <button onClick={() => set({category:'all'})}>{state.category === 'idea' ? '想法' : '稍后看'} ×</button>}{state.sensitiveOnly && <button onClick={() => set({sensitiveOnly:false})}>敏感内容 ×</button>}<button onClick={() => set({contentType:'all',category:'all',sensitiveOnly:false})}>清除筛选</button></div>}
+  </div>;
 }

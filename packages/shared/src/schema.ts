@@ -149,6 +149,8 @@ export const timelineFilter = z
     hasFiles: z.boolean().optional(),
     sensitive: z.boolean().optional(),
     deleted: z.boolean().optional(),
+    /** Inclusive lower deadline bound. */
+    dueFrom: isoDateTime.optional(),
     /** Exclusive upper deadline bound, computed in the client timezone. */
     dueBefore: isoDateTime.optional(),
     /** 关键词搜索（正文/标题/URL/文件名）。 */
