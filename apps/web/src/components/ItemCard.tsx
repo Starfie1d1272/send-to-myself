@@ -268,7 +268,7 @@ export function ItemCard({
 
       {confirmDelete && <Dialog onClose={() => setConfirmDelete(false)} labelledBy={`purge-${item.id}`}><h2 id={`purge-${item.id}`}>永久删除这条内容？</h2><p>正文和 {attachments.length} 个附件将从 NAS 删除，无法从回收站恢复。</p><button onClick={() => setConfirmDelete(false)}>取消</button><button onClick={() => { setConfirmDelete(false); void run(async () => { await permanent.mutateAsync(item.id); await clearEditDraft(item.id); }); }}>永久删除</button></Dialog>}
       {notice && <p role="status">{notice}</p>}
-      {error && <p className="composer__error" role="alert">{error} {editing ? <><button disabled={busy} onClick={() => void saveEdit()}>重试保存</button><button onClick={() => void copyText(draft)}>复制未保存内容</button></> : <button disabled={busy} onClick={() => { if (retry.current) void (menuOpen ? menuAction(retry.current.operation, retry.current.preview) : run(retry.current.operation, retry.current.preview)); }}>重试</button>}</p>}
+      {error && <p className="composer__error" role="alert">{error} {editing ? <><button className="button button--secondary" disabled={busy} onClick={() => void saveEdit()}>重试保存</button><button className="button button--secondary" onClick={() => void copyText(draft)}>复制未保存内容</button></> : <button className="button button--secondary" disabled={busy} onClick={() => { if (retry.current) void (menuOpen ? menuAction(retry.current.operation, retry.current.preview) : run(retry.current.operation, retry.current.preview)); }}>重试</button>}</p>}
       {copyError && <p className="composer__error" role="alert">{copyError}</p>}
       <fieldset className="actions" disabled={busy || editing} style={{ border: 0, padding: 0, margin: 0 }}>
         {trash ? (

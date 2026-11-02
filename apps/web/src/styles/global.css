@@ -1216,7 +1216,7 @@ body { line-height: 1.6; }
 .device-dialog button { min-height: 36px; }
 @media (max-width: 560px), (pointer: coarse) {
   .attach-btn, .icon-btn, .actions .icon-btn, .tray__x, .check { min-width: 44px; min-height: 44px; }
-  .send, .chip, .device-dialog button { min-height: 44px; }
+  .send, .chip, .button, .device-dialog button { min-height: 44px; }
   .shell { padding-bottom: calc(100px + env(safe-area-inset-bottom)); }
 }
 @media (max-width: 560px) { .chips--filter { flex-wrap: wrap; overflow: visible; } }
@@ -1226,3 +1226,5 @@ body { line-height: 1.6; }
 .app-menu__panel { position: absolute; right: 0; top: 100%; z-index: 5; display: grid; min-width: 170px; max-width: calc(100vw - 32px); padding: 8px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--card-hi); box-shadow: var(--shadow-md); }
 .app-menu__panel button { min-height: 44px; padding: 8px 12px; border: 0; border-radius: 6px; background: transparent; color: var(--ink); text-align: left; font: inherit; cursor: pointer; }
 .app-menu__panel button:hover, .app-menu__panel button:focus-visible { background: var(--paper-2); }
+
+.composer__error .button { margin: 4px 8px 0 0; }
