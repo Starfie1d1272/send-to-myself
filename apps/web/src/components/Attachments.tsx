@@ -27,7 +27,13 @@ function More({ disabled, onShare, label = "分享" }: { disabled: boolean; onSh
       event.stopPropagation(); ref.current.open = false; ref.current.querySelector("summary")?.focus();
     }
   }}><summary>更多</summary><button className="button button--quiet" disabled={disabled} onClick={async () => {
-    if (await onShare() && ref.current) ref.current.open = false;
+    if (await onShare()) {
+      const details = ref.current;
+      if (details?.isConnected && details.open) {
+        details.open = false;
+        details.querySelector("summary")?.focus();
+      }
+    }
   }}>{label}</button></details>;
 }
 
