@@ -1,99 +1,72 @@
-# 部署指南
+# NAS 部署指南
 
-## 选择部署方式
+## 适用条件
 
-| 方式 | 适合 | 需要 |
-|------|------|------|
-| **镜像部署** | NAS 可视化（群晖 / QNAP / Portainer 等），无需终端 | Docker，能打开网页复制粘贴即可 |
-| **源码部署** | 有终端习惯、想自己改代码再部署 | Node 22+、pnpm、git |
+需要已有支持 Docker Compose 的 NAS 和可访问的镜像仓库。本服务是单用户、单收件箱。普通安装不需要克隆源码、编译或安装 Node。局域网 HTTP 不加密；远程访问应配置 HTTPS 和实际可达的网络路径。
 
----
+## 1. 创建数据目录
 
-## 方式一：镜像部署（推荐）
+在 NAS 文件管理器创建专用 data 文件夹，通过 Docker 的目录选择或映射界面记录其**真实宿主机绝对路径**。数据库和附件都存放在这个目录；不要使用相对路径，也不要假定每台 NAS 的路径相同。模板中的路径是必须替换的占位符。目录不存在时部署应失败，避免静默创建空收件箱。
 
-仓库提供预构建的多架构镜像（`linux/amd64` + `linux/arm64`），覆盖绝大多数设备和家用 NAS。
+## 2. 创建并启动项目
 
-### 纯 Docker（有终端）
+在 NAS Docker 管理界面新建 Compose 项目，建议新项目命名 `sendtomyself`。将[基础模板](../deploy/docker-compose.yml)粘贴到项目中：
 
-复制 [`deploy/docker-compose.yml`](../deploy/docker-compose.yml) 到你的服务器，把 `AUTH_PASSWORD` 换成强口令，然后：
+1. 将 `AUTH_PASSWORD` 替换为自己的强口令；将 `source` 替换成刚记录的已有目录的绝对路径。只有这两项必须填写。
+2. Compose 会插值 `$`，口令中的每个 `$` 写成 `$$`。例如配置 `pa$$word` 对应实际口令 `pa$word`。
+3. 默认映射 `"8787:8787"`。端口冲突时只改左侧宿主端口（如 `"18787:8787"`），右侧保持 8787。
+4. 启动项目。服务名为 `app`，镜像固定为 `ghcr.io/starfie1d1272/send-to-myself:1.0.2`，容器 `/data` 映射到上述目录。默认 `SECURE_COOKIE: "false"` 用于 HTTP，单文件上限 `52428800` 字节（50 MiB）。
 
-```bash
-docker compose up -d
-```
+## 3. 登录与第二台设备
 
-### NAS 可视化部署
+在第一台设备访问 `http://NAS_IP:宿主端口`（默认 `http://NAS_IP:8787`），用设置的口令登录，刷新页面确认仍保持登录。换端口后浏览器和原生客户端都要使用新宿主端口。
 
-**群晖 Container Manager / QNAP Container Station / Portainer** 等：新建 Stack / Compose / 项目，把下面内容整段粘贴（改一下 `AUTH_PASSWORD`）：
+在同一网络的第二台设备打开相同的可达地址并登录；发送一条文字、一张图片和一个 PDF，在第一台确认内容出现并打开或下载文件。原生客户端的服务器地址也填写实际验证可达的完整地址。重新创建 app 容器后检查原消息及附件仍在。
 
-```yaml
-services:
-  app:
-    image: ghcr.io/starfie1d1272/send-to-myself:latest
-    container_name: sendtomyself
-    restart: unless-stopped
-    environment:
-      AUTH_PASSWORD: "改成你自己的强口令"
-      SECURE_COOKIE: "true"
-      MAX_UPLOAD_BYTES: "52428800"
-    ports:
-      - "8787:8787"
-    volumes:
-      - ./data:/data
-```
+## 4. 已有部署升级和迁移
 
-部署后访问 `http://你的NAS_IP:8787`。如果想用域名 + HTTPS，继续看下方的反向代理段落。
+保留原项目和数据路径，不移动或删除用户数据：
 
-> 镜像也可从[这里](https://github.com/Starfie1d1272/send-to-myself)源码自行构建：`docker compose up -d --build`（仓库根目录）。
+1. 在 Docker 界面查看现有 app 的 `/data` 映射，记录真实宿主路径、原项目名及镜像版本。停止服务后保存整个数据目录的副本，并导出原 Compose 配置；备份说明见下方。
+2. 在**原项目**使用基础模板，将原相对 source 改成指向原目录的绝对 source；保留现有口令、端口与自定义限制。修改镜像版本前先确认目标版本及备份可恢复。
+3. 如果旧服务使用固定容器名，停止旧服务，由同一项目重新部署；只移除旧容器对象，不删除数据，也不要执行 `down -v`。
+4. 重启后检查已有消息和附件，再从另一设备发送新内容。若失败，停止并检查原配置和目录，保留备份。
+5. 若已经误建第二个空目录，停止错误项目，依据原容器卷映射找回原目录；保留所有候选目录，不自动合并两个数据库。
 
----
+## 5. HTTPS 和外网（可选）
 
-## 方式二：源码部署
+优先使用 NAS 已有反向代理：将 HTTPS 域名代理到已有 app 的宿主端口（例如 `http://127.0.0.1:8787`，端口以实际配置为准）。在**同一个基础项目**把 `SECURE_COOKIE` 改为 `"true"` 并重新部署。浏览器和原生客户端改用已验证可达的 HTTPS 地址；不能保证原 HTTP 地址同时保持浏览器会话。局域网 IP 不会因为把 `http` 改成 `https` 就在外网可达。
+
+### Caddy 叠加配置
+
+需要域名解析到主机且外部 80/443 端口可达；Caddy 的证书服务不提供内网穿透。保留原项目名、基础文件和数据目录，将 [Caddyfile](../deploy/Caddyfile) 保存为**基础 Compose 文件所在项目目录**的 `Caddyfile` 并替换域名，再把 [叠加文件](../deploy/docker-compose.caddy.yml) 保存为同目录 `compose.caddy.yml`。其中 `./Caddyfile`、`./caddy-data` 和 `./caddy-config` 均相对于基础文件所在项目目录解析；保留证书和配置目录。
+
+叠加文件不能单独运行。假设原项目名为 `sendtomyself`，基础文件为 `/实际项目目录/compose.yml`：
 
 ```bash
-git clone https://github.com/Starfie1d1272/send-to-myself.git
-cd send-to-myself
-cp .env.example .env
-# 编辑 .env，设 AUTH_PASSWORD
-docker compose up -d --build
+docker compose -p sendtomyself -f /实际项目目录/compose.yml -f /实际项目目录/compose.caddy.yml up -d
 ```
 
----
+已有项目请将 `-p` 的名称替换为原项目名。仅支持一份 YAML 的图形界面，在原项目的 `services` 下合入叠加文件中的 **`caddy` service 整段**，并将原 `app.environment.SECURE_COOKIE` 改为 `"true"`；不要新建项目或复制第二个 app。Caddy 经同一 Compose 网络访问 `app:8787`。
 
-## 反向代理与 HTTPS
+确认 HTTPS 地址及原有记录、附件可用后，可在基础文件的 `app.ports` 把 `"8787:8787"` 改为 `"127.0.0.1:8787:8787"`（已改宿主端口则保留该端口），再重新部署同一项目。Caddy 仍访问 `app:8787`。
 
-通过域名 + HTTPS 访问时，需要在前端接一个反向代理终止 TLS。
+### Nginx 与 SSE
 
-### 方案 A：Caddy（自动申请证书，推荐）
-
-仓库已有 Caddy 模板。把 [`deploy/Caddyfile`](../deploy/Caddyfile) 里的域名改成你自己的，然后用一体化 compose 启动：
-
-```bash
-docker compose -f deploy/docker-compose.caddy.yml up -d
-```
-
-Caddy 会**自动**为你的域名申请并续期 Let's Encrypt 证书，全程无需人工干预。SSE 实时推送默认正常，无需额外配置。
-
-### 方案 B：Nginx
-
-适合已有 Nginx 或 NAS 自带反代（如群晖「反向代理服务器」）。关键配置：
+已有 Nginx 时，配置证书并代理到 app 的实际宿主端口；上传限制要与应用限制匹配。保留实时路径的关闭缓冲设置：
 
 ```nginx
 server {
     listen 443 ssl;
     server_name 你的域名;
-
-    ssl_certificate     /path/to/cert.pem;
+    ssl_certificate /path/to/cert.pem;
     ssl_certificate_key /path/to/key.pem;
-
-    client_max_body_size 60m;  # 与 MAX_UPLOAD_BYTES 对齐
-
+    client_max_body_size 60m;
     location / {
         proxy_pass http://127.0.0.1:8787;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     }
-
-    # SSE 实时同步：必须关缓冲，否则推送会被卡住
     location /api/realtime {
         proxy_pass http://127.0.0.1:8787;
         proxy_buffering off;
@@ -103,51 +76,20 @@ server {
 }
 ```
 
-> ⚠️ Nginx 反代**务必保留 `/api/realtime` 那段**（`proxy_buffering off`），否则「这台发另一台立即出现」会失效。Caddy 无需额外处理。
+如 NAS 反代界面不能关闭 SSE 缓冲，请查阅其配置方式或使用 Caddy；刷新可用于确认内容是否已保存。
 
-如果 NAS 自带的反代面板没有「关闭缓冲」选项，建议改用上述 Caddy 模板，或者接受 SSE 推送延迟几秒。
+## 6. 常见故障与备份
 
----
-
-## 验证
-
-- 浏览器打开 `https://你的域名`，用设好的口令登录；
-- 换另一台设备登录同一地址，这边发送、那边应**立即**出现（SSE 实时推送正常）；
-- 上传一张图片、发一条链接，确认预览和附件正常。
-
----
-
-## 配置参考
-
-全部环境变量见 [`.env.example`](../.env.example)。常用：
-
-| 变量 | 默认 | 说明 |
+| 现象 | 首先检查 | 对应操作 |
 |---|---|---|
-| `AUTH_PASSWORD` | 必填 | 登录口令；留空=认证关闭，**公网生产禁止留空** |
-| `SECURE_COOKIE` | `true` | 经 HTTPS 反代时保持 true；纯内网 http 直连时改为 false |
-| `MAX_UPLOAD_BYTES` | `52428800`（50 MB） | 单文件大小上限；改大需同步反代的 body 限制 |
-| `TRASH_RETENTION_DAYS` | `30` | 回收站保留天数 |
-| `SESSION_TTL_DAYS` | `30` | 登录会话有效期 |
+| 浏览器打不开 | 容器状态、NAS IP、左侧宿主端口 | 使用正确端口，查看 app 启动日志；不先改口令 |
+| 口令正确但刷新后仍未登录 | 当前地址是 HTTP 还是 HTTPS | HTTP 模板为 false，HTTPS 为 true；重新部署原项目 |
+| 修改配置后出现空收件箱 | `/data` 的真实映射 | 停止错误项目，恢复原目录映射；保留两份目录 |
+| 另一设备内容不实时出现 | 当前连接、反代 SSE 缓冲 | 刷新确认数据在；按对应反代说明关闭缓冲 |
+| 出门后内网 IP 不可达 | 是否已有远程访问路径 | 使用已验证的远程地址；不能只把 http 改成 https |
 
-## 备份
+备份前停止 app，完整复制实际 `/data` 对应的宿主目录并妥善保管；运行中的 SQLite WAL 不能只复制数据库文件。恢复前保留当前目录副本。现有 [可靠性说明](RELIABILITY.md) 介绍仓库脚本及恢复演练；脚本当前面向仓库根目录配置，不能直接假定它操作 NAS 自定义映射。数据含明文，口令需另行保管。
 
-数据都在 `./data` 目录。运行中的 SQLite 采用 WAL，直接复制数据库文件不能保证备份一致。
-使用核心 1.0.1 及以上镜像后，在本仓库部署目录执行：
+## 源码开发
 
-```bash
-bash scripts/backup.sh
-bash scripts/restore.sh backups/stm-日期-时间-随机后缀 --dry-run
-# 确认完整性后恢复（会替换当前数据；旧数据另存为 data.before-restore-*）：
-bash scripts/restore.sh backups/stm-日期-时间-随机后缀
-```
-
-备份期间短暂停服，自动恢复服务；快照、附件归档、SHA-256 清单与 JSON 导出来自同一次备份。
-`--dry-run` 校验数据库、外键、全部附件/缩略图及文件校验和，不改变现网数据。
-历史备份没有校验清单时仍检查附件存在及大小；缺少附件的备份拒绝恢复。
-脚本使用仓库 Compose 配置的 `./data:/data` 卷；NAS 自定义卷映射需相应调整脚本。
-JSON/数据库含敏感信息明文，口令 `.env` 不在备份中，需分别保管。
-验证覆盖与真机清单见 [RELIABILITY.md](RELIABILITY.md)。
-
-## 客户端连接
-
-原生壳（桌面 / 鸿蒙）填的「服务器地址」即这里的 `https://你的域名`。—— [桌面壳说明](HARMONY_SHELL.md)
+根目录 `docker-compose.yml` 用于源码本机构建，默认仅监听 `127.0.0.1:8787`，要求前置 HTTPS 反向代理。复制 `.env.example` 为 `.env` 并设置口令；本机 HTTP 直连时设 `SECURE_COOKIE=false`。它不是普通 NAS 镜像安装入口。

@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { detectUrls } from "@sendtomyself/shared/detect";
 import type { Item, LinkPreview } from "@sendtomyself/shared";
 import { db } from "../db/client.js";
 import { items } from "../db/schema.js";
@@ -35,10 +36,10 @@ export async function fetchPreview(rawUrl: string): Promise<LinkPreview> {
 }
 
 /** 抓取预览并写回 item.meta.preview，返回更新后的 DTO（供广播）。 */
-export async function fetchPreviewInto(itemId: string, rawUrl: string): Promise<Item | null> {
+export async function fetchPreviewInto(itemId: string, rawUrl: string, expectedContent: string): Promise<Item | null> {
   const preview = await fetchPreview(rawUrl);
   const row = db.select().from(items).where(eq(items.id, itemId)).get();
-  if (!row) return null;
+  if (!row || row.deletedAt !== null || row.content !== expectedContent || detectUrls(row.content)[0] !== rawUrl) return null;
   const meta = row.meta ? JSON.parse(row.meta) : {};
   meta.preview = preview;
   db.update(items).set({ meta: JSON.stringify(meta) }).where(eq(items.id, itemId)).run();

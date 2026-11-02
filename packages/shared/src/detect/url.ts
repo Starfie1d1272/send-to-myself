@@ -3,14 +3,15 @@
 // 匹配 http(s) 链接，尽量贪婪但剔除常见尾随标点。
 const URL_RE = /\bhttps?:\/\/[^\s<>"')\]}，。、；！？]+/gi;
 
-/** 从文本中抽取所有 URL（去重，去除尾随标点）。 */
+export function extractUrlSpans(text: string): Array<{ start: number; end: number; url: string }> {
+  return [...text.matchAll(URL_RE)].map((match) => {
+    const url = match[0].replace(/[.,;:!?)]+$/, "");
+    return { start: match.index!, end: match.index! + url.length, url };
+  }).filter((span) => span.url.length > 0);
+}
+
 export function detectUrls(text: string): string[] {
-  const out = new Set<string>();
-  for (const m of text.matchAll(URL_RE)) {
-    const url = m[0].replace(/[.,;:!?)]+$/, "");
-    if (url) out.add(url);
-  }
-  return [...out];
+  return [...new Set(extractUrlSpans(text).map((span) => span.url))];
 }
 
 /** 内容去掉首尾空白后是否「就是一个链接」。 */
