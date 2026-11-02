@@ -29,7 +29,8 @@ beforeEach(async () => {
   events.length = 0;
 });
 after(async () => { unsub(); db.$client.close(); await rm(root, { recursive: true, force: true }); });
-const file = (filename: string, data = "fixture") => ({ filename, mimeType: "text/plain", data: Buffer.from(data) });
+const incoming = (filename: string, mimeType: string, data: Buffer) => ({ filename, mimeType, size: data.length, read: async () => data });
+const file = (filename: string, data = "fixture") => incoming(filename, "text/plain", Buffer.from(data));
 
 async function storedFiles(): Promise<string[]> {
   try { return (await readdir(process.env.STORAGE_ROOT!, { recursive: true, withFileTypes: true }))
@@ -213,13 +214,13 @@ test("WAL snapshot restores item state, attachment bytes and detects missing/cor
 test("image upload stores original and thumbnail; invalid image falls back to original", async () => {
   const { default: sharp } = await import("sharp");
   const image = await sharp({ create: { width: 10, height: 10, channels: 3, background: "red" } }).png().toBuffer();
-  const item = await svc.createItemWithFiles("image", [{ filename: "image.png", mimeType: "image/png", data: image }]);
+  const item = await svc.createItemWithFiles("image", [incoming("image.png", "image/png", image)]);
   const attachment = item.attachments![0]!;
   assert.equal(attachment.hasThumb, true);
   const row = db.select().from(attachments).where(eq(attachments.id, attachment.id)).get()!;
   assert.deepEqual(await readFile(resolveKey(row.storageKey)), image);
   assert.equal((await sharp(await readFile(resolveKey(row.thumbKey!))).metadata()).format, "webp");
-  const invalid = await svc.createItemWithFiles("fallback", [{ filename: "bad.png", mimeType: "image/png", data: Buffer.from("not an image") }]);
+  const invalid = await svc.createItemWithFiles("fallback", [incoming("bad.png", "image/png", Buffer.from("not an image"))]);
   assert.equal(invalid.attachments![0]!.hasThumb, false);
 });
 

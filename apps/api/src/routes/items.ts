@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import { zValidator } from "@hono/zod-validator";
 import { createItemInput, timelineFilter, updateItemInput } from "@sendtomyself/shared";
 import { decodeCursor } from "../lib/cursor.js";
@@ -17,9 +18,23 @@ itemsRoute.post("/", zValidator("json", createItemInput), (c) => {
   catch (error) { if (error instanceof svc.ItemError) return c.json({ error: error.message }, 400); throw error; }
 });
 
+let activeUploads = 0;
+itemsRoute.use("/upload", async (c, next) => {
+  if (activeUploads >= 2) { c.header("Retry-After", "5"); return c.json({ error: "upload_busy" }, 429); }
+  activeUploads++;
+  try { await next(); } finally { activeUploads--; }
+});
+itemsRoute.use("/upload", bodyLimit({
+  maxSize: env.maxUploadTotalBytes + 1024 * 1024,
+  onError: (c) => c.json({ error: "upload_total_too_large", limit: env.maxUploadTotalBytes }, 413),
+}));
+
 // 带附件发送（multipart：content 文本 + 一个或多个 files，SPEC §8, §10）
 itemsRoute.post("/upload", async (c) => {
-  const body = await c.req.parseBody({ all: true });
+  if (!/^multipart\/form-data(?:;|$)/i.test(c.req.header("content-type") ?? "")) return c.json({ error: "invalid_multipart" }, 400);
+  let body;
+  try { body = await c.req.parseBody({ all: true }); }
+  catch { return c.json({ error: "invalid_multipart" }, 400); }
   const content = typeof body.content === "string" ? body.content : "";
   const input = createItemInput.safeParse({ content, dedupeKey: body.dedupeKey });
   if (!input.success) return c.json({ error: "invalid_input" }, 400);
@@ -33,6 +48,8 @@ itemsRoute.post("/upload", async (c) => {
     return c.json({ error: "empty" }, 400);
   }
 
+  if (blobs.length > env.maxUploadFiles) return c.json({ error: "too_many_files", limit: env.maxUploadFiles }, 413);
+  if (blobs.reduce((sum, file) => sum + file.size, 0) > env.maxUploadTotalBytes) return c.json({ error: "upload_total_too_large", limit: env.maxUploadTotalBytes }, 413);
   const files: IncomingFile[] = [];
   for (const b of blobs) {
     if (b.size > env.maxUploadBytes) {
@@ -41,7 +58,8 @@ itemsRoute.post("/upload", async (c) => {
     files.push({
       filename: b.name || "file",
       mimeType: b.type || "application/octet-stream",
-      data: Buffer.from(await b.arrayBuffer()),
+      size: b.size,
+      read: async () => Buffer.from(await b.arrayBuffer()),
     });
   }
 

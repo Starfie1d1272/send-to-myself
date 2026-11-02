@@ -1,10 +1,11 @@
+import { itemSchema } from "@sendtomyself/shared";
 import type { CreateItemInput, Item, UpdateItemInput, ItemPage, TimelineFilter, ServerInfo } from "@sendtomyself/shared";
 
 export type ListResult = ItemPage;
 export type ListParams = TimelineFilter;
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) {
+  constructor(public status: number, message: string, public code?: string, public details?: Record<string, unknown>) {
     super(message);
   }
 }
@@ -24,12 +25,28 @@ const businessOpts = (init?: RequestInit): RequestInit => {
   return opts({ ...init, signal: businessController.signal });
 };
 
+function responseError(status: number, text: string): ApiError {
+  try {
+    const value: unknown = JSON.parse(text);
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      const { error, ...details } = value as Record<string, unknown>;
+      return new ApiError(status, JSON.stringify(value), typeof error === "string" ? error : undefined, details);
+    }
+  } catch { /* Non-JSON responses must not expose proxy content. */ }
+  return new ApiError(status, `HTTP ${status}`);
+}
 async function handle(r: Response) {
-  if (!r.ok) {
-    const text = await r.text().catch(() => "");
-    throw new ApiError(r.status, text || r.statusText);
-  }
+  if (!r.ok) throw responseError(r.status, await r.text().catch(() => ""));
   return r.status === 204 ? null : r.json();
+}
+function validItem(value: unknown): Item {
+  const parsed = itemSchema.safeParse(value);
+  if (!parsed.success) throw new Error("Invalid item response");
+  return parsed.data;
+}
+export interface UploadOptions {
+  signal?: AbortSignal;
+  onProgress?: (progress: { loaded: number; total?: number }) => void;
 }
 
 export interface AuthState {
@@ -83,15 +100,40 @@ export const api = {
         headers: { "content-type": "application/json" },
         body: JSON.stringify(input),
       }),
-    ).then(handle);
+    ).then(handle).then(validItem);
   },
   /** 带附件发送（multipart）。 */
-  upload(content: string, files: File[], dedupeKey?: string): Promise<Item> {
+  upload(content: string, files: File[], dedupeKey?: string, options?: UploadOptions): Promise<Item> {
+    if (businessFrozen) return Promise.reject(new Error("Business requests are paused"));
+    const globalSignal = businessController.signal;
     const fd = new FormData();
     fd.set("content", content);
     if (dedupeKey) fd.set("dedupeKey", dedupeKey);
     for (const f of files) fd.append("files", f);
-    return fetch("/api/items/upload", businessOpts({ method: "POST", body: fd })).then(handle);
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      let settled = false;
+      const abort = () => xhr.abort();
+      const cleanup = () => {
+        options?.signal?.removeEventListener("abort", abort);
+        globalSignal.removeEventListener("abort", abort);
+        xhr.upload.onprogress = null; xhr.onload = null; xhr.onerror = null; xhr.onabort = null;
+      };
+      const finish = (fn: () => void) => { if (!settled) { settled = true; cleanup(); fn(); } };
+      xhr.open("POST", "/api/items/upload");
+      xhr.withCredentials = true;
+      xhr.upload.onprogress = event => options?.onProgress?.({ loaded: event.loaded, ...(event.lengthComputable ? { total: event.total } : {}) });
+      xhr.onload = () => finish(() => {
+        if (xhr.status < 200 || xhr.status >= 300) { reject(responseError(xhr.status, xhr.responseText)); return; }
+        try { resolve(validItem(JSON.parse(xhr.responseText))); } catch (error) { reject(error); }
+      });
+      xhr.onerror = () => finish(() => reject(new Error("Network error")));
+      xhr.onabort = () => finish(() => reject(new DOMException("Aborted", "AbortError")));
+      options?.signal?.addEventListener("abort", abort);
+      globalSignal.addEventListener("abort", abort);
+      if (options?.signal?.aborted || globalSignal.aborted) { finish(() => reject(new DOMException("Aborted", "AbortError"))); return; }
+      xhr.send(fd);
+    });
   },
   update(id: string, patch: UpdateItemInput): Promise<Item> {
     return fetch(

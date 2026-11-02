@@ -10,7 +10,8 @@ const nowSec = () => Math.floor(Date.now() / 1000);
 export interface IncomingFile {
   filename: string;
   mimeType: string;
-  data: Buffer;
+  size: number;
+  read: () => Promise<Buffer>;
 }
 
 /** 先准备文件；数据库行由调用方在同步事务中统一提交。 */
@@ -21,15 +22,16 @@ export async function prepareAttachment(
   const storageKey = makeKey(file.filename);
   const candidateThumbKey = thumbnailKey(storageKey);
   try {
-    await putBuffer(storageKey, file.data);
+    const data = await file.read();
+    await putBuffer(storageKey, data);
     const thumbKey = isImageMime(file.mimeType)
-      ? await makeThumbnail(storageKey, file.data)
+      ? await makeThumbnail(storageKey, data)
       : null;
     // best-effort 缩略图失败时也可能留下部分写入的文件。
     if (!thumbKey) await remove(candidateThumbKey);
     return {
       id: newId(), itemId, filename: file.filename, mimeType: file.mimeType,
-      size: file.data.length, storageKey, thumbKey, createdAt: nowSec(),
+      size: file.size, storageKey, thumbKey, createdAt: nowSec(),
     };
   } catch (error) {
     await Promise.all([remove(storageKey), remove(candidateThumbKey)]);
