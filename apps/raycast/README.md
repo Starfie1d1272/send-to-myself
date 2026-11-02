@@ -4,7 +4,7 @@ Mac 和 Windows 共用服务器上的记录，均为主动发送。无需新增�
 
 ## 本地安装
 
-1. 下载仓库 CI 的 `sendtomyself-raycast` 构件，解压里面的 ZIP，保留整个扩展目录。也可使用本仓库的 `apps/raycast` 目录。
+1. 使用本仓库的 `apps/raycast` 目录；若取得对应源码提交的 CI `sendtomyself-raycast` 构件，也可解压 ZIP 并保留整个扩展目录。CI 构件可用性取决于运行及保留期限，不是正式商店发布。
 2. 在 Raycast 搜索 **Import Extension**，选择含 `package.json` 的扩展目录；按 Raycast 提示完成依赖安装。如果提示开发环境缺失，按其开发工具指引安装 Node.js / npm。此扩展目前为本地安装，尚未上架商店。
 3. 打开已更新的 SendToMyself 桌面窗口，用密码登录，在 **设备接入** 中创建 `Raycast Mac`（Windows 单独创建）。复制一次性令牌。
 4. 在 Raycast 扩展设置填写服务器地址和 **设备令牌**。令牌是 password 类型偏好；不保存登录密码，不把令牌放进 URL。需要停用时在“设备接入”吊销。

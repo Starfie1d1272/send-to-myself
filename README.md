@@ -1,127 +1,49 @@
-<p align="center">
-  <img src="apps/desktop/src-tauri/icons/icon.png" alt="logo" width="120" />
-</p>
+# SendToMyself · 发给自己
 
-<h1 align="center">SendToMyself · 发给自己</h1>
+发给自己：放在 NAS 上的跨设备收件箱。手机随手发，电脑接着用。
 
-<p align="center">
-  自托管、跨平台的「发给自己」统一信息流。
-  <br />
-  把文字、链接、图片、文件、待办随手发进来，所有设备实时同步。
-</p>
+- 手机的截图或 PDF 发到收件箱，在电脑打开或下载。
+- 电脑上的链接或文字发送后，在手机接着看。
+- 临时记一件事，之后搜索、收藏或标记为待办。
 
-<p align="center">
-  <a href="https://github.com/Starfie1d1272/send-to-myself/actions/workflows/ci.yml"><img src="https://github.com/Starfie1d1272/send-to-myself/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
-  <a href="https://github.com/Starfie1d1272/send-to-myself/actions/workflows/desktop-build.yml"><img src="https://github.com/Starfie1d1272/send-to-myself/actions/workflows/desktop-build.yml/badge.svg" alt="Desktop Build" /></a>
-  <a href="https://github.com/Starfie1d1272/send-to-myself/actions/workflows/docker-image.yml"><img src="https://github.com/Starfie1d1272/send-to-myself/actions/workflows/docker-image.yml/badge.svg" alt="Docker Image" /></a>
-  <a href="https://github.com/Starfie1d1272/send-to-myself/pkgs/container/send-to-myself"><img src="https://img.shields.io/badge/image-ghcr.io-blue" alt="Docker" /></a>
-  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License" /></a>
-</p>
+面向已有 NAS、经常在自己的设备之间交接内容的人。一个实例供一个人使用；服务是单容器、SQLite 和附件目录，不是公共多租户服务。
 
-<p align="center">
-  <img src="docs/screenshots/timeline-desktop.png" alt="桌面端时间线" width="70%" />
-</p>
+## 当前可安装版本
 
-<details>
-<summary>📱 移动端截图</summary>
-<p align="center">
-  <img src="docs/screenshots/timeline-mobile.png" alt="移动端时间线" width="260" />
-  <img src="docs/screenshots/login.png" alt="登录" width="260" />
-</p>
-</details>
-
----
-
-## ✨ 能做什么
-
-| | | |
+| 平台 | 公开入口 | 范围 |
 |---|---|---|
-| 🔗 **链接随手存** | 自动抓标题/封面/favicon 生成预览卡，B 站公众号图床也能正常显示 | |
-| 📝 **文字 + 待办** | 发送即入库，回头再分类；一键转待办、设 DDL、到期自动分桶提醒 | |
-| 🖼️ **图片 + 文件** | 粘贴/拖拽/选择上传，服务端缩略图，原图预览下载，移动端系统分享 | |
-| ⚡ **实时同步** | SSE 推送——这台发，另一台立刻出现 | |
-| 🔍 **全文搜索** | 中文子串搜索，覆盖正文 / 链接标题 / 文件名；敏感内容参与索引但**不泄漏正文** | |
-| 🔒 **密钥自动遮罩** | API Key / Token 自动识别，只遮密钥本体，前后文正常显示；一键「密钥」聚合 | |
-| 📴 **离线不丢** | 鸿蒙壳已实现断网排队与联网补发，待真机验收；Web/PWA 和桌面壳尚无离线发送队列 | |
-| 🗑️ **回收站** | 软删除后可恢复；到期或手动永久删除后不可恢复 | |
+| NAS 核心 | [核心 1.0.2 Release](https://github.com/Starfie1d1272/send-to-myself/releases/tag/v1.0.2)；[GHCR 镜像](https://github.com/Starfie1d1272/send-to-myself/pkgs/container/send-to-myself) | 固定版本镜像，amd64 / arm64；Web 随核心提供 |
+| Windows / macOS | [桌面 1.0.0](https://github.com/Starfie1d1272/send-to-myself/releases/tag/desktop-v1.0.0) | Windows x64 EXE/MSI、Apple Silicon DMG；无 Intel Mac 安装包 |
+| HarmonyOS | [1.1.1 RC1 开发预览](https://github.com/Starfie1d1272/send-to-myself/releases/tag/harmony-v1.1.1-rc.1) | 未签名 HAP，需自行签名；完整后台传输尚未真机验收，配套 Web 要求见发布说明 |
+| Android / iPhone / Intel Mac | 浏览器 | 无对应原生安装包 |
 
-## 📦 在哪用
+当前主线包含公开版本之后的开发实现，不能把源码合并、CI 构建或作者本地预览当作已发布安装包。[交付表](docs/RELEASES.md)记录来源、验证与限制；核心 1.1.0、桌面 1.1.0、鸿蒙 1.2.0 是工作包目标，尚非当前下载。
 
-一套网页核心 + 各平台**原生薄壳**：功能只写一遍，各端只负责登录、显示、接收系统分享。
+## 在 NAS 安装
 
-| 平台 | 形态 | 状态 |
-|---|---|---|
-| 浏览器 / PWA | 响应式网页，可安装 | ✅ |
-| 桌面 Windows / macOS | Tauri 薄壳 · 托盘常驻 · 全局快捷键 `Cmd/Ctrl+Shift+S` | ✅ |
-| HarmonyOS NEXT | ArkTS 原生壳 · 系统分享 · 离线队列 | 🚧 待真机 |
-| Android / iOS | 计划中的原生壳 | 📋 未实现 |
+在支持 Docker Compose 的 NAS 上创建专用数据目录，在新项目使用[唯一基础模板](deploy/docker-compose.yml)，填写强口令和目录的真实绝对路径。启动后访问 `http://NAS_IP:8787`；改过宿主端口则使用新端口。局域网 HTTP 不加密，远程访问须使用 HTTPS 和实际可达的网络路径。完整步骤见[部署指南](docs/DEPLOY.md)。
 
-## 🚀 快速开始
+## 连接其他设备
 
-在支持 Docker Compose 的 NAS 上，先创建专用数据目录，再把[唯一基础模板](deploy/docker-compose.yml)粘贴到新建项目，填写强口令和该目录的真实绝对路径。启动后用浏览器访问 `http://NAS_IP:8787` 并登录；若修改了宿主端口，地址也使用新端口。第二台设备连接同一可达地址，发送文字、图片和 PDF 并取回验证。
+第二台设备打开同一可达地址并登录，发送文字、图片和 PDF，再从另一台打开或下载。原生客户端填写实际可达的完整地址。桌面和鸿蒙的安装及验证边界分别见[桌面说明](apps/desktop/README.md)、[鸿蒙说明](docs/HARMONY_SHELL.md)。[Raycast 扩展](apps/raycast/README.md)为本地导入，未上架商店。
 
-完整步骤、已有部署迁移和 HTTPS 见 **[部署指南](docs/DEPLOY.md)**。原生客户端填写实际验证可达的地址。
+## 升级与备份
 
-PWA 当前支持安装与页面外壳缓存；尚无 Web Share Target 分享接收入口或离线发送队列。桌面壳也尚无系统分享接收入口。
+先记录实际镜像版本和 `/data` 对应目录，按[备份与恢复](docs/DEPLOY.md#备份与恢复)保存完整数据并验证恢复；升级使用实际发布的固定版本。回退须使用升级前完整备份及对应旧版本，不保证单独换回旧镜像能兼容新数据。
 
-## 📚 文档
+## 功能边界
 
-- **[docs/SPEC.md](docs/SPEC.md)** — 完整需求与边界
-- **[docs/DEPLOY.md](docs/DEPLOY.md)** — 部署指南（镜像 / 源码 / 反代 / 验证）
-- **[docs/HARMONY_SHELL.md](docs/HARMONY_SHELL.md)** — 鸿蒙原生壳契约
-- **[docs/RELIABILITY.md](docs/RELIABILITY.md)** — 自动化测试范围、恢复演练与待验收项
-- **[docs/RESEARCH.md](docs/RESEARCH.md)** — 竞品与技术决策
+- 发送文字、链接、图片和文件；取用时可复制、打开或下载，搜索并用待办、收藏和筛选找回。收藏是标记和筛选，不承诺置顶排序；截止日期用于显示和筛选，不提供系统定时通知。
+- 敏感遮罩是页面展示保护，不是加密密码保险箱。局域网 HTTP 不加密，落盘保护依赖 NAS 配置。
+- Web 有本机草稿，没有离线发送队列或 Web Share Target；鸿蒙源码有本机队列，入队不等于 NAS 已确认保存。系统分享、图片复制和后台调度因平台及版本而异，见各端说明。
+- PWA 安装依赖浏览器与安全上下文；页面升级时草稿和 service worker 行为尚待配套版本实测。Android/iPhone 可使用网页，没有原生客户端。
 
----
+## 开发与文档
 
-# 开发
+源码采用 pnpm monorepo：`apps/api`、`apps/web`、`packages/shared`、桌面、Raycast 和鸿蒙壳。开发环境使用 `.node-version` 与根 `packageManager` 指定版本。`pnpm install` 后运行 `pnpm dev`；开发态未设 `AUTH_PASSWORD` 时认证关闭。根 Compose 是源码开发配置，不是普通 NAS 安装入口。
 
-全 TypeScript pnpm monorepo；数据 SQLite，附件本地文件系统。**明确否决** Next.js · PostgreSQL · Redis（[SPEC §18](docs/SPEC.md)）。
+- [部署、备份与恢复](docs/DEPLOY.md) · [版本管理](docs/VERSIONING.md) · [当前交付表](docs/RELEASES.md)
+- [架构与所有权](docs/ARCHITECTURE.md) · [产品范围](docs/SPEC.md) · [试用脚本](docs/PILOT.md)
+- [鸿蒙设备审计](docs/HARMONY_DEVICE_AUDIT.md) · [可靠性验证范围](docs/RELIABILITY.md)
 
-| 目录 | 内容 |
-|---|---|
-| `apps/web` | React + Vite + TanStack Router/Query + motion + PWA |
-| `apps/api` | Hono + better-sqlite3 + Drizzle + SSE + argon2/sharp |
-| `apps/raycast` | Raycast Mac / Windows 本地扩展：主动发送剪贴板、随手记录、搜索取用 |
-| `apps/desktop` | Tauri 2 桌面薄壳（Rust） |
-| `packages/shared` | 类型 + zod 校验 + 规则识别 |
-| `SendToMyself/` | HarmonyOS ArkTS 原生壳 |
-
-```bash
-pnpm install
-pnpm dev                  # api(:8787) + web(:5173) 同时启动
-```
-
-开发态不设 `AUTH_PASSWORD` 则认证关闭。根目录 `docker-compose.yml` 仅用于源码构建：默认只监听本机，要求前置 HTTPS 反向代理；本机 HTTP 直连需设置 `SECURE_COOKIE=false`。普通 NAS 安装使用上面的基础模板。
-
-开发和 CI 使用 Node 24.21.0（见 `.node-version`）及 pnpm 12.9.1（见 `packageManager`）。
-
-```bash
-pnpm -r run typecheck     # 全量类型检查
-pnpm test                # 契约、API、分页/上传/SSE/备份及重连回归
-pnpm test:recovery       # Docker 完整备份恢复演练（需先构建 send-to-myself:ci）
-```
-
-云环境通常从已发布的快照恢复。启动说明可先运行 `bash scripts/cloud-sync.sh`：
-仅在 `main` 或默认 `work` 分支工作区干净、且没有偏离主线的本地提交时，
-通过 `git pull --ff-only origin main` 更新。存在本地改动、任务分支或分叉提交时保留现场。
-同步后执行 `pnpm install --frozen-lockfile`，再运行 `pnpm dev`。
-该脚本需要在云环境的启动说明中注册；仓库中存在脚本本身不会触发自动执行。
-
-桌面壳开发需 [Rust](https://tauri.app/start/prerequisites/)：
-
-```bash
-cd apps/desktop && pnpm tauri dev
-```
-
-## 认证与安全
-
-单用户 argon2id 口令 + session cookie + 登录限速锁定；原生壳用长效 Bearer 设备令牌。局域网 HTTP 不加密，远程访问应使用 HTTPS；落盘默认依赖 NAS 卷加密。**不防服务器被完全攻破**（那需要端到端加密，V1 不做）。详见 [SPEC §12.4](docs/SPEC.md)。
-
-## License
-
-MIT
-
-### Raycast 与 Mac / Windows 主动发送
-
-主窗口的“设备接入”可创建和吊销 Raycast 设备令牌。扩展提供发送剪贴板、随手记录、最近记录三个入口，安装和边界见 [Raycast README](apps/raycast/README.md)。Mac / Windows 通过同一 API 互通文字、链接、图片和文件；桌面新版壳支持原生图片复制，不进行后台剪贴板监听。需要同时更新服务端页面和桌面壳。实际 Raycast / 桌面应用粘贴仍需真机验收。
+仓库现有截图为历史示意，不能作为当前版本界面或验收证据。许可证：[MIT](LICENSE)。

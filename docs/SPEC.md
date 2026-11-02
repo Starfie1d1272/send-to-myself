@@ -1,15 +1,14 @@
 # SendToMyself — 需求与边界（SPEC V1.1 · 终稿）
 
-> 本文件是项目的**单一事实来源（single source of truth）**。
-> 任何关于「做不做、怎么做」的争议，以本文件为准。新增范围必须先改本文件。
+> 本文件记录产品范围和历史设计；当前公开版本与验收边界以 [RELEASES](RELEASES.md) 和实际源码为准。
 
-最后更新：2026-10-07 · 核心 MVP 已首次发布；自动化可靠性验证逐步补齐，鸿蒙真机及实际部署验收待完成。版本变更见 [CHANGELOG.md](../CHANGELOG.md)，验证范围见 [RELIABILITY.md](RELIABILITY.md)。
+产品定位更新：2026-11-02 · 单用户 NAS 跨设备收件箱；源码实现不等于公开发布或完整验收。版本变更见 [CHANGELOG.md](../CHANGELOG.md)，验证范围见 [RELIABILITY.md](RELIABILITY.md)。
 
 ---
 
 ## 0. 一句话定位与北极星
 
-部署在个人 NAS、单用户、跨平台的「发给自己」**统一信息流**，替代「微信发给自己」，但搜索和后续处理更强。
+发给自己：放在 NAS 上的跨设备收件箱。手机随手发，电脑接着用。
 
 **它不是**：笔记软件、密码管理器、完整任务管理器、网盘。
 **它是**：一个统一的「发给自己」入口。
@@ -253,12 +252,12 @@ NAS 安装使用 [deploy/docker-compose.yml](../deploy/docker-compose.yml)：固
 | 平台 | 壳方案 | 系统分享接收 | 当前状态 |
 |---|---|---|---|
 | 浏览器 / PWA | 响应式网页，可安装 | Web Share Target 尚未实现 | 核心已发布；无离线发送队列 |
-| Windows / macOS | Tauri 2 | 尚未实现系统分享接收 | 已发布安装包，含托盘/全局快捷键/切换服务器 |
+| Windows / macOS | Tauri 2 | 尚未实现系统分享接收 | 已发布 1.0.0 安装包；主线新设置与复制能力另见[交付表](RELEASES.md) |
 | **HarmonyOS NEXT** | **原生 ArkTS** | Share Kit 代码已实现 | 登录/WebView/离线队列已有代码，待真机验收 |
 | Android | Capacitor（计划） | ACTION_SEND（计划） | 尚未实现 |
 | iOS | Capacitor（按需） | Share Extension（计划） | 尚未实现 |
 
-**后续顺序**：先可靠性回归与恢复演练，再完成鸿蒙真机闭环和核心补丁维护；桌面设置页随后，Android/iOS 后置。平台壳与核心版本独立管理，不再用核心 V1.x 标记平台开发顺序。
+平台壳与核心版本独立管理。主线桌面设置与鸿蒙新传输能力不代表旧公开安装包已包含这些功能；实际发布和设备验收见 [RELEASES](RELEASES.md)。Android/iOS 使用网页，无原生包。
 
 ---
 

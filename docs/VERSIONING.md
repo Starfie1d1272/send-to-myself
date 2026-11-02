@@ -1,63 +1,19 @@
 # 版本管理
 
-本仓库是 monorepo，含**核心**与多个**平台壳**，两者版本**独立管理**。
+核心（根、`apps/api`、`apps/web` 和镜像）、桌面和鸿蒙独立版本，遵循语义化版本。当前公开版本与配套验证范围见 [RELEASES](RELEASES.md)；源码版本、构建产物和公开发布不能互相替代。
 
-## 总原则
-
-- 遵循[语义化版本](https://semver.org/lang/zh-CN/) `MAJOR.MINOR.PATCH`。
-- **核心**（`apps/api` + `apps/web` + Docker 镜像）共用一个版本号。
-- **平台壳**各自独立版本——壳是薄壳，业务全在服务端（[SPEC §14](SPEC.md)）。核心升级不必重发壳，壳升级也不动核心，发布节奏天然不同。
-
-## 各部分版本写在哪
-
-| 部分 | 版本来源 | 当前 |
+| 组件 | 版本来源 | 发布节奏与入口 |
 |---|---|---|
-| 核心（api / web / 根） | `package.json` 的 `version` | 1.0.2 |
-| 桌面壳（Tauri） | `apps/desktop/src-tauri/tauri.conf.json` + `Cargo.toml` 的 `version` | 1.0.0 |
-| 鸿蒙壳（ArkTS） | `SendToMyself/AppScope/app.json5` 的 `versionName` / `versionCode` | 1.1.1（RC 预发布，完整传输验收待完成） |
+| 核心 | 根、API、Web 的 `package.json`；`/api/info` 读取 API 版本 | `v<x.y.z>` 核心 tag 对应 GHCR 固定版本镜像，API 和 Web 随同一镜像交付 |
+| 桌面 | `apps/desktop/src-tauri/tauri.conf.json` 和 `Cargo.toml` | `desktop-v<x.y.z>`；当前构建 Windows x64 EXE/MSI 和 macOS arm64 DMG |
+| 鸿蒙 | `SendToMyself/AppScope/app.json5` 的 `versionName` / `versionCode` | `harmony-v<x.y.z>`，预发布追加 `-rc.N`；公开未签名 HAP 需自行签名 |
 
-## Git Tag 与发布
+## 发布准备
 
-| 发布对象 | Tag 格式 | 触发的 CI | 产物 |
-|---|---|---|---|
-| 核心 | `v<x.y.z>`，如 `v1.0.0` | `docker-image.yml` | GHCR 多架构镜像 `:x.y.z` + `:latest` |
-| 桌面壳 | `desktop-v<x.y.z>`，如 `desktop-v1.0.0` | `desktop-build.yml` | GitHub Release + DMG / MSI / EXE |
-| 鸿蒙壳 | `harmony-v<x.y.z>`；预发布追加 `-rc.N` | — | GitHub Release 附未签名 HAP；本地签名包用于设备安装 |
+核心、桌面、鸿蒙分别记录实际 tag、源码 SHA、平台、对应核心版本和验证结果。设备覆盖安装时递增鸿蒙 `versionCode`，不公开设备绑定的签名包、证书或密码。已有正式 tag 不覆盖或改写。主线合并不自动部署用户 NAS，也不等于正式发布。
 
-> 两个 workflow 的 tag 触发已分离：打核心 `v*` 不会连带触发桌面打包，反之亦然。任一 workflow 仍可用手动触发（workflow_dispatch）随时自测。
+当前工作包目标为核心 1.1.0、桌面 1.1.0、鸿蒙 1.2.0，尚未因此成为公开下载。候选构件取得后记录实际来源和配套范围；正式发布后才更新推荐入口。核心镜像的固定 tag 和实际 digest、运维包中的 `VERSION.json` 与 Compose 镜像应一致；从实际生成包验证，而非凭计划宣称完成。
 
-## 日常流程
+发布工作流调整由本工作包的构建范围完成。目标规则是只有明确的正式核心版本更新 `latest`；预发布和手动候选不更新它。**当前主线旧版 Docker workflow 仍给手动构建添加 `latest`**，在相应修改合入并验证前不要假定目标规则已生效。手动候选及 RC 的具体 tag 和实际工作流行为以合入后的配置和运行结果为准。
 
-**发核心版本**
-```bash
-# 1. 同步根、apps/api、apps/web 的 version + 更新 CHANGELOG.md
-#    pnpm typecheck && pnpm test && pnpm audit
-#    docker build -t send-to-myself:ci . && pnpm test:recovery
-# 2. 合并通过 CI 的 PR，确认 main 的 validate 成功
-# 3. 在已验证的 main 提交上打 tag 并推送：
-git tag v1.0.1 && git push origin v1.0.1
-# → 自动构建并发布镜像；NAS 上 docker compose pull && up -d 即更新
-```
-
-**发桌面壳版本**
-```bash
-# 1. 改 tauri.conf.json + Cargo.toml 的 version（记得同步 Cargo.lock）
-git tag desktop-v1.0.1 && git push origin desktop-v1.0.1
-# → 自动构建 DMG / MSI / EXE 并附到 GitHub Release
-```
-
-**发鸿蒙壳版本**：在 DevEco 里更新 `app.json5` 的 `versionName` / `versionCode`，构建 HAP。真机验收前使用 `harmony-v<x.y.z>-rc.N` 标签和 GitHub prerelease。公开附件提供未签名 HAP、配套 Web 产物、校验和及验收说明；设备绑定的调试签名包留在本地。应用市场上架单独处理。
-
-## 改 bug 发 patch
-
-实测发现 bug → 修 → 只把**受影响那部分**的版本尾数 +1（如核心 `1.0.0 → 1.0.1`）→ 更新 CHANGELOG → 打对应 tag。其他部分版本不动。
-
-## 鸿蒙签名密钥（不入库）
-
-`SendToMyself/build-profile.json5` 的 `signingConfigs` 含本地证书路径与密钥，**绝不入库**：
-- 仓库内该文件的 `signingConfigs` 保持为空 `[]`。
-- 本地 DevEco 打包时会自动写入真实签名信息。用下面命令让 Git 永久忽略这份本地改动，避免误提交密钥：
-  ```bash
-  git update-index --skip-worktree SendToMyself/build-profile.json5
-  ```
-- 换机器 / 重新 clone 后需再执行一次该命令。
+组件发布说明应只描述对应组件，历史记录不改写。升级前按[部署指南](DEPLOY.md#备份与恢复)备份完整数据与配置；回退采用升级前备份和对应旧版本，旧核心未必能读取新迁移后的数据。版本号和构建 SHA 不能代替实际设备验证。
