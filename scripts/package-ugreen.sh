@@ -50,6 +50,14 @@ mkdir -p "$work/result"
 # Resolve the multi-platform index once, so a moving tag cannot mix releases.
 docker buildx imagetools inspect --raw "$image" > "$work/index.json"
 for a in "${arches[@]}"; do
+  # Each pack contains only this architecture's rootfs; keep the source template dual-arch.
+  python3 - "$work/project.yaml" "$a" <<'PYARCH'
+import pathlib, re, sys
+path = pathlib.Path(sys.argv[1]); text = path.read_text()
+text, count = re.subn(r'^support_arch: \[[^\n]*\]$', f'support_arch: [{sys.argv[2]}]', text, flags=re.M)
+if count != 1: raise SystemExit('Expected one support_arch declaration')
+path.write_text(text)
+PYARCH
   child_digest=$(python3 - "$work/index.json" "$a" <<'PYCODE'
 import json, re, sys
 index = json.load(open(sys.argv[1])); arch = sys.argv[2]

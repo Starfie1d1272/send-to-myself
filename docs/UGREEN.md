@@ -10,9 +10,9 @@
 scripts/package-ugreen.sh --version 1.0.2 --build 1 --arch all --output ./ugreen-output
 ```
 
-版本必须是仓库的非草稿、非预发布 `vX.Y.Z` release；镜像固定为 GHCR 同数字 tag。脚本先固定多架构 manifest，再逐架构拉取对应 digest，检查架构与 OCI revision 是否匹配正式 release 提交，并检查导出 tar 的单 tag、配置 ID 和架构，再调用 `ugcli check` 和 `ugcli pack`。缺少 OCI revision 的旧镜像不能生成可追溯包。`manifest.json` 和 `SHA256SUMS` 与 UPK 一起输出；镜像/UPK 均不提交源码仓库。相同核心版本的上架构建号须递增。当前核心 1.1.0 是候选，不能作为已发布版本打包。脚本不发布、上传或连接 NAS。若某架构镜像不存在或检查失败则整体失败，空输出目录可重试。
+版本必须是仓库的非草稿、非预发布 `vX.Y.Z` release；镜像固定为 GHCR 同数字 tag。脚本先固定多架构 manifest，再逐架构将临时配置限定为该架构并拉取对应 digest，检查架构与 OCI revision 是否匹配正式 release 提交，并检查导出 tar 的单 tag、配置 ID 和架构，再调用 `ugcli check` 和 `ugcli pack`。缺少 OCI revision 的旧镜像不能生成可追溯包。`manifest.json` 和 `SHA256SUMS` 与 UPK 一起输出；镜像/UPK 均不提交源码仓库。相同核心版本的上架构建号须递增。当前核心 1.1.0 是候选，不能作为已发布版本打包。脚本不发布、上传或连接 NAS。若某架构镜像不存在或检查失败则整体失败，空输出目录可重试。
 
-官方依据：[Docker 打包](https://developer.ugnas.com/doc/backend/quick-start/develop-docker-app.html)、[project.yaml](https://developer.ugnas.com/doc/tools/project-yaml.html)、[端口与代理](https://developer.ugnas.com/doc/backend/application/app-port.html)、[打开方式](https://developer.ugnas.com/doc/backend/application/open-type.html)、[开发准备](https://developer.ugnas.com/doc/backend/quick-start/prepare.html)、[测试](https://developer.ugnas.com/doc/backend/quick-start/testing.html)、[发布](https://developer.ugnas.com/doc/backend/quick-start/publish.html)。保留 Docker 默认代理配置，未限制为 `/api`；整站和 SSE 是否通过实际 UGOS 入口仍待验证。
+官方依据：[Docker 打包](https://developer.ugnas.com/doc/backend/quick-start/develop-docker-app.html)、[project.yaml](https://developer.ugnas.com/doc/tools/project-yaml.html)、[端口与代理](https://developer.ugnas.com/doc/backend/application/app-port.html)、[打开方式](https://developer.ugnas.com/doc/backend/application/open-type.html)、[开发准备](https://developer.ugnas.com/doc/backend/quick-start/prepare.html)、[测试](https://developer.ugnas.com/doc/backend/quick-start/testing.html)、[发布](https://developer.ugnas.com/doc/backend/quick-start/publish.html)。官方文档规定产物路径为 `build_dir/pkgs/upk/{arch}_{product_series}_{appid}_{version}.upk`；脚本按此查找，但尚未使用 ugcli 实际校验模板、打包或确认输出。保留 Docker 默认代理配置，未限制为 `/api`；整站和 SSE 是否通过实际 UGOS 入口仍待验证。
 
 ## 新安装
 
