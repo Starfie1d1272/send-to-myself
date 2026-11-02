@@ -139,7 +139,7 @@ export function useComposer() {
       if (snapshot.files.length) await upload.mutateAsync({ content: snapshot.content, files: snapshot.files, dedupeKey: snapshot.dedupeKey, options: { signal: controller.signal, onProgress: setProgress, detectionContext: snapshot.detectionContext } });
       else await create.mutateAsync({ content: snapshot.content, dedupeKey: snapshot.dedupeKey, detectionContext: snapshot.detectionContext });
       if (generation === draftGeneration() && attempt.current === controller) {
-        await finishConfirmed(snapshot.dedupeKey!, generation, "已发送");
+        await finishConfirmed(snapshot.dedupeKey!, generation, "");
       }
     } catch (err) {
       if (generation === draftGeneration()) {
