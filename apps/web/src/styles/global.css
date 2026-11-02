@@ -1200,7 +1200,7 @@ body {
 .due-menu input { max-width: 100%; }
 .att details summary { cursor: pointer; }
 
-.filterbar > button, .filterbar .chips > button:not(.chip), .actions > button, .actions .due-wrap > button, .item__body > button:not(.redacted):not(.suggest), .att__file-actions > a {
+.filterbar__toggle, .filterbar .chips > button:not(.chip), .actions > button:not(.icon-btn), .actions .due-wrap > button:not(.icon-btn), .item__body > button:not(.redacted):not(.suggest), .att__file-actions > a {
   border: 1px solid var(--line-strong); background: var(--paper-2); color: var(--ink-soft); border-radius: 8px; padding: 6px 10px; cursor: pointer; font: inherit; font-size: 13px;
 }
 
@@ -1246,3 +1246,11 @@ body { line-height: 1.6; }
 .composer__error .button { margin: 4px 8px 0 0; }
 
 .device-dialog .button--danger:not(.send), .actions > .button--danger { border-color: var(--red); color: var(--red); background: var(--card-hi); }
+
+.filterbar__search { display: flex; align-items: stretch; gap: 8px; }
+.filterbar__search .search { flex: 1; min-width: 0; }
+.filterbar__toggle { flex: none; min-height: 44px; }
+.actions .icon-btn { width: 44px; height: 44px; }
+
+.app-menu__trigger { width: 44px; height: 44px; }
+.att__image-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }

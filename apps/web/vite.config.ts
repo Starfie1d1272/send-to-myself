@@ -16,9 +16,9 @@ export default defineConfig({
       registerType: "autoUpdate",
       includeAssets: ["icon.svg"],
       manifest: {
-        name: "发给自己",
-        short_name: "发给自己",
-        description: "自托管的跨设备收件箱",
+        name: "SendToMyself",
+        short_name: "ToMyself",
+        description: "发给自己的统一信息流",
         lang: "zh-CN",
         theme_color: "#bc4b2a",
         background_color: "#f2ece1",

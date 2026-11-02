@@ -12,8 +12,8 @@ export function FilterBar({ state, onChange }: { state: TimelineViewState; onCha
       {state.view === 'trash' && <span>回收站</span>}
     </div>
     {state.view === 'todo' && <div className="chips">{([['open','未完成'],['next7days','未来7天'],['completed','已完成']] as const).map(([key,label]) => <button key={key} className={`chip${state.todoScope === key ? ' chip--on' : ''}`} onClick={() => set({todoScope:key})}>{label}</button>)}</div>}
-    <label className="search"><IconSearch width={16} height={16}/><input placeholder="搜索正文、链接、文件名…" value={state.query} onChange={e => set({query:e.target.value})}/></label>
-    <button onClick={() => setOpen(!open)} aria-expanded={open}>筛选</button>
+    <div className="filterbar__search"><label className="search"><IconSearch width={16} height={16}/><input placeholder="搜索正文、链接、文件名…" value={state.query} onChange={e => set({query:e.target.value})}/></label>
+    <button className="filterbar__toggle" onClick={() => setOpen(!open)} aria-expanded={open}>筛选</button></div>
     {open && <div className="filter-panel">
       <div>内容 {([['all','全部'],['link','链接'],['image','图片'],['file','文件']] as const).map(([key,label]) => <button key={key} className={`chip${state.contentType === key ? ' chip--on' : ''}`} onClick={() => set({contentType:key})}>{label}</button>)}</div>
       <div>标记 {([['all','全部'],['idea','想法'],['read_later','稍后看']] as const).map(([key,label]) => <button key={key} className={`chip${state.category === key ? ' chip--on' : ''}`} onClick={() => set({category:key})}>{label}</button>)}</div>
