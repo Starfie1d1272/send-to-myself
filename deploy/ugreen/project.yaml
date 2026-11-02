@@ -1,0 +1,58 @@
+spec_version: "2.1"
+app_id: com.starfie1d.sendtomyself
+# Template default is the last published core release; the pack script replaces it.
+version: "1.0.2"
+support_arch: [amd64, arm64]
+product_series: [nasync]
+supports: [pc, app]
+is_docker_app: true
+only_admin: true
+port: 18787
+open_type: tab
+tag_types: [utility]
+depend_fw_version: "1.13.0.0000"
+depend_docker_version: "1.7.0.0000"
+permissions: [NETWORK.ACCESS_INTERNET]
+privacy_policy_link:
+  - https://github.com/Starfie1d1272/send-to-myself/blob/main/docs/UGREEN.md#隐私说明
+license_agreement_link:
+  - https://github.com/Starfie1d1272/send-to-myself/blob/main/LICENSE
+source_code_link:
+  - https://github.com/Starfie1d1272/send-to-myself
+technical_support_link:
+  - https://github.com/Starfie1d1272/send-to-myself/issues
+parameters:
+  - key: STM_DATA_DIR
+    type: path
+    required: true
+    multi: false
+    changeable: false
+    i18n:
+      zh-CN:
+        name: 数据存储目录
+        description: 数据库和附件都放在这里，升级时保留
+      en-US:
+        name: Data directory
+        description: Stores the database and attachments; retain it during upgrades
+  - key: AUTH_PASSWORD
+    type: password
+    required: true
+    changeable: true
+    min_length: 12
+    max_length: 128
+    i18n:
+      zh-CN:
+        name: 登录口令
+        description: 其他设备使用同一口令连接（12–128位）
+      en-US:
+        name: Login password
+        description: Other devices use the same password (12–128 characters)
+i18n:
+  zh-CN:
+    name: 发给自己
+    description: NAS上的跨设备个人收件箱，收集文字、链接、图片和文件
+    author: Starfie1d1272
+  en-US:
+    name: SendToMyself
+    description: A personal NAS inbox for text, links, images and files across devices
+    author: Starfie1d1272
