@@ -1,5 +1,7 @@
 # HarmonyOS 客户端实现与接口契约
 
+公开的 [1.1.1 RC1](https://github.com/Starfie1d1272/send-to-myself/releases/tag/harmony-v1.1.1-rc.1) 是需自行签名的开发预览，配套 Web 见发布说明；本页也描述之后的主线源码，不代表已发布安装包。参见[交付表](RELEASES.md)。
+
 截至 2026-11-01，客户端主体为 ArkWeb，原生侧负责登录、系统分享与持久传输。1.1.0 的后台任务、逐条管理与向外分享已实现，待真机验收；详见 [传输实现与验收清单](HARMONY_TRANSFERS.md)。历史设备证据见 [设备审计](HARMONY_DEVICE_AUDIT.md)。
 
 产品边界见 `docs/SPEC.md`，数据契约以 `packages/shared/src/schema.ts` 为准。
