@@ -1,4 +1,4 @@
-import { PAPER, CARD, CARD_HI, INK, INK_SOFT, ERROR, CARD_RADIUS } from '../common/Theme';
+import { PAPER, CARD, CARD_HI, INK, INK_SOFT, ACCENT, ERROR, CARD_RADIUS } from '../common/Theme';
 import { common } from '@kit.AbilityKit';
 import { readConnection } from '../common/ConnectionSession';
 import { promptAction } from '@kit.ArkUI';
@@ -92,12 +92,12 @@ struct TransfersPage {
   build() {
     Column() {
       Row() {
-        Button('返回').onClick(() => { this.getUIContext().getRouter().back(); })
+        Button('返回').backgroundColor(CARD_HI).fontColor(INK).onClick(() => { this.getUIContext().getRouter().back(); })
         Text('传输任务').fontColor(INK).fontSize(20).fontWeight(FontWeight.Medium).layoutWeight(1).margin({ left: 12 })
-        Button('刷新').enabled(!this.loading).onClick(() => { this.error = ''; this.refresh(); })
+        Button('刷新').backgroundColor(CARD_HI).fontColor(INK).enabled(!this.loading).onClick(() => { this.error = ''; this.refresh(); })
       }.width('100%').padding(12)
       if (this.error) { Text(this.error).fontColor(ERROR).padding(12).width('100%') }
-      Button('重新登录当前连接').enabled(!this.busyKey).onClick(() => {
+      Button('重新登录当前连接').backgroundColor(ACCENT).fontColor(CARD_HI).enabled(!this.busyKey).onClick(() => {
         this.getUIContext().getRouter().back();
         setTimeout(() => { requestHostReauthentication().catch(() => {
           promptAction.showToast({ message: '无法打开重新登录，请在首页重试' });
@@ -117,13 +117,13 @@ struct TransfersPage {
                 Text(new Date(item.createdAt).toLocaleString() + '\n' + item.serverUrl).fontColor(INK).fontSize(12).width('100%')
               }
               Flex({ wrap: FlexWrap.Wrap }) {
-                Button(this.expandedKey === item.key ? '收起' : '详情').margin(4)
+                Button(this.expandedKey === item.key ? '收起' : '详情').backgroundColor(CARD_HI).fontColor(INK).margin(4)
                   .onClick(() => { this.expandedKey = this.expandedKey === item.key ? '' : item.key; })
                 if (item.active) {
-                  Button('暂停').margin(4).enabled(!this.busyKey)
+                  Button('暂停').backgroundColor(CARD_HI).fontColor(INK).margin(4).enabled(!this.busyKey)
                     .onClick(() => { this.perform(item.key, () => pauseQueueItem(this.context, item.key)); })
                 } else if (!item.terminalDeleted) {
-                  Button(item.paused ? '继续' : '重试').margin(4).enabled(!this.busyKey)
+                  Button(item.paused ? '继续' : '重试').backgroundColor(CARD_HI).fontColor(INK).margin(4).enabled(!this.busyKey)
                     .onClick(() => { this.perform(item.key, () => retryQueueItem(this.context, item.key)); })
                 }
                 Button('删除').margin(4).backgroundColor(ERROR).fontColor(CARD_HI).enabled(!this.busyKey).onClick(() => { this.confirmRemove(item.key, false); })
@@ -138,15 +138,15 @@ struct TransfersPage {
               Text(item.status).fontColor(INK).fontSize(13).fontColor(INK_SOFT).width('100%')
               Flex({ wrap: FlexWrap.Wrap }) {
                 if (item.ready) {
-                  Button('分享').margin(4).enabled(!this.busyKey)
+                  Button('分享').backgroundColor(CARD_HI).fontColor(INK).margin(4).enabled(!this.busyKey)
                     .onClick(() => { this.perform(item.id, () => shareDownload(this.context, item.id)); })
-                  Button('保存到文件夹').margin(4).enabled(!this.busyKey)
+                  Button('保存到文件夹').backgroundColor(CARD_HI).fontColor(INK).margin(4).enabled(!this.busyKey)
                     .onClick(() => { this.perform(item.id, () => saveDownload(this.context, item.id)); })
                 } else if (!item.active) {
-                  Button('重试').margin(4).enabled(!this.busyKey)
+                  Button('重试').backgroundColor(CARD_HI).fontColor(INK).margin(4).enabled(!this.busyKey)
                     .onClick(() => { this.perform(item.id, () => retryDownload(this.context, item.id)); })
                 }
-                Button('移除').margin(4).enabled(!this.busyKey).onClick(() => { this.confirmRemove(item.id, true); })
+                Button('移除').backgroundColor(CARD_HI).fontColor(INK).margin(4).enabled(!this.busyKey).onClick(() => { this.confirmRemove(item.id, true); })
               }
             }.padding(16).width('100%').backgroundColor(CARD).borderRadius(CARD_RADIUS)
           }, (item: DownloadRow) => item.id)

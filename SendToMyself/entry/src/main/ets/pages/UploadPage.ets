@@ -71,12 +71,12 @@ struct UploadPage {
         Text('需要修改文字时返回首页').fontColor(INK_SOFT)
         ForEach(this.files, (file: SharedFileData, index: number) => {
           Row() { Text(file.filename + ' · ' + fileIo.statSync(file.path).size.toString() + ' B').fontColor(INK).layoutWeight(1)
-            Button('移除').enabled(!this.busy).onClick(() => { const handoff = this.handoff; if (!handoff) return; handoff.removePreparedFile(index); this.files = [...handoff.files]; }) }
+            Button('移除').backgroundColor(CARD_HI).fontColor(INK).enabled(!this.busy).onClick(() => { const handoff = this.handoff; if (!handoff) return; handoff.removePreparedFile(index); this.files = [...handoff.files]; }) }
         }, (file: SharedFileData) => file.path)
         Text(this.status).fontColor(INK_SOFT)
-        Button('继续添加').enabled(!this.busy && this.files.length < 20).onClick(() => this.select())
+        Button('继续添加').backgroundColor(CARD_HI).fontColor(INK).enabled(!this.busy && this.files.length < 20).onClick(() => this.select())
         Button('发送').backgroundColor(ACCENT).fontColor(CARD_HI).enabled(!this.busy && this.files.length > 0).onClick(() => this.send())
-        Button(this.busy ? '取消准备' : '返回').enabled(!this.handoff?.writing).onClick(() => { if (this.busy) { this.cancelled = true; this.handoff?.cancel(); } else { this.handoff?.cancel(); this.getUIContext().getRouter().back(); } })
+        Button(this.busy ? '取消准备' : '返回').backgroundColor(CARD_HI).fontColor(INK).enabled(!this.handoff?.writing).onClick(() => { if (this.busy) { this.cancelled = true; this.handoff?.cancel(); } else { this.handoff?.cancel(); this.getUIContext().getRouter().back(); } })
       }.padding(SPACE).width('100%')
     }.width('100%').height('100%').backgroundColor(PAPER)
   }

@@ -377,23 +377,23 @@ struct MainPage {
         Column({ space: 12 }) {
           Text('重新登录当前连接').fontSize(20).fontColor(C_INK)
           TextInput({ placeholder: '登录口令' }).type(InputType.Password).backgroundColor(CARD_HI).fontColor(C_INK).placeholderColor(C_INK_SOFT).enabled(!this.authSubmitting).onChange((value: string) => { this.password = value; })
-          Button('重新登录').enabled(!this.authSubmitting).onClick(() => { this.submitReauthenticate(); })
-          Button('取消').enabled(!this.authSubmitting).onClick(() => { this.cancelReauthenticate(); })
+          Button('重新登录').backgroundColor(C_ACCENT).fontColor(CARD_HI).enabled(!this.authSubmitting).onClick(() => { this.submitReauthenticate(); })
+          Button('取消').backgroundColor(CARD_HI).fontColor(C_INK).enabled(!this.authSubmitting).onClick(() => { this.cancelReauthenticate(); })
         }.padding(24).backgroundColor(C_CARD).width('90%')
       }
       if (this.signedOut) {
         Column({ space: 12 }) {
           Text(this.logoutNotice || '正在退出当前连接…').fontColor(C_INK)
-          Button('传输任务').onClick(() => { this.getUIContext().getRouter().pushUrl({ url: 'pages/TransfersPage' }); })
-          Button('返回连接').onClick(() => { this.signedOut = false; this.phase = 'login'; })
+          Button('传输任务').backgroundColor(C_ACCENT).fontColor(CARD_HI).onClick(() => { this.getUIContext().getRouter().pushUrl({ url: 'pages/TransfersPage' }); })
+          Button('返回连接').backgroundColor(CARD_HI).fontColor(C_INK).onClick(() => { this.signedOut = false; this.phase = 'login'; })
         }.padding(24).backgroundColor(C_CARD).width('100%').height('100%').justifyContent(FlexAlign.Center)
       }
       if (this.pendingCount > 0 && this.phase === 'web' && !this.signedOut) {
         Column() {
           Text(this.queueError || '待发送内容已保存在本机')
-            .fontSize(12).fontColor(C_RED)
+            .fontSize(12).fontColor(this.queueError ? C_RED : C_INK_SOFT)
           Button(this.queueBusy ? '补发中…' : '待发送 ' + this.pendingCount.toString() + ' 条 · 查看')
-            .enabled(!this.queueBusy)
+            .backgroundColor(CARD_HI).fontColor(C_INK).enabled(!this.queueBusy)
             .onClick(() => { this.getUIContext().getRouter().pushUrl({ url: 'pages/TransfersPage' }); })
         }
         .padding(12).backgroundColor(C_CARD).borderRadius(10)
@@ -498,11 +498,11 @@ struct MainPage {
             this.doLogin();
           })
 
-        Button('传输任务').width('100%').margin({ top: 12 }).onClick(() => { this.getUIContext().getRouter().pushUrl({ url: 'pages/TransfersPage' }); })
+        Button('传输任务').backgroundColor(CARD_HI).fontColor(C_INK).width('100%').margin({ top: 12 }).onClick(() => { this.getUIContext().getRouter().pushUrl({ url: 'pages/TransfersPage' }); })
 
         if (this.hasToken) {
           if (this.webCookieBlocked) {
-            Button('恢复网页会话').enabled(!this.busy).onClick(() => {
+            Button('恢复网页会话').backgroundColor(CARD_HI).fontColor(C_INK).enabled(!this.busy).onClick(() => {
               this.beginReauthenticate().then((value: string) => {
                 if (value.includes('authenticated')) { this.webCookieBlocked = false; this.phase = 'web'; }
               }).catch(() => { this.errorMsg = '网页会话恢复失败，请重试'; });
