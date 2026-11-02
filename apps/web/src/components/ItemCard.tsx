@@ -81,10 +81,10 @@ export function ItemCard({
   const snapshot = useRef<EditSnapshot | undefined>(undefined);
   const memoryAttempt = useRef<{ content: string; detectionContext: ReturnType<typeof captureDetectionContext> } | undefined>(undefined);
   const lastWrite = useRef<Promise<void>>(Promise.resolve());
-  const retry = useRef<{ operation: () => Promise<unknown>; preview: boolean } | null>(null);
+  const retry = useRef<{ operation: () => Promise<unknown>; preview: boolean; missingSnapshot?: () => EditSnapshot | undefined; successMessage?: () => string } | null>(null);
   const run = async (operation: () => Promise<unknown>, preview = false, missingSnapshot?: () => EditSnapshot | undefined, successMessage?: () => string) => {
     if (lock.current) return false;
-    lock.current = true; setBusy(true); setError(""); setNotice(""); retry.current = { operation, preview };
+    lock.current = true; setBusy(true); setError(""); setNotice(""); retry.current = { operation, preview, missingSnapshot, successMessage };
     try { await operation(); retry.current = null; setNotice(successMessage?.() ?? "已保存"); return true; }
     catch (err) {
       setError(err instanceof EditDraftFrozen ? "当前会话正在退出，本次未提交。" : err instanceof EditDraftConflict ? "另一窗口已修改草稿，本次未提交。请复制当前内容后重新打开编辑，或在另一窗口处理。" : preview ? "预览抓取失败，原链接仍保留，请重试。" : err instanceof ApiError && err.code === "cleanup_failed" ? "永久删除未完成，请检查 NAS 存储后重试" : mutationErrorMessage(err));
@@ -142,6 +142,8 @@ export function ItemCard({
     let attemptSnapshot: EditSnapshot | undefined;
     let storageUnavailable = false;
     await run(async () => {
+      attemptSnapshot = undefined;
+      storageUnavailable = false;
       await lastWrite.current;
       ensureWritable();
       const saved = snapshot.current;
@@ -300,7 +302,7 @@ export function ItemCard({
 
       {confirmDelete && <Dialog onClose={() => setConfirmDelete(false)} labelledBy={`purge-${item.id}`}><h2 id={`purge-${item.id}`}>永久删除这条内容？</h2><p>正文和 {attachments.length} 个附件将从 NAS 删除，无法从回收站恢复。</p><button onClick={() => setConfirmDelete(false)}>取消</button><button className="button button--danger" onClick={() => { setConfirmDelete(false); void run(async () => { await permanent.mutateAsync(item.id); await clearEditDraft(item.id); }); }}>永久删除</button></Dialog>}
       {notice && <p role="status">{notice}</p>}
-      {error && <p className="composer__error" role="alert">{error} {editing ? <><button className="button button--secondary" disabled={busy} onClick={() => void saveEdit()}>重试保存</button><button className="button button--secondary" onClick={() => void copyText(draft)}>复制未保存内容</button></> : <button className="button button--secondary" disabled={busy} onClick={() => { if (retry.current) void (menuOpen ? menuAction(retry.current.operation, retry.current.preview) : run(retry.current.operation, retry.current.preview)); }}>重试</button>}</p>}
+      {error && <p className="composer__error" role="alert">{error} {editing ? <><button className="button button--secondary" disabled={busy} onClick={() => void saveEdit()}>重试保存</button><button className="button button--secondary" onClick={() => void copyText(draft)}>复制未保存内容</button></> : <button className="button button--secondary" disabled={busy} onClick={() => { if (retry.current) void (menuOpen ? menuAction(retry.current.operation, retry.current.preview) : run(retry.current.operation, retry.current.preview, retry.current.missingSnapshot, retry.current.successMessage)); }}>重试</button>}</p>}
       {copyError && <p className="composer__error" role="alert">{copyError}</p>}
       <fieldset className="actions" disabled={busy || editing} style={{ border: 0, padding: 0, margin: 0 }}>
         {trash ? (
