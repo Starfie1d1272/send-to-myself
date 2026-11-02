@@ -1,6 +1,6 @@
 import { webview } from '@kit.ArkWeb';
-import { loadServerUrl, loadDeviceToken, removeDeviceToken } from '../common/AssetStore';
-import { checkTokenValid, loginAndMintToken, LoginResultData } from '../common/AuthService';
+import { readConnection, requireConnection, clearTokenIfCurrent, normalizeOrigin, AuthenticatedConnection } from '../common/ConnectionSession';
+import { checkTokenValid, loginAndMintToken, logoutCurrentConnection, LoginResultData } from '../common/AuthService';
 import { startNetMonitor, stopNetMonitor } from '../common/NetMonitor';
 import { processQueue, queueStatus } from '../common/QueueService';
 import { hilog } from '@kit.PerformanceAnalysisKit';
@@ -27,16 +27,25 @@ type Phase = 'loading' | 'login' | 'web';
 struct MainPage {
   controller: webview.WebviewController = new webview.WebviewController();
   @State serverUrl: string = '';
+  @State activeOrigin: string = '';
   @State hasToken: boolean = false;
   @State phase: Phase = 'loading';
   @State password: string = '';
   @State busy: boolean = false;
   @State errorMsg: string = '';
-  @State sessionCookie: string = '';
   @State pendingCount: number = 0;
   @State queueError: string = '';
   @State queueBusy: boolean = false;
   @State refreshing: boolean = false;
+  @State authOverlay: boolean = false;
+  @State authSubmitting: boolean = false;
+  @State signedOut: boolean = false;
+  @State logoutNotice: string = '';
+  @State webCookieBlocked: boolean = false;
+  private authResolve?: (value: string) => void;
+  private authReject?: (reason: Error) => void;
+  private authOrigin: string = '';
+  private authRevision: string = '';
   private pageRevision: number = Date.now();
   private useFreshEntry: boolean = false;
   private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
@@ -52,48 +61,105 @@ struct MainPage {
           action: () => { this.getUIContext().getRouter().pushUrl({ url: 'pages/TransfersPage' }); } }
       ]
     });
-  });
+  }, () => this.beginReauthenticate(), () => this.logoutConnection());
 
-  private injectCookieToWeb(cookie: string, url: string): void {
-    if (!cookie || !url) {
-      return;
-    }
-    let cookieStr = cookie + ';path=/';
+  private async beginReauthenticate(): Promise<string> {
+    if (this.busy) throw new Error('AUTH_BUSY');
+    this.busy = true;
     try {
-      webview.WebCookieManager.configCookieSync(url, cookieStr);
-      hilog.info(DOMAIN, TAG, 'Cookie injected for %{public}s', url);
-      webview.WebCookieManager.saveCookieAsync();
-    } catch (err) {
-      let errMsg = (err as Error).message;
-      hilog.error(DOMAIN, TAG, 'Cookie inject failed: %{public}s', errMsg);
+      const current = await readConnection(this.context);
+      if (!current || current.origin !== this.activeOrigin) throw new Error('CONNECTION_CHANGED');
+      this.authOrigin = current.origin; this.authRevision = current.revision;
+      this.password = ''; this.errorMsg = ''; this.authOverlay = true;
+      return await new Promise<string>((resolve, reject) => { this.authResolve = resolve; this.authReject = reject; });
+    } catch (error) {
+      this.busy = false;
+      throw error as Error;
     }
+  }
+  private cancelReauthenticate(): void {
+    const resolve = this.authResolve;
+    this.authResolve = undefined; this.authReject = undefined;
+    this.authOverlay = false; this.busy = false; this.password = '';
+    if (resolve) resolve(JSON.stringify({ status: 'cancelled', serverOrigin: this.authOrigin }));
+  }
+  private async submitReauthenticate(): Promise<void> {
+    if (!this.authOverlay || !this.password || this.authSubmitting) return;
+    this.authSubmitting = true;
+    const origin = this.authOrigin; const revision = this.authRevision; const password = this.password;
+    try {
+      const current = await readConnection(this.context);
+      if (!current || current.origin !== origin || current.revision !== revision) throw new Error('CONNECTION_CHANGED');
+      let snapshot: AuthenticatedConnection | undefined;
+      if (current.deviceToken) snapshot = await requireConnection(this.context);
+      const result = await loginAndMintToken(this.context, origin, password, '鸿蒙手机', snapshot, revision);
+      if (!result.success || !result.connection || !result.webSetCookie) throw new Error(result.errorMessage === 'Network error' ? 'NETWORK_UNAVAILABLE' : 'AUTH_FAILED');
+      const after = await readConnection(this.context);
+      if (!after || after.origin !== origin || after.revision !== result.connection.revision) throw new Error('CONNECTION_CHANGED');
+      await this.injectCookieToWeb(result.webSetCookie, origin);
+      const resolve = this.authResolve;
+      this.authResolve = undefined; this.authReject = undefined; this.password = ''; this.busy = false; this.authOverlay = false; this.authSubmitting = false;
+      if (resolve) resolve(JSON.stringify({ status: 'authenticated', serverOrigin: origin, revision: after.revision }));
+    } catch (error) {
+      const reject = this.authReject;
+      this.authResolve = undefined; this.authReject = undefined; this.password = ''; this.busy = false; this.authOverlay = false; this.authSubmitting = false;
+      if (reject) { const code = (error as Error).message; reject(new Error(['CONNECTION_CHANGED', 'NETWORK_UNAVAILABLE', 'LOCAL_STORAGE_FAILED'].includes(code) ? code : 'AUTH_FAILED')); }
+    }
+  }
+  private async logoutConnection(): Promise<string> {
+    if (this.busy) throw new Error('AUTH_BUSY');
+    this.busy = true;
+    try {
+      const result = await logoutCurrentConnection(this.context, this.activeOrigin, (origin: string) => {
+        this.hasToken = false; this.signedOut = true;
+        this.controller.runJavaScript('window.dispatchEvent(new CustomEvent("send-to-myself:host-logout",{detail:' + JSON.stringify({ serverOrigin: origin }) + '}))').catch(() => {});
+      });
+      this.logoutNotice = '已退出当前连接，待发送内容和本机文件已保留。服务端设备令牌未自动撤销。';
+      if (result.transferStop === 'unconfirmed') this.logoutNotice += ' 部分在途传输尚未确认停止，请在传输任务中查看。';
+      if (!result.cookieCleared) this.logoutNotice += ' 网页会话清理未完成，请重试清理。';
+      if (result.remoteSessionLogout === 'unconfirmed') this.logoutNotice += ' 未能确认NAS上的网页会话已注销。';
+      return JSON.stringify(result);
+    } finally { this.busy = false; }
+  }
+
+  private async injectCookieToWeb(cookie: string, origin: string): Promise<void> {
+    if (origin.startsWith('http://') && /(?:^|;)\s*secure(?:;|$)/i.test(cookie)) {
+      throw new Error('HTTP连接不能使用Secure Cookie，请检查服务器配置');
+    }
+    webview.WebCookieManager.configCookieSync(origin, cookie, false, true);
+    await webview.WebCookieManager.saveCookieAsync();
   }
 
   async aboutToAppear(): Promise<void> {
-    let url = await loadServerUrl();
-    let token = await loadDeviceToken();
-    this.hasToken = token !== undefined;
-    if (url) {
-      this.serverUrl = url;
-    }
-    if (url && token) {
-      let valid = await checkTokenValid();
-      if (valid !== false) {
-        this.useFreshEntry = valid === true;
-        try {
-          let existing = webview.WebCookieManager.fetchCookieSync(url);
-          hilog.info(DOMAIN, TAG, 'Cold start cookie check: %{public}s', existing ? 'found' : 'empty');
-        } catch (_e) {
-          hilog.info(DOMAIN, TAG, 'Cold start cookie check: none');
-        }
-        this.phase = 'web';
+    try {
+      const connection = await readConnection(this.context);
+      if (connection) { this.serverUrl = connection.origin; this.activeOrigin = connection.origin; }
+      this.hasToken = !!connection?.deviceToken;
+      if (connection?.deviceToken) {
+        const snapshot = await requireConnection(this.context);
+        const valid = await checkTokenValid(this.context, snapshot);
+        if (valid === false) await clearTokenIfCurrent(this.context, snapshot.origin, snapshot.revision);
+        const current = await readConnection(this.context);
+        if (current?.revision === snapshot.revision && valid !== false) {
+          this.useFreshEntry = valid === true; this.phase = 'web';
+        } else if (current && current.revision !== snapshot.revision && current.deviceToken) {
+          this.activeOrigin = current.origin; this.serverUrl = current.origin; this.hasToken = true;
+          this.useFreshEntry = false; this.phase = 'web';
+        } else { this.hasToken = !!current?.deviceToken; this.phase = 'login'; }
       } else {
-        this.hasToken = false;
+        if (connection) {
+          try {
+            const expired = 'stm_session=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax' + (connection.origin.startsWith('https://') ? '; Secure' : '');
+            const current = await readConnection(this.context);
+            if (current && current.revision === connection.revision && current.origin === connection.origin) {
+              webview.WebCookieManager.configCookieSync(connection.origin, expired, false, true);
+              await webview.WebCookieManager.saveCookieAsync();
+            }
+          } catch (_error) { this.errorMsg = '网页会话清理未完成，请重试'; }
+        }
         this.phase = 'login';
       }
-    } else {
-      this.phase = 'login';
-    }
+    } catch (_error) { this.errorMsg = '暂时无法读取本机连接，请重试'; this.phase = 'login'; }
     startNetMonitor(this.context, () => { this.loadQueueStatus(); });
     this.retryQueue();
   }
@@ -113,9 +179,8 @@ struct MainPage {
     try { await processQueue(this.context); }
     catch (_error) { this.queueError = '补发失败，内容已保留'; }
     finally { this.queueBusy = false; await this.loadQueueStatus(); }
-    if (this.pendingCount > 0 && !await loadDeviceToken()) {
+    if (this.pendingCount > 0 && !(await readConnection(this.context))?.deviceToken) {
       this.errorMsg = '请重新登录，待发送内容已保留';
-      this.phase = 'login';
     }
   }
 
@@ -161,37 +226,45 @@ struct MainPage {
     }
     this.busy = true;
     this.errorMsg = '';
-    hilog.info(DOMAIN, TAG, 'Login clicked, url=%{public}s', this.serverUrl);
+    let candidate: string;
+    try { candidate = normalizeOrigin(this.serverUrl); this.serverUrl = candidate; }
+    catch (_error) { this.busy = false; this.errorMsg = '服务器地址无效'; return; }
+    const password = this.password;
     let result: LoginResultData;
     try {
-      result = await loginAndMintToken(this.serverUrl, this.password, '鸿蒙手机');
+      result = await loginAndMintToken(this.context, candidate, password, '鸿蒙手机');
     } catch (_error) {
-      this.errorMsg = '无法完成登录或保存凭据，请重试';
+      this.busy = false; this.errorMsg = '无法完成登录或保存凭据，请重试';
       hilog.error(DOMAIN, TAG, 'Login or credential storage failed');
       return;
-    } finally {
-      this.busy = false;
     }
     if (result.success) {
       this.useFreshEntry = true;
       this.hasToken = true;
       this.password = '';
-      if (result.sessionCookie) {
-        this.sessionCookie = result.sessionCookie;
-        this.injectCookieToWeb(result.sessionCookie, this.serverUrl);
+      if (!result.connection || !result.webSetCookie) { this.busy = false; this.errorMsg = '网页会话未建立'; return; }
+      const current = await readConnection(this.context);
+      if (!current || current.origin !== result.connection.origin || current.revision !== result.connection.revision) {
+        this.busy = false; this.errorMsg = '连接已改变，请重试'; return;
       }
+      this.activeOrigin = result.connection.origin;
+      this.serverUrl = result.connection.origin;
+      try { await this.injectCookieToWeb(result.webSetCookie, result.connection.origin); this.webCookieBlocked = false; }
+      catch (_error) { this.busy = false; this.webCookieBlocked = true; this.errorMsg = '网页会话未建立，请检查Cookie配置并重试'; return; }
       this.phase = 'web';
+      this.busy = false;
       startNetMonitor(this.context, () => { this.loadQueueStatus(); });
       this.retryQueue();
     } else {
+      this.busy = false;
       this.errorMsg = this.mapError(result.errorMessage);
       hilog.error(DOMAIN, TAG, 'Login failed: %{public}s', result.errorMessage ?? 'unknown');
     }
   }
 
   private entryUrl(): string {
-    if (!this.useFreshEntry) return this.serverUrl;
-    const parts = this.serverUrl.split('#');
+    if (!this.useFreshEntry) return this.activeOrigin;
+    const parts = this.activeOrigin.split('#');
     const separator = parts[0].includes('?') ? '&' : '?';
     return parts[0] + separator + '_appLoad=' + this.pageRevision.toString() +
       (parts.length > 1 ? '#' + parts.slice(1).join('#') : '');
@@ -199,7 +272,7 @@ struct MainPage {
 
   build() {
     Stack() {
-      if (this.phase === 'web' && this.serverUrl.length > 0) {
+      if (this.phase === 'web' && this.activeOrigin.length > 0) {
         Column() {
           Refresh({ refreshing: $$this.refreshing }) {
             Web({ src: this.entryUrl(), controller: this.controller })
@@ -208,13 +281,13 @@ struct MainPage {
                 this.downloads.attach(this.controller);
                 try {
                   this.controller.registerJavaScriptProxy(this.nativeBridge, 'stmNative', [],
-                    ['shareAttachment', 'saveAttachment', 'openTools'], bridgePermission(this.serverUrl));
+                    ['shareAttachment', 'saveAttachment', 'openTools', 'reauthenticate', 'logout'], bridgePermission(this.activeOrigin));
                 } catch (_error) { promptAction.showToast({ message: '原生分享入口暂不可用，请重新打开应用' }); }
               })
               .onContextMenuShow((event) => {
                 if (!event || event.param.getMediaType() !== ContextMenuMediaType.Image) return false;
                 const source = event.param.getSourceUrl();
-                const prefix = this.serverUrl.replace(/\/$/, '') + '/api/attachments/';
+                const prefix = this.activeOrigin.replace(/\/$/, '') + '/api/attachments/';
                 if (!source.startsWith(prefix)) return false;
                 const originalImage = /\/raw(\?.*)?$/.test(source);
                 const downloadUrl = source.replace(/\/(thumb|raw)(\?.*)?$/, '/raw?download=1');
@@ -298,7 +371,21 @@ struct MainPage {
       } else {
         this.SplashView()
       }
-      if (this.pendingCount > 0 && this.phase === 'web') {
+      if (this.authOverlay) {
+        Column({ space: 12 }) {
+          Text('重新登录当前连接').fontSize(20)
+          TextInput({ placeholder: '登录口令' }).type(InputType.Password).enabled(!this.authSubmitting).onChange((value: string) => { this.password = value; })
+          Button('重新登录').enabled(!this.authSubmitting).onClick(() => { this.submitReauthenticate(); })
+          Button('取消').enabled(!this.authSubmitting).onClick(() => { this.cancelReauthenticate(); })
+        }.padding(24).backgroundColor(C_CARD).width('90%')
+      }
+      if (this.signedOut) {
+        Column({ space: 12 }) {
+          Text(this.logoutNotice || '正在退出当前连接…')
+          Button('返回连接').onClick(() => { this.signedOut = false; this.phase = 'login'; })
+        }.padding(24).backgroundColor(C_CARD).width('100%').height('100%').justifyContent(FlexAlign.Center)
+      }
+      if (this.pendingCount > 0 && this.phase === 'web' && !this.signedOut) {
         Column() {
           Text(this.queueError || '待发送内容已保存在本机')
             .fontSize(12).fontColor(C_RED)
@@ -349,6 +436,7 @@ struct MainPage {
 
         TextInput({ placeholder: '服务器地址（如 http://192.168.1.2:8787）', text: this.serverUrl })
           .type(InputType.Normal)
+          .enabled(!this.busy)
           .width('100%')
           .height(48)
           .backgroundColor(Color.White)
@@ -366,6 +454,7 @@ struct MainPage {
 
         TextInput({ placeholder: '登录口令' })
           .type(InputType.Password)
+          .enabled(!this.busy)
           .width('100%')
           .height(48)
           .backgroundColor(Color.White)
@@ -407,6 +496,13 @@ struct MainPage {
           })
 
         if (this.hasToken) {
+          if (this.webCookieBlocked) {
+            Button('恢复网页会话').enabled(!this.busy).onClick(() => {
+              this.beginReauthenticate().then((value: string) => {
+                if (value.includes('authenticated')) { this.webCookieBlocked = false; this.phase = 'web'; }
+              }).catch(() => { this.errorMsg = '网页会话恢复失败，请重试'; });
+            })
+          }
           Button('用已保存的令牌进入')
             .width('100%')
             .height(44)
@@ -416,21 +512,20 @@ struct MainPage {
             .borderWidth(1)
             .borderColor(C_LINE)
             .margin({ top: 12 })
+            .enabled(!this.busy && !this.webCookieBlocked)
             .onClick(() => {
               this.errorMsg = '';
               this.phase = 'web';
             })
 
-          Text('清除已保存的登录')
+          Text('退出当前连接')
             .fontSize(13)
             .fontColor(C_INK_FAINT)
             .decoration({ type: TextDecorationType.Underline, color: C_INK_FAINT })
             .margin({ top: 14 })
             .onClick(async () => {
-              await removeDeviceToken();
-              this.hasToken = false;
-              this.password = '';
-              this.errorMsg = '已清除，请重新输入地址与口令';
+              try { await this.logoutConnection(); this.errorMsg = '已退出当前连接，待发送内容和本机文件已保留。服务端设备令牌未自动撤销。'; }
+              catch (_error) { this.errorMsg = '无法退出当前连接，请重试'; }
             })
         }
       }

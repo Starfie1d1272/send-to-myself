@@ -124,9 +124,8 @@ Base URL = 用户填的服务器地址，例如 `https://stm.example.com`。所�
 1. 用户输入：服务器地址 + 口令
 2. POST /api/auth/login  ─→ 拿到 session cookie（@ohos.net.http 会持 cookie，或手动从 Set-Cookie 取）
 3. POST /api/auth/devices {name:"鸿蒙手机"}（带 cookie）─→ 拿 token 明文
-4. 把 serverUrl + token 写入加密存储（见 §6）
-5. （可选）POST /api/auth/logout 丢弃 session —— 日后只用 Bearer token，不再需要 session
-6. 进入主界面：EntryAbility 的 Web 组件加载 serverUrl，用户开始日常使用
+4. 原子提交规范 origin、token 和新 revision（见 §6），再将原始 Set-Cookie 注入该 origin 并落盘
+5. 进入主界面：Web 组件只加载已提交 origin；离线检查结果为 unknown 时保留连接
 ```
 
 > 之后 token 长期有效（服务端默认不设过期）。除非用户在「设置」里吊销，或服务端被重置。
@@ -143,10 +142,10 @@ Base URL = 用户填的服务器地址，例如 `https://stm.example.com`。所�
 
 ## 6. 令牌安全存储
 
-- 用 **加密 Preferences** 或 **关键资产存储（@ohos.security.asset / AssetStore）** 保存 `serverUrl` 与 `deviceToken`。
-- **不要**用明文 Preferences 存令牌。
-- EntryAbility（WebView）和 ShareAbility **读同一份**存储。
-- 令牌失效（收到 401）时清除，下次分享提示重新登录。
+- `ConnectionSession` 是连接的唯一所有者：origin、设备令牌与 revision 编码为同一条 Asset Store SECRET，使用 DEVICE_FIRST_UNLOCKED。连接锁跨主应用与分享扩展；旧的两个 alias 只在迁移时读取。
+- 每次原生请求使用同一连接快照；401 仅在 origin 与 revision 仍匹配时使该代令牌失效。网络不可达不清除凭据。
+- 宿主重登保留网页与草稿；有效设备令牌复用，明确失效或缺失时才签发新令牌。退出先清本机令牌并停止新派发，再尽力暂停任务和清理当前网页 Cookie。设备令牌不会自动在服务端撤销。
+- 退出可能无法确认其他进程的在途请求已停止；用户仍可在传输记录查看待发送内容。Cookie 按 host 而非端口隔离。
 
 ---
 
@@ -154,7 +153,7 @@ Base URL = 用户填的服务器地址，例如 `https://stm.example.com`。所�
 
 文本分享先入队再发送短 HTTP 请求；附件分享或原生文件选择通过 `request.agent` 的后台任务上传。`QueueService.ets` 保存内容、文件元数据、服务器、去重键和系统任务 ID，并兼容旧 `fileSandboxPaths`。
 
-存储更新与逐条派发/删除均有跨进程文件锁。任务 ID 落盘后才开始传输；应用重启重新查询系统状态。成功确认后清理发送副本，失败保留；取消意图先持久化，系统任务移除成功后才删除文件。暂停/继续复用任务，失败重试保持去重键。
+存储更新与逐条派发/删除均有跨进程文件锁。任务 ID 落盘后才开始传输；应用重启重新查询系统状态。成功确认后清理发送副本，失败保留；取消意图先持久化，系统任务移除成功后才删除文件。相同连接 revision 的暂停任务可继续；revision 变化后先移除旧任务，再以同一去重键和当前凭据重建。
 
 应用启动、网络恢复和明确重试触发队列处理。传输页轮询状态，失败文字项不会随进度轮询反复发送。终止的上传任务可逐条重试；当前没有服务端分片续传协议。
 
@@ -166,7 +165,7 @@ Base URL = 用户填的服务器地址，例如 `https://stm.example.com`。所�
 
 - 全屏 `Web({ src: serverUrl, controller })`，启用 `domStorageAccess`、`onlineImageAccess`。
 - TLS 证书错误取消加载，修正证书或服务器地址后重试，不允许无条件放行。
-- 让 WebView 自行处理 cookie（用户在网页里也能登录，cookie 与设备令牌互不干扰）。
+- 登录保留服务端 Set-Cookie 属性并等待持久化；宿主重登与退出使用 `stmNative` 的对应方法。Web 联动由 #44 接入。
 - 处理返回键：WebView 能后退则后退，否则退出。
 - 普通网页上传保留 WebView 路径；原生后台发送入口与附件分享/保存使用系统传输代理。新桥接限定当前服务器来源，原生构造附件请求地址。
 - 深色、大字体与键盘适配需覆盖网页及原生页面，真机状态以设备审计记录为准。

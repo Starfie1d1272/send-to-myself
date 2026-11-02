@@ -2,7 +2,7 @@ import { common } from '@kit.AbilityKit';
 import { webview } from '@kit.ArkWeb';
 import { url } from '@kit.ArkTS';
 import { prepareDownload } from './NativeDownloads';
-import { loadServerUrl } from './AssetStore';
+import { readConnection, requireConnection } from './ConnectionSession';
 
 interface UrlPermission { scheme: string; host: string; port: string; path: string }
 interface ProxyPermission { urlPermissionList: UrlPermission[] }
@@ -24,12 +24,24 @@ export class NativeBridge {
   private open: (id: string, action: string) => Promise<void>;
   private showTools: () => void;
   private busy: boolean = false;
+  private reauthAction: () => Promise<string>;
+  private logoutAction: () => Promise<string>;
   constructor(context: common.UIAbilityContext, controller: webview.WebviewController,
-    open: (id: string, action: string) => Promise<void>, showTools: () => void = () => {}) {
+    open: (id: string, action: string) => Promise<void>, showTools: () => void,
+    reauthAction: () => Promise<string>, logoutAction: () => Promise<string>) {
     this.context = context; this.controller = controller; this.open = open; this.showTools = showTools;
+    this.reauthAction = reauthAction; this.logoutAction = logoutAction;
   }
+  private async verifyPage(): Promise<void> {
+    const connection = await readConnection(this.context);
+    if (!connection || new url.URL(this.controller.getUrl()).origin !== connection.origin ||
+      AppStorage.get<boolean>('appForeground') === false) throw new Error('UNTRUSTED_PAGE');
+  }
+  async reauthenticate(): Promise<string> { await this.verifyPage(); return this.reauthAction(); }
+  async logout(): Promise<string> { await this.verifyPage(); return this.logoutAction(); }
   async openTools(): Promise<string> {
-    const server = await loadServerUrl();
+    const connection = await requireConnection(this.context);
+    const server = connection.origin;
     if (!server || new url.URL(this.controller.getUrl()).origin !== new url.URL(server).origin ||
       AppStorage.get<boolean>('appForeground') === false) throw new Error('请回到应用首页操作');
     this.showTools();
@@ -39,7 +51,8 @@ export class NativeBridge {
     if (this.busy) throw new Error('正在准备附件，请稍后');
     this.busy = true;
     try {
-      const server = await loadServerUrl();
+      const connection = await requireConnection(this.context);
+    const server = connection.origin;
       if (!server) throw new Error('请先连接服务器');
       const expected = new url.URL(server);
       const current = new url.URL(this.controller.getUrl());
@@ -47,7 +60,7 @@ export class NativeBridge {
         throw new Error('请回到应用首页操作');
       }
       // Only attachment IDs cross the bridge. URLs and credential headers are constructed natively.
-      const key = await prepareDownload(this.context, id, filename, mimeType, size);
+      const key = await prepareDownload(this.context, id, filename, mimeType, size, connection);
       await this.open(key, action);
       return 'queued';
     } finally { this.busy = false; }

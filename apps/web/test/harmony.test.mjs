@@ -23,10 +23,14 @@ function fixture(t) {
   const missingTask = () => Object.assign(new Error("task missing"), { code: 21900006 });
   const state = { agentCreateError: undefined, agentRemoveError: undefined, beforeStart: undefined, beforePut: undefined, token: "device-token", server: "https://server.invalid", records: [], respond: async () => ({ responseCode: 201 }) };
   t.after(() => { for (const fd of openFiles) closeSync(fd); rmSync(root, { recursive: true, force: true }); });
+  let revision = randomUUID();
   const asset = {
-    loadServerUrl: async () => state.server,
-    loadDeviceToken: async () => state.token,
-    removeDeviceToken: async () => { state.token = undefined; },
+    readAsset: async (alias) => {
+      if (alias === "stm_connection_v1") return state.server ? JSON.stringify({ version: 1, origin: state.server, deviceToken: state.token ?? null, revision }) : null;
+      return null;
+    },
+    writeAsset: async (_alias, value) => { const record = JSON.parse(value); state.server = record.origin; state.token = record.deviceToken ?? undefined; revision = record.revision; },
+    removeAsset: async () => {},
   };
   const mime = { ".png": "image/png", ".jpg": "image/jpeg", "general.png": "image/png", ".pdf": "application/pdf" };
   const prefs = { get: async (key, fallback) => store.get(key) ?? fallback, put: async (key, value) => { if (state.beforePut) await state.beforePut(key, value); store.set(key, value); }, flush: async () => {} };
@@ -60,6 +64,7 @@ function fixture(t) {
         getTypeDescriptor: (type) => ({ mimeTypes: mime[type] ? [mime[type]] : [] }),
       },
     },
+    "@kit.ArkWeb": { webview: {} },
     "@kit.PerformanceAnalysisKit": { hilog: { info() {}, warn() {}, error() {} } },
     "@kit.ArkTS": { url: { URL }, util: { generateRandomUUID: randomUUID, TextEncoder: class { encodeInto(text) { return new TextEncoder().encode(text); } } } },
     "@kit.ShareKit": { systemShare: {
@@ -115,7 +120,8 @@ test("Harmony credentials survive module reload with ordinary encrypted assets",
       entries.set(new TextDecoder().decode(attributes.get("alias")), attributes);
     },
     remove: async (query) => { entries.delete(new TextDecoder().decode(query.get("alias"))); },
-    query: async (query) => { const value = entries.get(new TextDecoder().decode(query.get("alias"))); return value ? [value] : []; },
+    query: async (query) => { const value = entries.get(new TextDecoder().decode(query.get("alias"))); if (!value) throw Object.assign(new Error("not found"), { code: 24000002 }); return [value]; },
+    update: async (query, attributes) => { const key = new TextDecoder().decode(query.get("alias")); const previous = entries.get(key); for (const [tag, value] of attributes) previous.set(tag, value); },
   };
   const kits = {
     "@kit.AssetStoreKit": { asset },
@@ -135,13 +141,13 @@ test("Harmony credentials survive module reload with ordinary encrypted assets",
     return module.exports;
   }
   const first = load();
-  await first.saveServerUrl("https://device-test.invalid");
-  await first.saveDeviceToken("test-device-token");
+  await first.writeAsset("stm_connection_v1", JSON.stringify({ origin: "https://device-test.invalid", deviceToken: "test-device-token" }), false);
   const restarted = load();
-  assert.equal(await restarted.loadServerUrl(), "https://device-test.invalid");
-  assert.equal(await restarted.loadDeviceToken(), "test-device-token");
-  await restarted.removeDeviceToken();
-  assert.equal(await first.loadDeviceToken(), undefined);
+  assert.deepEqual(JSON.parse(await restarted.readAsset("stm_connection_v1")), { origin: "https://device-test.invalid", deviceToken: "test-device-token" });
+  await restarted.writeAsset("stm_connection_v1", JSON.stringify({ origin: "https://device-test.invalid", deviceToken: null }), true);
+  assert.deepEqual(JSON.parse(await first.readAsset("stm_connection_v1")), { origin: "https://device-test.invalid", deviceToken: null });
+  await restarted.removeAsset("stm_connection_v1");
+  assert.equal(await first.readAsset("stm_connection_v1"), null);
 });
 
 test("Harmony queue preserves concurrent arrivals and serializes overlapping drains", async (t) => {
@@ -166,37 +172,39 @@ test("Harmony queue preserves concurrent arrivals and serializes overlapping dra
 
 test("Harmony multipart preserves text and dedupe keys as UTF-8 fields", async (t) => {
   const f = fixture(t);
-  const client = f.load("./HttpClient");
+  const transfer = f.load("./TransferAgent");
+  const connection = await f.load("./ConnectionSession").requireConnection(f.context);
   const key = randomUUID();
-  f.state.respond = async (_url, options) => {
-    assert.equal(options.header["Content-Type"], "multipart/form-data");
-    const form = new FormData();
-    for (const part of options.multiFormDataList) {
-      // Native multipart accepts strings or ArrayBuffer; typed arrays are objects.
-      assert.equal(typeof part.data, "string");
-      form.append(part.name, part.data);
-    }
-    const parsed = await new Request("https://server.invalid", { method: "POST", body: form }).formData();
-    assert.equal(parsed.get("content"), "手机附件 · 中文正文");
-    assert.equal(parsed.get("dedupeKey"), key);
-    return { responseCode: 201 };
-  };
-  assert.equal(await client.postUploadItem("手机附件 · 中文正文", [], key), true);
+  const task = await transfer.createUpload(f.context, connection, key, "手机附件 · 中文正文", []);
+  const fields = task.config.data;
+  const form = new FormData();
+  for (const part of fields.filter((part) => part.name !== "files")) {
+    assert.equal(typeof part.value, "string");
+    form.append(part.name, part.value);
+  }
+  const parsed = await new Request("https://server.invalid", { method: "POST", body: form }).formData();
+  assert.equal(parsed.get("content"), "手机附件 · 中文正文");
+  assert.equal(parsed.get("dedupeKey"), key);
+  assert.equal(task.config.multipart, true);
 });
 
 test("Harmony cold start distinguishes unreachable auth from an invalid token", async (t) => {
   const f = fixture(t);
   const auth = f.load("./AuthService");
+  const session = f.load("./ConnectionSession");
+  let snapshot = await session.requireConnection(f.context);
   f.state.respond = async () => { throw new Error("offline"); };
-  assert.equal(await auth.checkTokenValid(), undefined);
+  assert.equal(await auth.checkTokenValid(f.context, snapshot), undefined);
   f.state.respond = async () => ({ responseCode: 503 });
-  assert.equal(await auth.checkTokenValid(), undefined);
+  assert.equal(await auth.checkTokenValid(f.context, snapshot), undefined);
   f.state.respond = async () => ({ responseCode: 200, result: JSON.stringify({ authenticated: false }) });
-  assert.equal(await auth.checkTokenValid(), false);
+  assert.equal(await auth.checkTokenValid(f.context, snapshot), false);
+  await session.commitConnection(f.context, "https://server.invalid", "device-token");
+  snapshot = await session.requireConnection(f.context);
   f.state.respond = async () => ({ responseCode: 200, result: JSON.stringify({ authenticated: true }) });
-  assert.equal(await auth.checkTokenValid(), true);
+  assert.equal(await auth.checkTokenValid(f.context, snapshot), true);
   f.state.token = undefined;
-  assert.equal(await auth.checkTokenValid(), false);
+  await assert.rejects(session.requireConnection(f.context), /登录/);
 });
 
 test("Harmony text 401 retains records, login retry acknowledges them", async (t) => {
@@ -279,7 +287,7 @@ test("Harmony hyperlink records are text, filenames cannot collide, login sends 
   const second = await files.copySharedFileAsync(f.context, original);
   assert.notEqual(first.path, second.path);
   assert.equal(first.filename, "same.png");
-  await f.load("./HttpClient").postJson("/api/auth/login", { password: "test" });
+  await f.load("./HttpClient").anonymousPost(f.state.server, "/api/auth/login", { password: "test" });
   assert.equal(f.requests.at(-1).options.header.Authorization, undefined);
   assert.equal(f.openFiles.size, 0);
 });
@@ -410,14 +418,14 @@ test("paused upload continues with the same task and automatic reconciliation do
 });
 
 test("native downloads reject arbitrary URLs and paths, deduplicate taps, preserve authenticated origin", async (t) => {
-  const f = fixture(t); const downloads = f.load("./NativeDownloads");
+  const f = fixture(t); const downloads = f.load("./NativeDownloads"); const connection = await f.load("./ConnectionSession").requireConnection(f.context);
   for (const id of ["../secret", "https://evil.invalid/a", "x?redirect=https://evil.invalid", "a%2fb"]) {
-    await assert.rejects(downloads.prepareDownload(f.context, id, "file", "text/plain", 4), /无效/);
+    await assert.rejects(downloads.prepareDownload(f.context, id, "file", "text/plain", 4, connection), /无效/);
   }
   assert.equal(f.tasks.size, 0);
   const ids = await Promise.all([
-    downloads.prepareDownload(f.context, "attachment-1", "../../file.pdf", "application/pdf", 4),
-    downloads.prepareDownload(f.context, "attachment-1", "../../file.pdf", "application/pdf", 4),
+    downloads.prepareDownload(f.context, "attachment-1", "../../file.pdf", "application/pdf", 4, connection),
+    downloads.prepareDownload(f.context, "attachment-1", "../../file.pdf", "application/pdf", 4, connection),
   ]);
   assert.equal(ids[0], ids[1]); assert.equal(f.tasks.size, 1);
   const task = [...f.tasks.values()][0];
@@ -430,8 +438,8 @@ test("native downloads reject arbitrary URLs and paths, deduplicate taps, preser
 });
 
 test("completed download survives restart; only verified local bytes are offered to Share Kit", async (t) => {
-  const f = fixture(t); const downloads = f.load("./NativeDownloads");
-  const id = await downloads.prepareDownload(f.context, "pdf-1", "报告.pdf", "application/pdf", 4);
+  const f = fixture(t); const downloads = f.load("./NativeDownloads"); const connection = await f.load("./ConnectionSession").requireConnection(f.context);
+  const id = await downloads.prepareDownload(f.context, "pdf-1", "报告.pdf", "application/pdf", 4, connection);
   const task = [...f.tasks.values()][0];
   writeFileSync(task.config.saveas, "data"); task.progress.state = f.State.COMPLETED;
   const restarted = f.newProcess()("./NativeDownloads");
@@ -446,8 +454,8 @@ test("completed download survives restart; only verified local bytes are offered
 });
 
 test("truncated download remains retryable and is never shared", async (t) => {
-  const f = fixture(t); const downloads = f.load("./NativeDownloads");
-  const id = await downloads.prepareDownload(f.context, "truncated", "large.pdf", "application/pdf", 1000);
+  const f = fixture(t); const downloads = f.load("./NativeDownloads"); const connection = await f.load("./ConnectionSession").requireConnection(f.context);
+  const id = await downloads.prepareDownload(f.context, "truncated", "large.pdf", "application/pdf", 1000, connection);
   const task = [...f.tasks.values()][0];
   writeFileSync(task.config.saveas, "short"); task.progress.state = f.State.COMPLETED;
   await downloads.refreshDownloads(f.context);
@@ -461,8 +469,8 @@ test("truncated download remains retryable and is never shared", async (t) => {
 });
 
 test("download removal preserves its file until system cancellation succeeds", async (t) => {
-  const f = fixture(t); const downloads = f.load("./NativeDownloads");
-  const id = await downloads.prepareDownload(f.context, "cancel-download", "file.pdf", "application/pdf", 4);
+  const f = fixture(t); const downloads = f.load("./NativeDownloads"); const connection = await f.load("./ConnectionSession").requireConnection(f.context);
+  const id = await downloads.prepareDownload(f.context, "cancel-download", "file.pdf", "application/pdf", 4, connection);
   const task = [...f.tasks.values()][0]; writeFileSync(task.config.saveas, "part");
   f.state.agentRemoveError = new Error("service unavailable");
   await assert.rejects(downloads.removeDownload(f.context, id));
@@ -505,8 +513,8 @@ test("recovery does not redispatch failed text every time progress is refreshed"
 });
 
 test("completed downloads with a missing local file remain visible for retry", async (t) => {
-  const f = fixture(t); const downloads = f.load("./NativeDownloads");
-  await downloads.prepareDownload(f.context, "lost-file", "file.pdf", "application/pdf", 4);
+  const f = fixture(t); const downloads = f.load("./NativeDownloads"); const connection = await f.load("./ConnectionSession").requireConnection(f.context);
+  await downloads.prepareDownload(f.context, "lost-file", "file.pdf", "application/pdf", 4, connection);
   [...f.tasks.values()][0].progress.state = f.State.COMPLETED;
   await downloads.refreshDownloads(f.context);
   const row = (await downloads.listDownloads(f.context))[0];

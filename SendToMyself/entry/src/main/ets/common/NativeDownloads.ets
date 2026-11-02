@@ -3,7 +3,7 @@ import { preferences, uniformTypeDescriptor } from '@kit.ArkData';
 import { fileIo, fileUri, picker } from '@kit.CoreFileKit';
 import { util } from '@kit.ArkTS';
 import { systemShare } from '@kit.ShareKit';
-import { loadServerUrl } from './AssetStore';
+import { AuthenticatedConnection, readConnection, requireConnection, beginAuthorizedDispatch, normalizeOrigin } from './ConnectionSession';
 import { withTransferLock, TransferBusyError } from './TransferLock';
 import { request, taskInfo, transferHeaders, removeTask, progressText } from './TransferAgent';
 
@@ -18,6 +18,7 @@ export interface DownloadRecord {
   path: string;
   createdAt: number;
   taskId?: string;
+  taskSessionRevision?: string;
   ready: boolean;
   error: string;
   cancelRequested?: boolean;
@@ -63,29 +64,30 @@ async function update(context: common.Context, record: DownloadRecord): Promise<
     await write(context, items);
   });
 }
-async function start(context: common.Context, item: DownloadRecord): Promise<void> {
-  if (item.serverUrl !== await loadServerUrl()) throw new Error('请切回下载时使用的服务器');
+async function start(context: common.Context, item: DownloadRecord, snapshot?: AuthenticatedConnection): Promise<void> {
+  const connection = snapshot ?? await requireConnection(context);
+  if (normalizeOrigin(item.serverUrl) !== connection.origin) throw new Error('请切回下载时使用的服务器');
   const task = await request.agent.create(context, {
     action: request.agent.Action.DOWNLOAD, mode: request.agent.Mode.BACKGROUND,
     url: item.serverUrl.replace(/\/$/, '') + '/api/attachments/' + item.attachmentId + '/raw',
-    method: 'GET', headers: await transferHeaders(), saveas: item.path, overwrite: true,
+    method: 'GET', headers: transferHeaders(connection), saveas: item.path, overwrite: true,
     retry: true, redirect: false, gauge: true, network: request.agent.Network.ANY,
     metered: true, roaming: false, title: '发给自己 · 下载附件',
     description: item.filename, extras: { downloadId: item.id }
   });
   item.taskId = task.tid;
+  item.taskSessionRevision = connection.revision;
   item.error = '';
   item.ready = false;
   try { await update(context, item); }
   catch (error) { await removeTask(task.tid); throw error as Error; }
-  await task.start();
+  await beginAuthorizedDispatch(context, connection, () => task.start());
 }
 
 export async function prepareDownload(context: common.Context, attachmentId: string, filename: string,
-  mimeType: string, size: number): Promise<string> {
+  mimeType: string, size: number, connection: AuthenticatedConnection): Promise<string> {
   if (!validAttachmentId(attachmentId) || !Number.isSafeInteger(size) || size < 0) throw new Error('附件信息无效');
-  const server = await loadServerUrl();
-  if (!server) throw new Error('请先连接服务器');
+  const server = connection.origin;
   // A lock covers duplicate taps through creation and persistence of the system task.
   return withTransferLock(context, 'prepare-download', async () => {
     const existing = (await all(context)).find((item: DownloadRecord) =>
@@ -106,7 +108,7 @@ export async function prepareDownload(context: common.Context, attachmentId: str
       await write(context, items);
     });
     await withTransferLock(context, 'download-' + id, async () => {
-      try { await start(context, item); }
+      try { await start(context, item, connection); }
       catch (error) { item.error = (error as Error).message; await update(context, item); }
     });
     return id;
@@ -149,8 +151,18 @@ export async function refreshDownloads(context: common.Context): Promise<void> {
             item.taskId = undefined; await update(context, item);
             return;
           }
+        } else if ([request.agent.State.RUNNING, request.agent.State.WAITING, request.agent.State.RETRYING].includes(info.progress.state) && !(await readConnection(context))?.deviceToken) {
+          await (await request.agent.getTask(context, item.taskId)).pause();
         } else if (info.progress.state === request.agent.State.INITIALIZED) {
-          await (await request.agent.getTask(context, item.taskId)).start();
+          const connection = await requireConnection(context);
+          if (normalizeOrigin(item.serverUrl) !== connection.origin) throw new Error('请切回下载时使用的服务器');
+          if (item.taskSessionRevision !== connection.revision) {
+            await removeTask(item.taskId); item.taskId = undefined; await update(context, item);
+            await start(context, item, connection);
+          } else {
+            const task = await request.agent.getTask(context, item.taskId);
+            await beginAuthorizedDispatch(context, connection, () => task.start());
+          }
         } else if (info.progress.state === request.agent.State.FAILED || info.progress.state === request.agent.State.REMOVED) {
           error = '下载失败，请检查登录和网络后重试';
         }
@@ -184,10 +196,24 @@ export async function retryDownload(context: common.Context, id: string): Promis
   await withTransferLock(context, 'download-' + id, async () => {
     const item = (await all(context)).find((entry: DownloadRecord) => entry.id === id);
     if (!item || item.ready || item.cancelRequested) return;
-    if (item.taskId) await removeTask(item.taskId);
-    item.taskId = undefined;
+    const connection = await requireConnection(context);
+    if (normalizeOrigin(item.serverUrl) !== connection.origin) throw new Error('请切回下载时使用的服务器');
+    if (item.taskId) {
+      const info = await taskInfo(item.taskId);
+      const state = info?.progress.state;
+      if (state === request.agent.State.RUNNING || state === request.agent.State.WAITING || state === request.agent.State.RETRYING || (state === request.agent.State.COMPLETED && !item.error)) return;
+      if (item.taskSessionRevision === connection.revision &&
+        (state === request.agent.State.PAUSED || state === request.agent.State.INITIALIZED)) {
+        const task = await request.agent.getTask(context, item.taskId);
+        if (state === request.agent.State.PAUSED) await beginAuthorizedDispatch(context, connection, () => task.resume());
+        else await beginAuthorizedDispatch(context, connection, () => task.start());
+        item.error = ''; await update(context, item); return;
+      }
+      await removeTask(item.taskId);
+    }
+    item.taskId = undefined; item.taskSessionRevision = undefined;
     await update(context, item);
-    try { await start(context, item); }
+    try { await start(context, item, connection); }
     catch (error) { item.error = (error as Error).message; await update(context, item); throw error as Error; }
   }, false);
 }
@@ -247,4 +273,26 @@ export async function saveDownload(context: common.UIAbilityContext, id: string)
     try { if (destination) fileIo.closeSync(destination); }
     finally { presenting.delete(id); }
   }
+}
+
+export async function pauseAllDownloads(context: common.Context): Promise<boolean> {
+  let complete = true;
+  const items = await all(context);
+  for (let i = 0; i < items.length; i++) {
+    if (!items[i].taskId) continue;
+    try {
+      await withTransferLock(context, 'download-' + items[i].id, async () => {
+        const item = (await all(context)).find((entry: DownloadRecord) => entry.id === items[i].id);
+        if (!item?.taskId) return;
+        let info = await taskInfo(item.taskId);
+        if (!info) { complete = false; return; }
+        if ([request.agent.State.RUNNING, request.agent.State.WAITING, request.agent.State.RETRYING].includes(info.progress.state)) {
+          await (await request.agent.getTask(context, item.taskId)).pause();
+          info = await taskInfo(item.taskId);
+          if (!info || [request.agent.State.RUNNING, request.agent.State.WAITING, request.agent.State.RETRYING].includes(info.progress.state)) complete = false;
+        }
+      }, false);
+    } catch (_error) { complete = false; }
+  }
+  return complete;
 }
