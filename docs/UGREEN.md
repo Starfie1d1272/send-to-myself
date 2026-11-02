@@ -10,7 +10,7 @@
 scripts/package-ugreen.sh --version 1.0.2 --build 1 --arch all --output ./ugreen-output
 ```
 
-版本必须是仓库的非草稿、非预发布 `vX.Y.Z` release；镜像固定为 GHCR 同数字 tag。脚本先固定多架构 manifest，再逐架构将临时配置限定为该架构并拉取对应 digest，检查架构与 OCI revision 是否匹配正式 release 提交，并检查导出 tar 的单 tag、配置 ID 和架构，再调用 `ugcli check` 和 `ugcli pack`。缺少 OCI revision 的旧镜像不能生成可追溯包。`manifest.json` 和 `SHA256SUMS` 与 UPK 一起输出；镜像/UPK 均不提交源码仓库。相同核心版本的上架构建号须递增。当前核心 1.1.0 是候选，不能作为已发布版本打包。脚本不发布、上传或连接 NAS。若某架构镜像不存在或检查失败则整体失败，空输出目录可重试。
+版本必须是仓库的非草稿、非预发布 `vX.Y.Z` release；镜像固定为 GHCR 同数字 tag。脚本先固定多架构 manifest，再逐架构将临时配置限定为该架构并拉取对应 digest，检查架构与 OCI revision 是否匹配正式 release 提交，并检查导出 tar 的单 tag、配置 ID 和架构，再调用 `ugcli check` 和 `ugcli pack`。缺少 OCI revision 的旧镜像不能生成可追溯包。`manifest.json` 和 `SHA256SUMS` 与 UPK 一起输出；镜像/UPK 均不提交源码仓库。相同核心版本的上架构建号须递增。当前核心 1.1.0 是源码版本，不能作为已发布版本打包；脚本不接受 RC，Mac 验收候选使用通用 NAS 运维包，不是 UPK。脚本不发布、上传或连接 NAS。若某架构镜像不存在或检查失败则整体失败，空输出目录可重试。
 
 官方依据：[Docker 打包](https://developer.ugnas.com/doc/backend/quick-start/develop-docker-app.html)、[project.yaml](https://developer.ugnas.com/doc/tools/project-yaml.html)、[端口与代理](https://developer.ugnas.com/doc/backend/application/app-port.html)、[打开方式](https://developer.ugnas.com/doc/backend/application/open-type.html)、[开发准备](https://developer.ugnas.com/doc/backend/quick-start/prepare.html)、[测试](https://developer.ugnas.com/doc/backend/quick-start/testing.html)、[发布](https://developer.ugnas.com/doc/backend/quick-start/publish.html)。官方文档规定产物路径为 `build_dir/pkgs/upk/{arch}_{product_series}_{appid}_{version}.upk`；脚本按此查找；ugcli 1.1.0.25 已在 Linux 使用 1.0.2 正式镜像校验并生成临时 amd64 和 arm64 包，路径和名称符合文档。保留 Docker 默认代理配置，未限制为 `/api`；整站和 SSE 是否通过实际 UGOS 入口仍待验证。
 
@@ -26,7 +26,7 @@ scripts/package-ugreen.sh --version 1.0.2 --build 1 --arch all --output ./ugreen
 
 ## 升级、备份和恢复
 
-先按[备份与恢复](DEPLOY.md#备份与恢复)停服备份完整数据目录并验证备份。升级使用同一 app_id、原数据目录和递增的版本/构建号；检查 `/api/info` 版本、原消息及附件，再做一次双端收发。不需要额外数据库容器或复制 Web 文件。恢复时先停用写入实例，按部署指南在隔离目录恢复同版本备份并核对；旧版本不能读取新 schema 时，恢复升级前的完整备份，不承诺直接换旧镜像即可降级。
+先按[备份与恢复](DEPLOY.md#备份与恢复)停服备份完整数据目录并验证备份。升级使用同一 app_id、原数据目录和递增的版本/构建号；核对实际容器镜像版本、原消息及附件，再做一次双端收发；新核心的 `/api/info` 可辅助核对，1.0.2 不提供该接口。不需要额外数据库容器或复制 Web 文件。恢复时先停用写入实例，按部署指南在隔离目录恢复同版本备份并核对；旧版本不能读取新 schema 时，恢复升级前的完整备份，不承诺直接换旧镜像即可降级。
 
 ## 从通用 Compose 迁移与回退
 
@@ -58,6 +58,6 @@ scripts/package-ugreen.sh --version 1.0.2 --build 1 --arch all --output ./ugreen
 | 手机移动网络网页（关闭 Wi-Fi） | 登录与收发：未执行 |
 | 鸿蒙/桌面客户端外网地址 | 未执行；若需要额外 NAS 登录或不支持重定向，记录该路径不支持 |
 | 升级 | 旧记录附件和新发送：未执行 |
-| 隔离目录恢复同版本备份 | 普通内容完整，已开始永久删除的内容继续清理：未执行 |
+| 隔离目录恢复同版本备份 | 普通内容完整：未执行；新核心中已开始的永久删除会继续，1.0.2 无该自动清理流程 |
 | 端口占用及路径权限错误 | 明确失败、无假空收件箱：未执行 |
 | 卸载与重装 | 数据目录行为：未执行 |
