@@ -3,6 +3,8 @@ import { pauseAllQueueTasks } from './QueueService';
 import { pauseAllDownloads } from './NativeDownloads';
 import { http } from '@kit.NetworkKit';
 import { common } from '@kit.AbilityKit';
+import { hilog } from '@kit.PerformanceAnalysisKit';
+import { DOMAIN, TAG } from './Constants';
 import { anonymousPost, extractSessionCookie, getJson, stopProtectedRequests, protectedRequestsStopped } from './HttpClient';
 import { AuthenticatedConnection, ConnectionSession, commitConnection, clearTokenIfCurrent, normalizeOrigin, readConnection } from './ConnectionSession';
 
@@ -13,9 +15,10 @@ interface LoginRequestBody { password: string }
 interface CreateDeviceRequestBody { name: string }
 export interface LoginResultData { success: boolean; errorMessage?: string; connection?: ConnectionSession; webSetCookie?: string }
 export async function loginAndMintToken(context: common.Context, candidate: string, password: string,
-  deviceName: string, existing?: AuthenticatedConnection, expected?: string): Promise<LoginResultData> {
+  deviceName: string, existing?: AuthenticatedConnection, expected?: string, expectedOrigin?: string): Promise<LoginResultData> {
   const origin = normalizeOrigin(candidate);
   let expectedRevision: string | undefined = expected ?? existing?.revision;
+  let invalidated: ConnectionSession | undefined;
   if (existing) {
     const valid = await checkTokenValid(context, existing);
     if (valid === undefined) return { success: false, errorMessage: 'Network error' };
@@ -23,21 +26,22 @@ export async function loginAndMintToken(context: common.Context, candidate: stri
       const cleared = await clearTokenIfCurrent(context, existing.origin, existing.revision);
       if (!cleared) throw new Error('CONNECTION_CHANGED');
       expectedRevision = cleared.revision;
+      invalidated = cleared;
       existing = undefined;
     }
   }
   let login: http.HttpResponse;
   try { const body: LoginRequestBody = { password: password }; login = await anonymousPost(origin, '/api/auth/login', body); }
-  catch (_error) { return { success: false, errorMessage: 'Network error' }; }
-  if (login.responseCode === 401) return { success: false, errorMessage: 'Invalid credentials' };
-  if (login.responseCode === 429) return { success: false, errorMessage: 'Too many attempts' };
-  if (login.responseCode !== 200) return { success: false, errorMessage: 'Server error' };
+  catch (_error) { return { success: false, errorMessage: 'Network error', connection: invalidated }; }
+  if (login.responseCode === 401) return { success: false, errorMessage: 'Invalid credentials', connection: invalidated };
+  if (login.responseCode === 429) return { success: false, errorMessage: 'Too many attempts', connection: invalidated };
+  if (login.responseCode !== 200) { hilog.warn(DOMAIN, TAG, 'Login HTTP status: %{public}d', login.responseCode); return { success: false, errorMessage: 'Server error', connection: invalidated }; }
   try {
     const body = JSON.parse(login.result as string) as LoginResponse;
-    if (body.ok !== true) return { success: false, errorMessage: 'Invalid response' };
-  } catch (_error) { return { success: false, errorMessage: 'Invalid response' }; }
+    if (body.ok !== true) { hilog.warn(DOMAIN, TAG, 'Login response missing success marker'); return { success: false, errorMessage: 'Invalid response', connection: invalidated }; }
+  } catch (_error) { hilog.warn(DOMAIN, TAG, 'Authentication response is not valid JSON'); return { success: false, errorMessage: 'Invalid response', connection: invalidated }; }
   const cookie = extractSessionCookie(login);
-  if (!cookie) return { success: false, errorMessage: 'No session cookie received' };
+  if (!cookie) return { success: false, errorMessage: 'No session cookie received', connection: invalidated };
   if (existing) {
     const current = await readConnection(context);
     if (!current || current.origin !== existing.origin || current.revision !== existing.revision) throw new Error('CONNECTION_CHANGED');
@@ -46,13 +50,13 @@ export async function loginAndMintToken(context: common.Context, candidate: stri
   let device: http.HttpResponse;
   try { const body: CreateDeviceRequestBody = { name: deviceName };
     device = await anonymousPost(origin, '/api/auth/devices', body, cookie.cookieHeader);
-  } catch (_error) { return { success: false, errorMessage: 'Network error during token minting' }; }
-  if (device.responseCode !== 201) return { success: false, errorMessage: 'Failed to mint device token' };
+  } catch (_error) { return { success: false, errorMessage: 'Network error during token minting', connection: invalidated }; }
+  if (device.responseCode !== 201) { hilog.warn(DOMAIN, TAG, 'Device token HTTP status: %{public}d', device.responseCode); return { success: false, errorMessage: 'Failed to mint device token', connection: invalidated }; }
   let token: string;
   try { token = (JSON.parse(device.result as string) as DeviceTokenResponse).token; }
-  catch (_error) { return { success: false, errorMessage: 'Invalid response' }; }
-  if (typeof token !== 'string' || !token) return { success: false, errorMessage: 'Invalid response' };
-  const connection = await commitConnection(context, origin, token, expectedRevision);
+  catch (_error) { hilog.warn(DOMAIN, TAG, 'Device response is not valid JSON'); return { success: false, errorMessage: 'Invalid response', connection: invalidated }; }
+  if (typeof token !== 'string' || !token) { hilog.warn(DOMAIN, TAG, 'Device response missing token'); return { success: false, errorMessage: 'Invalid response', connection: invalidated }; }
+  const connection = await commitConnection(context, origin, token, expectedRevision, expectedOrigin);
   return { success: true, connection: connection, webSetCookie: cookie.webSetCookie };
 }
 export async function checkTokenValid(context: common.Context, connection: AuthenticatedConnection): Promise<boolean | undefined> {
@@ -68,8 +72,15 @@ export async function checkTokenValid(context: common.Context, connection: Authe
 export interface NativeLogoutResult {
   status: string; serverOrigin: string; cookieCleared: boolean; transferStop: string; remoteSessionLogout: string;
 }
+export async function clearSignedOutCookie(context: common.Context, origin: string, revision: string): Promise<void> {
+  const current = await readConnection(context);
+  if (!current || current.origin !== origin || current.revision !== revision || current.deviceToken !== null) throw new Error('CONNECTION_CHANGED');
+  const expired = 'stm_session=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax' + (origin.startsWith('https://') ? '; Secure' : '');
+  webview.WebCookieManager.configCookieSync(origin, expired, false, true);
+  await webview.WebCookieManager.saveCookieAsync();
+}
 export async function logoutCurrentConnection(context: common.Context, activeOrigin: string,
-  onSignedOut: (origin: string) => void, expectedRevision?: string): Promise<NativeLogoutResult> {
+  onSignedOut: (origin: string, revision: string) => void, expectedRevision?: string): Promise<NativeLogoutResult> {
   try {
       const current = await readConnection(context);
       if (!current || current.origin !== activeOrigin || (expectedRevision && current.revision !== expectedRevision)) throw new Error('CONNECTION_CHANGED');
@@ -82,7 +93,7 @@ export async function logoutCurrentConnection(context: common.Context, activeOri
       const cleared = await clearTokenIfCurrent(context, current.origin, current.revision);
       if (!cleared) throw new Error('CONNECTION_CHANGED');
       try { stopProtectedRequests(); } catch (_error) {}
-      try { onSignedOut(current.origin); } catch (_error) {}
+      try { onSignedOut(current.origin, cleared.revision); } catch (_error) {}
       let queueStopped = false;
       let downloadsStopped = false;
       try { queueStopped = await pauseAllQueueTasks(context); } catch (_error) {}
@@ -90,12 +101,8 @@ export async function logoutCurrentConnection(context: common.Context, activeOri
       const transferStop = queueStopped && downloadsStopped && protectedRequestsStopped(context) ? 'complete' : 'unconfirmed';
       let cookieCleared = false;
       try {
-        const after = await readConnection(context);
-        if (after && after.origin === cleared.origin && after.revision === cleared.revision) {
-          const expired = 'stm_session=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax' + (current.origin.startsWith('https://') ? '; Secure' : '');
-          webview.WebCookieManager.configCookieSync(current.origin, expired, false, true);
-          await webview.WebCookieManager.saveCookieAsync(); cookieCleared = true;
-        }
+        await clearSignedOutCookie(context, cleared.origin, cleared.revision);
+        cookieCleared = true;
       } catch (_error) {}
       let remote = 'unconfirmed';
       if (cookie) {

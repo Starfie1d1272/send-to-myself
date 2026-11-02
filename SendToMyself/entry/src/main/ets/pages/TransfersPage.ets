@@ -2,7 +2,7 @@ import { PAPER, CARD, CARD_HI, INK, INK_SOFT, ACCENT, ERROR, CARD_RADIUS } from 
 import { common } from '@kit.AbilityKit';
 import { readConnection } from '../common/ConnectionSession';
 import { promptAction } from '@kit.ArkUI';
-import { requestHostReauthentication } from '../common/HostReauthentication';
+import { requestHostReauthentication, requestHostConnectionSettings } from '../common/HostReauthentication';
 import { QueueRow, listQueue, processQueue, reconcileQueue, retryQueueItem, removeQueueItem, pauseQueueItem } from '../common/QueueService';
 import { DownloadRow, listDownloads, refreshDownloads, retryDownload, removeDownload,
   shareDownload, saveDownload } from '../common/NativeDownloads';
@@ -102,6 +102,12 @@ struct TransfersPage {
         this.getUIContext().getRouter().back();
         setTimeout(() => { requestHostReauthentication().catch(() => {
           promptAction.showToast({ message: '无法打开重新登录，请在首页重试' });
+        }); }, 0);
+      })
+      Button('连接设置').backgroundColor(CARD_HI).fontColor(INK).enabled(!this.busyKey).onClick(() => {
+        this.getUIContext().getRouter().back();
+        setTimeout(() => { requestHostConnectionSettings().catch(() => {
+          promptAction.showToast({ message: '无法打开连接设置，请在首页重试' });
         }); }, 0);
       })
       Scroll() {
