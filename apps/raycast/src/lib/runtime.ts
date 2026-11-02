@@ -11,7 +11,7 @@ export function client() {
   const preferences = getPreferenceValues<{ serverUrl: string; deviceToken: string }>();
   return new InboxClient(preferences.serverUrl, preferences.deviceToken);
 }
-export async function send(content: string, paths: string[], onConfirmed?: () => Promise<void>) {
+export async function send(content: string, paths: string[], onConfirmed?: () => Promise<void>, intent: "retry" | "new" = "retry") {
   const context = captureDetectionContext();
   const api = client();
   const files: File[] = [];
@@ -25,7 +25,7 @@ export async function send(content: string, paths: string[], onConfirmed?: () =>
     const name = basename(path);
     files.push(new File([bytes], name, { type: lookup(name) || "application/octet-stream" }));
   }
-  return sendWithRetryKey(api, content, files, LocalStorage, onConfirmed, context);
+  return sendWithRetryKey(api, content, files, LocalStorage, onConfirmed, context, intent);
 }
 export async function download(id: string, filename: string): Promise<string> {
   const dir = join(environment.supportPath, "attachments");

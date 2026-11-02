@@ -20,13 +20,13 @@ export default function Command() {
     writes.current = writes.current.catch(() => {}).then(() => LocalStorage.setItem("note-draft", JSON.stringify({ content: nextContent, files: nextFiles })));
     void writes.current.catch(() => showToast({ style: Toast.Style.Failure, title: "草稿保存失败，请保持窗口打开" }));
   };
-  async function submit() {
+  async function submit(intent: "retry" | "new") {
     if (!ready || sending) return;
     setSending(true);
     const toast = await showToast({ style: Toast.Style.Animated, title: "正在发送…" });
     try {
       await writes.current;
-      await send(content, files, () => LocalStorage.removeItem("note-draft"));
+      await send(content, files, () => LocalStorage.removeItem("note-draft"), intent);
       setContent(""); setFiles([]);
       toast.style = Toast.Style.Success; toast.title = "已发送到自己";
       await popToRoot().catch(() => {});
@@ -35,9 +35,9 @@ export default function Command() {
       toast.message = error instanceof Error ? error.message : "请重试";
     } finally { setSending(false); }
   }
-  return <Form isLoading={!ready || sending} actions={<ActionPanel><Action.SubmitForm title="发送到自己" onSubmit={submit} /></ActionPanel>}>
+  return <Form isLoading={!ready || sending} actions={<ActionPanel><Action.SubmitForm title="发送 / 重试上一笔" onSubmit={() => submit("retry")} /><Action.SubmitForm title="再发一份" onSubmit={() => submit("new")} /></ActionPanel>}>
     <Form.TextArea id="content" title="内容" placeholder="想到什么就记下来，也可以粘贴链接" value={content} onChange={value => { if (!ready || sending) return; setContent(value); save(value, files); }} />
     <Form.FilePicker id="files" title="图片 / 文件" allowMultipleSelection canChooseDirectories={false} value={files} onChange={value => { if (!ready || sending) return; setFiles(value); save(content, value); }} />
-    <Form.Description text="发送失败可直接重试；文字草稿和所选文件路径会在本机保留。" />
+    <Form.Description text="有未确认发送时，可重试上一笔；选择再发一份会保留上一笔。" />
   </Form>;
 }

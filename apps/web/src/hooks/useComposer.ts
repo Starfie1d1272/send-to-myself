@@ -58,7 +58,7 @@ export function useComposer() {
       setError(currentError => currentError === badFile.message ? "" : currentError);
     }
   }, [badFile, draft.files, info, infoQuery.dataUpdatedAt]);
-  const allowed = (value: ComposerDraft) => (value.content.trim().length > 0 || value.files.length > 0) && !pending && ready && !exceedsLimit(value.files) && !badFilename && !deleted && !value.nativeHandoffPending;
+  const allowed = (value: ComposerDraft, newIntent = false) => (value.content.trim().length > 0 || value.files.length > 0) && !pending && ready && !exceedsLimit(value.files) && !badFilename && (newIntent || !deleted) && !value.nativeHandoffPending;
   const canSend = allowed(draft);
   const accepted = async (key: string, generation: number) => {
     if (!draftIsWritable() || generation !== draftGeneration()) return;
@@ -111,10 +111,11 @@ export function useComposer() {
     finally { handoffBusy.current = false; if (generation === draftGeneration()) setPending(false); }
     return true;
   };
-  const send = async () => {
-    if (attempt.current || handoffBusy.current || !allowed(current.current)) return;
+  const send = async (newDraft?: ComposerDraft) => {
+    if (attempt.current || handoffBusy.current || !allowed(newDraft ?? current.current, !!newDraft)) return;
     const controller = new AbortController(); attempt.current = controller; setPending(true); setError(""); setNotice(""); setProgress(undefined);
-    const snapshot = { ...current.current, files: [...current.current.files], detectionContext: current.current.detectionContext ?? captureDetectionContext(), webSendAttempted: true };
+    const source = newDraft ?? current.current;
+    const snapshot = { ...source, files: [...source.files], detectionContext: source.detectionContext ?? captureDetectionContext(), webSendAttempted: true };
     const generation = draftGeneration();
     current.current = snapshot; setDraft(snapshot);
     try { await saveDraft(snapshot); setDraftError(false); } catch { setDraftError(true); }
@@ -142,9 +143,11 @@ export function useComposer() {
   };
   return { draft, change, send, addNative, checkReceipt, webFallback, newRequired, canSend, overLimit, ready, pending, draftError, error, notice, progress, info, badFilename, deleted, sendAsNew: () => {
     if (attempt.current || handoffBusy.current || !ready) return;
+    if (current.current.nativeHandoffPending && !canOpenNativeUpload()) { setError("请返回原生应用重新选择附件，旧任务仍可能在发送。"); return; }
     const next = { content: current.current.content, files: current.current.files, dedupeKey: newDedupeKey(), webSendAttempted: false };
+    const openAttachmentPicker = newRequired || !!current.current.nativeHandoffPending;
     current.current = next; setDraft(next); setNewRequired(false); setError(""); setDeleted(false);
-    setNotice(deleted ? "将作为新内容发送" : "旧任务可能仍在发送，重新发送可能重复");
-    void saveDraft(next).then(() => setDraftError(false)).catch(() => setDraftError(true));
+    if (openAttachmentPicker) void addNative();
+    else void send(next);
   }, stop: () => attempt.current?.abort() };
 }

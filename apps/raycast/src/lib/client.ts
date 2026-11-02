@@ -7,6 +7,7 @@ export function normalizeServer(raw: string): string {
   }
   return url.href.replace(/\/+$/, "");
 }
+export class AlreadyDeletedError extends Error {}
 export class InboxClient {
   readonly server: string;
   constructor(server: string, private token: string, private transport: typeof fetch = fetch) {
@@ -27,7 +28,7 @@ export class InboxClient {
     if (!response.ok) {
       if (response.status === 409) {
         const body = await response.json().catch(() => null) as { error?: string } | null;
-        if (body?.error === "already_deleted") throw new Error("这笔发送已在 NAS 被永久删除；待发送内容已保留。");
+        if (body?.error === "already_deleted") throw new AlreadyDeletedError("这笔发送已在 NAS 被永久删除；可作为新内容再次发送。");
       }
       throw new Error(response.status === 401 ? "设备令牌无效或已吊销，请更新扩展设置。" :
         response.status === 413 ? "附件超过服务器上传限制，请减少文件后重试。" :

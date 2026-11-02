@@ -49,7 +49,7 @@ test("abort of a superseded search stays an abort", async () => {
 test("unconfirmed sends survive restart and intervening sends with the same key; confirmed sends get a new key", async () => {
   const { sendWithRetryKey } = await import("../src/lib/pending.ts");
   const data = new Map();
-  const store = { getItem: async key => data.get(key), setItem: async (key, value) => { data.set(key, value); }, removeItem: async key => { data.delete(key); } };
+  const store = { allItems: async () => Object.fromEntries(data), getItem: async key => data.get(key), setItem: async (key, value) => { data.set(key, value); }, removeItem: async key => { data.delete(key); } };
   const keys = [];
   let fail = true;
   const api = new InboxClient("http://localhost:8787", "token", async (_, init) => {
@@ -70,7 +70,7 @@ test("unconfirmed sends survive restart and intervening sends with the same key;
 test("a changed attachment changes the retry key without losing an earlier failed send", async () => {
   const { sendWithRetryKey } = await import("../src/lib/pending.ts");
   const data = new Map();
-  const store = { getItem: async key => data.get(key), setItem: async (key, value) => { data.set(key, value); }, removeItem: async key => { data.delete(key); } };
+  const store = { allItems: async () => Object.fromEntries(data), getItem: async key => data.get(key), setItem: async (key, value) => { data.set(key, value); }, removeItem: async key => { data.delete(key); } };
   const keys = [];
   const api = new InboxClient("http://localhost:8787", "token", async (_, init) => { keys.push(init.body.get("dedupeKey")); throw new Error("offline"); });
   const send = text => sendWithRetryKey(api, "", [new File([text], "same.txt", { type: "text/plain" })], store);
@@ -80,7 +80,7 @@ test("a changed attachment changes the retry key without losing an earlier faile
 test("unreadable or corrupt retry storage never silently creates another request", async () => {
   const { sendWithRetryKey } = await import("../src/lib/pending.ts");
   const api = new InboxClient("http://localhost", "token", async () => { assert.fail("must not send"); });
-  const store = { getItem: async () => { throw new Error("storage unavailable"); }, setItem: async () => {}, removeItem: async () => {} };
+  const store = { allItems: async () => ({}), getItem: async () => { throw new Error("storage unavailable"); }, setItem: async () => {}, removeItem: async () => {} };
   await assert.rejects(sendWithRetryKey(api, "hello", [], store), /storage unavailable/);
   store.getItem = async () => "broken JSON";
   await assert.rejects(sendWithRetryKey(api, "hello", [], store), /重试记录损坏/);
@@ -88,7 +88,7 @@ test("unreadable or corrupt retry storage never silently creates another request
 test("draft cleanup failure keeps retry identity after the server has confirmed", async () => {
   const { sendWithRetryKey } = await import("../src/lib/pending.ts");
   const data = new Map();
-  const store = { getItem: async key => data.get(key), setItem: async (key, value) => { data.set(key, value); }, removeItem: async key => { data.delete(key); } };
+  const store = { allItems: async () => Object.fromEntries(data), getItem: async key => data.get(key), setItem: async (key, value) => { data.set(key, value); }, removeItem: async key => { data.delete(key); } };
   const keys = [];
   const api = new InboxClient("http://localhost", "token", async (_, init) => { keys.push(JSON.parse(init.body).dedupeKey); return Response.json({ id: "already-sent" }); });
   await assert.rejects(sendWithRetryKey(api, "draft", [], store, async () => { throw new Error("cannot clear draft"); }), /cannot clear draft/);
