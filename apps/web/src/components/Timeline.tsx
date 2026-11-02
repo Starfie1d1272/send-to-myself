@@ -15,7 +15,9 @@ export function Timeline({ items, state, onChange, loading, pending }: { items: 
   }
   const groups = groupByDay(items);
   return (
-    <div className="timeline" style={pending ? { visibility: "hidden" } : undefined}>
+    <>
+    {pending && <div className="state state--load" role="status">正在加载筛选结果…</div>}
+    <div className="timeline" style={pending ? { display: "none" } : undefined}>
       {groups.map((g) => (
         <section key={g.key} className="day">
           <div className="day__divider">
@@ -33,5 +35,6 @@ export function Timeline({ items, state, onChange, loading, pending }: { items: 
         </section>
       ))}
     </div>
+    </>
   );
 }
