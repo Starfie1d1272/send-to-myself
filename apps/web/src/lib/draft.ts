@@ -102,7 +102,11 @@ export function newDedupeKey(): string {
 export interface EditSnapshot { content: string; savedAt: number; detectionContext?: DetectionContext }
 export interface EditDraft extends EditSnapshot { itemId: string }
 function enqueue<T>(fn: () => Promise<T>): Promise<T> {
-  const result = writes.catch(() => {}).then(fn);
+  const scheduledGeneration = generation;
+  const result = writes.catch(() => {}).then(() => {
+    if (frozen || generation !== scheduledGeneration) throw new Error("草稿写入已暂停");
+    return fn();
+  });
   writes = result.then(() => {}, () => {});
   return result;
 }
