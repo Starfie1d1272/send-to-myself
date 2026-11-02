@@ -17,39 +17,38 @@
 <p align="center"><img src="docs/screenshots/timeline-mobile.png" alt="移动端时间线历史截图" width="260" /> <img src="docs/screenshots/login.png" alt="登录页历史截图" width="260" /></p>
 </details>
 
-## 功能
+## 随手发，随时取
 
-- 发送文字、链接、图片和文件，跨设备实时查看。
-- 搜索、收藏、标记待办和设置截止日期；回收站支持恢复。
-- 识别并遮罩敏感内容；支持附件预览和下载。
-- Web 支持本机草稿；各平台能力和限制见对应文档。
+手机上的截图、电脑上的链接，或者临时想到的一件事，都可以先发给自己。换一台设备打开，就能继续查看、复制或下载。
+
+- **收在一起**：文字、链接、图片和文件汇集在同一条信息流中。
+- **以后找得到**：搜索内容，收藏重要信息，或标记待办并设置截止日期。
+- **放在自己的设备上**：将服务部署在 NAS，使用浏览器或客户端连接。
 
 ## 下载
 
-- NAS 核心：[1.0.2 正式版](https://github.com/Starfie1d1272/send-to-myself/releases/tag/v1.0.2) · [1.1.0 RC2](https://github.com/Starfie1d1272/send-to-myself/releases/tag/v1.1.0-rc.2) · [GHCR 镜像](https://github.com/Starfie1d1272/send-to-myself/pkgs/container/send-to-myself)
-- 桌面：[1.0.0 正式版](https://github.com/Starfie1d1272/send-to-myself/releases/tag/desktop-v1.0.0) · [1.1.0 RC2](https://github.com/Starfie1d1272/send-to-myself/releases/tag/desktop-v1.1.0-rc.2)
-- 鸿蒙：[1.1.1 RC1 开发预览](https://github.com/Starfie1d1272/send-to-myself/releases/tag/harmony-v1.1.1-rc.1)（未签名 HAP）；Android / iPhone 可使用浏览器。
+| 设备 | 正式版 | 最新候选版 |
+| --- | --- | --- |
+| NAS 核心与 Web | [1.0.2](https://github.com/Starfie1d1272/send-to-myself/releases/tag/v1.0.2) · [GHCR 镜像](https://github.com/Starfie1d1272/send-to-myself/pkgs/container/send-to-myself) | [1.1.0 RC4](https://github.com/Starfie1d1272/send-to-myself/releases/tag/v1.1.0-rc.4)，含 NAS 运维包 |
+| Windows / macOS | [桌面 1.0.0](https://github.com/Starfie1d1272/send-to-myself/releases/tag/desktop-v1.0.0) | [桌面 1.1.0 RC4](https://github.com/Starfie1d1272/send-to-myself/releases/tag/desktop-v1.1.0-rc.4)，配套核心 RC4 |
+| HarmonyOS | — | [1.2.0 RC2](https://github.com/Starfie1d1272/send-to-myself/releases/tag/harmony-v1.2.0-rc.2)，配套核心 RC4 |
 
-版本、验证范围与平台限制见[交付表](docs/RELEASES.md)。
+桌面安装包支持 Windows x64 和 Apple Silicon Mac；Android、iPhone 和 Intel Mac 可使用浏览器。候选版供试用，鸿蒙 HAP 未签名，需自行签名后安装；后台传输和完整设备旅程仍待验收。各版本的详细说明见发布页与[交付表](docs/RELEASES.md)。
 
-## 在 NAS 安装
+## 开始使用
 
-在支持 Docker Compose 的 NAS 上创建专用数据目录，在新项目使用[唯一基础模板](deploy/docker-compose.yml)，填写强口令和目录的真实绝对路径。启动后访问 `http://NAS_IP:8787`；改过宿主端口则使用新端口。局域网 HTTP 不加密，远程访问须使用 HTTPS 和实际可达的网络路径。完整步骤见[部署指南](docs/DEPLOY.md)。
+1. 在支持 Docker Compose 的 NAS 上创建数据目录，使用 [Compose 模板](deploy/docker-compose.yml)，填写强口令和数据目录的真实绝对路径，然后启动服务。模板使用正式核心 1.0.2；试用候选版请使用其发布页的 NAS 运维包。
+2. 在浏览器打开 `http://NAS_IP:8787` 并登录；如果修改了宿主端口，请使用修改后的端口。
+3. 在其他设备打开同一可达地址，或在客户端填写该地址并登录。发一条文字或一个文件，再换台设备打开看看。
 
-## 连接其他设备
+局域网 HTTP 不加密；远程访问需要 HTTPS 和实际可达的网络路径。升级前请备份完整数据并验证恢复；回退需要升级前的完整备份及对应旧版本。安装、远程访问和备份步骤见[部署指南](docs/DEPLOY.md)。
 
-第二台设备打开同一可达地址并登录，发送文字、图片和 PDF，再从另一台打开或下载。原生客户端填写实际可达的完整地址。桌面和鸿蒙的安装及验证边界分别见[桌面说明](apps/desktop/README.md)、[鸿蒙说明](docs/HARMONY_SHELL.md)。[Raycast 扩展](apps/raycast/README.md)为本地导入，未上架商店。
+## 更多文档
 
-## 升级与备份
+- [桌面客户端](apps/desktop/README.md) · [鸿蒙客户端](docs/HARMONY_SHELL.md) · [Raycast 扩展](apps/raycast/README.md)（本地导入，未上架商店）
+- [部署、备份与恢复](docs/DEPLOY.md) · [版本管理](docs/VERSIONING.md) · [交付表](docs/RELEASES.md)
+- [架构与所有权](docs/ARCHITECTURE.md) · [产品范围](docs/SPEC.md) · [可靠性验证范围](docs/RELIABILITY.md)
 
-先记录实际镜像版本和 `/data` 对应目录，按[备份与恢复](docs/DEPLOY.md#备份与恢复)保存完整数据并验证恢复；升级使用实际发布的固定版本。回退须使用升级前完整备份及对应旧版本，不保证单独换回旧镜像能兼容新数据。
-
-## 开发与文档
-
-源码采用 pnpm monorepo：`apps/api`、`apps/web`、`packages/shared`、桌面、Raycast 和鸿蒙壳。开发环境使用 `.node-version` 与根 `packageManager` 指定版本。`pnpm install` 后运行 `pnpm dev`；开发态未设 `AUTH_PASSWORD` 时认证关闭。根 Compose 是源码开发配置，不是普通 NAS 安装入口。
-
-- [部署、备份与恢复](docs/DEPLOY.md) · [版本管理](docs/VERSIONING.md) · [当前交付表](docs/RELEASES.md)
-- [架构与所有权](docs/ARCHITECTURE.md) · [产品范围](docs/SPEC.md) · [试用脚本](docs/PILOT.md)
-- [鸿蒙设备审计](docs/HARMONY_DEVICE_AUDIT.md) · [可靠性验证范围](docs/RELIABILITY.md)
+源码采用 pnpm monorepo。使用 `.node-version` 和根目录 `packageManager` 指定的版本，运行 `pnpm install` 和 `pnpm dev` 即可启动开发环境；开发态未设置 `AUTH_PASSWORD` 时认证关闭。根目录 Compose 用于源码开发，NAS 安装请使用上面的模板。
 
 许可证：[MIT](LICENSE)。
