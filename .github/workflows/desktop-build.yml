@@ -18,8 +18,10 @@ jobs:
         include:
           - os: macos-latest
             name: macOS (Apple Silicon)
+            platform: macos-arm64
           - os: windows-latest
             name: Windows
+            platform: windows-x64
     runs-on: ${{ matrix.os }}
     name: ${{ matrix.name }}
 
@@ -60,11 +62,18 @@ jobs:
       - name: Build app
         working-directory: apps/desktop
         run: pnpm tauri build
+        env:
+          BUILD_REVISION: ${{ github.sha }}
+
+      - name: Build metadata
+        id: metadata
+        shell: bash
+        run: echo "version=$(node -p "require('./apps/desktop/src-tauri/tauri.conf.json').version")" >> "$GITHUB_OUTPUT"
 
       # 自测用：无论触发方式都上传构件
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
-          name: sendtomyself-${{ matrix.os }}
+          name: desktop-${{ steps.metadata.outputs.version }}-${{ matrix.platform }}-core-1.1.0-${{ github.sha }}
           if-no-files-found: error
           path: |
             apps/desktop/src-tauri/target/release/bundle/dmg/*.dmg
@@ -89,12 +98,17 @@ jobs:
           TAG="${{ github.ref_name }}"
           # desktop-v1.0.0 → 1.0.0
           VER="${TAG#desktop-v}"
+          ACTUAL=$(node -p "require('./apps/desktop/src-tauri/tauri.conf.json').version")
+          [[ "$VER" == "$ACTUAL" ]] || { echo "Tag and desktop version differ" >&2; exit 1; }
           # 提取 CHANGELOG 中对应版本的整段
           BODY=$(awk -v ver="$VER" '
-            $0 ~ "^## \\[" ver "\\]" { found=1; next }
+            index($0, "## [desktop-" ver "]") == 1 { found=1; next }
             found && /^## \[/ { exit }
             found { print }
           ' CHANGELOG.md)
+          [ -n "$BODY" ] || { echo "Missing desktop changelog section" >&2; exit 1; }
+          BODY="$BODY"$'\n\n'"Build SHA: ${{ github.sha }}. Minimum core: 1.1.0."
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
           # 多行输出到 GITHUB_OUTPUT
           echo "body<<EOF" >> "$GITHUB_OUTPUT"
           echo "$BODY" >> "$GITHUB_OUTPUT"
@@ -108,6 +122,7 @@ jobs:
       - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64
         with:
           body: ${{ steps.changelog.outputs.body }}
+          prerelease: ${{ contains(steps.changelog.outputs.version, '-') }}
           files: |
             dist/**/*.dmg
             dist/**/*.msi
