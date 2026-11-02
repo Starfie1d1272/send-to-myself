@@ -4,6 +4,7 @@ import { AlreadyDeletedError, InboxClient } from "./client";
 
 export interface PendingStore {
   getItem<T extends string>(key: string): Promise<T | undefined>;
+  allItems(): Promise<Record<string, string | number | boolean>>;
   setItem(key: string, value: string): Promise<void>;
   removeItem(key: string): Promise<void>;
 }
@@ -27,32 +28,40 @@ export async function sendWithRetryKey(api: InboxClient, content: string, files:
     hash.update(createHash("sha256").update(new Uint8Array(await file.arrayBuffer())).digest());
   }
   const storageKey = `pending-send:${hash.digest("hex")}`;
-  const readAttempts = async (): Promise<Attempt[]> => {
-    const raw = await store.getItem<string>(storageKey);
-    if (!raw) return [];
-    try {
-      const cached: unknown = JSON.parse(raw);
-      if (cached && typeof cached === "object" && "attempts" in cached) {
-        const entries = (cached as Attempts).attempts;
-        if (!Array.isArray(entries) || !entries.length) throw new Error("invalid cache");
-        return entries.map(parseAttempt);
+  const prefix = `${storageKey}:attempt:`;
+  const resolvedPrefix = `${storageKey}:resolved:`;
+  const all = await store.allItems();
+  const legacy = await store.getItem<string>(storageKey);
+  const attempts: { attempt: Attempt; legacy: boolean }[] = [];
+  try {
+    if (legacy) {
+      const cached: unknown = JSON.parse(legacy);
+      const entries = cached && typeof cached === "object" && "attempts" in cached ? (cached as Attempts).attempts : [cached];
+      if (!Array.isArray(entries) || !entries.length) throw new Error("invalid cache");
+      for (const value of entries) {
+        const attempt = parseAttempt(value);
+        if (!(resolvedPrefix + attempt.key in all)) attempts.push({ attempt, legacy: true });
       }
-      return [parseAttempt(cached)];
-    } catch { throw new Error("重试记录损坏，请先检查最近记录是否已收到，再修改内容发送。"); }
-  };
-  const attempts = await readAttempts();
-  let attempt = intent === "retry" ? attempts.at(-1) : undefined;
-  if (!attempt) {
-    attempt = { key: randomUUID(), createdAt: Date.now(), detectionContext: candidate };
-    attempts.push(attempt);
-    await store.setItem(storageKey, JSON.stringify({ attempts }));
+    }
+    for (const [key, value] of Object.entries(all)) {
+      if (!key.startsWith(prefix)) continue;
+      if (typeof value !== "string") throw new Error("invalid cache");
+      const attempt = parseAttempt(JSON.parse(value));
+      if (key !== prefix + attempt.key) throw new Error("invalid cache");
+      attempts.push({ attempt, legacy: false });
+    }
+  } catch { throw new Error("重试记录损坏，请先检查最近记录是否已收到，再修改内容发送。"); }
+  attempts.sort((a, b) => a.attempt.createdAt - b.attempt.createdAt || a.attempt.key.localeCompare(b.attempt.key));
+  let selected = intent === "retry" ? attempts.at(-1) : undefined;
+  if (!selected) {
+    const attempt = { key: randomUUID(), createdAt: Date.now(), detectionContext: candidate };
+    await store.setItem(prefix + attempt.key, JSON.stringify(attempt));
+    selected = { attempt, legacy: false };
   }
+  const { attempt } = selected;
   const removeAttempt = async () => {
-    const current = await readAttempts();
-    const remaining = current.filter(entry => entry.key !== attempt!.key);
-    if (remaining.length === current.length) return;
-    if (remaining.length) await store.setItem(storageKey, JSON.stringify({ attempts: remaining }));
-    else await store.removeItem(storageKey);
+    if (selected.legacy) await store.setItem(resolvedPrefix + attempt.key, "1");
+    else await store.removeItem(prefix + attempt.key);
   };
   let result;
   try { result = await api.send(content, files, attempt.key, attempt.detectionContext); }

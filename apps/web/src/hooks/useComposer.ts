@@ -143,8 +143,9 @@ export function useComposer() {
   };
   return { draft, change, send, addNative, checkReceipt, webFallback, newRequired, canSend, overLimit, ready, pending, draftError, error, notice, progress, info, badFilename, deleted, sendAsNew: () => {
     if (attempt.current || handoffBusy.current || !ready) return;
+    if (current.current.nativeHandoffPending && !canOpenNativeUpload()) { setError("请返回原生应用重新选择附件，旧任务仍可能在发送。"); return; }
     const next = { content: current.current.content, files: current.current.files, dedupeKey: newDedupeKey(), webSendAttempted: false };
-    const openAttachmentPicker = newRequired;
+    const openAttachmentPicker = newRequired || !!current.current.nativeHandoffPending;
     current.current = next; setDraft(next); setNewRequired(false); setError(""); setDeleted(false);
     if (openAttachmentPicker) void addNative();
     else void send(next);
