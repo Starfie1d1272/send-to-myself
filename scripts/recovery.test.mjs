@@ -18,6 +18,8 @@ test("Docker backup/dry-run/restore preserve database and attachments and reject
   mkdirSync(join(root, "scripts"));
   cpSync(new URL("./backup.sh", import.meta.url), join(root, "scripts/backup.sh"));
   cpSync(new URL("./restore.sh", import.meta.url), join(root, "scripts/restore.sh"));
+  cpSync(new URL("./lib", import.meta.url), join(root, "scripts/lib"), { recursive: true });
+  mkdirSync(join(root, "data"));
   writeFileSync(join(root, "compose.yaml"), `services:
   app:
     image: ${image}
@@ -29,9 +31,11 @@ test("Docker backup/dry-run/restore preserve database and attachments and reject
     volumes:
       - ./data:/data
 `);
-  const compose = (...args) => command(root, "docker", ["compose", ...args]);
+  const project = `stm-recovery-${process.pid}`;
+  const deployment = ["--file", join(root, "compose.yaml"), "--project-name", project];
+  const compose = (...args) => command(root, "docker", ["compose", "--project-name", project, ...args]);
   t.after(() => {
-    command(root, "docker", ["compose", "down", "--volumes", "--remove-orphans"]);
+    command(root, "docker", ["compose", "--project-name", project, "down", "--volumes", "--remove-orphans"]);
     // 容器中的 root 创建的数据目录可能不允许宿主普通用户直接删除。
     command(root, "docker", ["run", "--rm", "--user", "0:0", "-v", `${root}:/cleanup`,
       "--entrypoint", "find", image, "/cleanup", "-mindepth", "1", "-delete"]);
@@ -54,7 +58,7 @@ test("Docker backup/dry-run/restore preserve database and attachments and reject
   assert.equal(login.status, 200);
   const headers = { cookie: login.headers.get("set-cookie").split(";")[0] };
   function backup() {
-    command(root, "bash", ["scripts/backup.sh"]);
+    command(root, "bash", ["scripts/backup.sh", ...deployment, "--output", join(root, "backups")]);
     const backups = readdirSync(join(root, "backups")).filter((name) => !name.startsWith("."));
     return backups.map((name) => join(root, "backups", name));
   }
@@ -68,12 +72,12 @@ test("Docker backup/dry-run/restore preserve database and attachments and reject
   assert.equal(uploaded.status, 201);
   const item = await uploaded.json();
   const full = backup().find((path) => path !== empty);
-  command(root, "bash", ["scripts/restore.sh", full, "--dry-run"]);
+  command(root, "bash", ["scripts/restore.sh", ...deployment, "--backup", full, "--dry-run"]);
   await ready();
   const broken = join(root, "broken");
   cpSync(full, broken, { recursive: true });
   rmSync(join(broken, "uploads.tar.gz"));
-  command(root, "bash", ["scripts/restore.sh", broken, "--dry-run"], false);
+  command(root, "bash", ["scripts/restore.sh", ...deployment, "--backup", broken, "--dry-run"], false);
   assert.equal((await fetch(`${base}/api/items`, { headers })).status, 200);
   // 归档路径越界须在停服前拒绝。
   const unsafe = join(root, "unsafe");
@@ -81,10 +85,10 @@ test("Docker backup/dry-run/restore preserve database and attachments and reject
   cpSync(join(full, "app.db"), join(unsafe, "app.db"));
   writeFileSync(join(unsafe, "outside.txt"), "unsafe");
   command(root, "tar", ["-czf", join(unsafe, "uploads.tar.gz"), "-C", unsafe, "outside.txt"]);
-  command(root, "bash", ["scripts/restore.sh", unsafe, "--dry-run"], false);
+  command(root, "bash", ["scripts/restore.sh", ...deployment, "--backup", unsafe, "--dry-run"], false);
   assert.equal((await fetch(`${base}/health`)).status, 200);
   await fetch(`${base}/api/items`, { method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify({ content: "after backup" }) });
-  command(root, "bash", ["scripts/restore.sh", full]);
+  command(root, "bash", ["scripts/restore.sh", ...deployment, "--backup", full]);
   await ready();
   const timeline = await (await fetch(`${base}/api/items`, { headers })).json();
   assert.deepEqual(timeline.items.map((value) => value.id), [item.id]);
@@ -92,7 +96,7 @@ test("Docker backup/dry-run/restore preserve database and attachments and reject
   assert.equal(await raw.text(), "original attachment bytes");
   assert.ok(readdirSync(root).some((name) => name.startsWith("data.before-restore-")));
   // 无附件的备份也须替换 uploads，不能保留后来的文件。
-  command(root, "bash", ["scripts/restore.sh", empty]);
+  command(root, "bash", ["scripts/restore.sh", ...deployment, "--backup", empty]);
   await ready();
   const restored = await (await fetch(`${base}/api/items`, { headers })).json();
   assert.equal(restored.items.length, 0);
