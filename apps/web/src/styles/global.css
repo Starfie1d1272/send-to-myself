@@ -1228,3 +1228,5 @@ body { line-height: 1.6; }
 .app-menu__panel button:hover, .app-menu__panel button:focus-visible { background: var(--paper-2); }
 
 .composer__error .button { margin: 4px 8px 0 0; }
+
+.device-dialog .button--danger:not(.send), .actions > .button--danger { border-color: var(--red); color: var(--red); background: var(--card-hi); }

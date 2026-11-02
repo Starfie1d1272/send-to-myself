@@ -367,15 +367,15 @@ struct MainPage {
       }
       if (this.authOverlay) {
         Column({ space: 12 }) {
-          Text('重新登录当前连接').fontSize(20)
-          TextInput({ placeholder: '登录口令' }).type(InputType.Password).enabled(!this.authSubmitting).onChange((value: string) => { this.password = value; })
+          Text('重新登录当前连接').fontSize(20).fontColor(C_INK)
+          TextInput({ placeholder: '登录口令' }).type(InputType.Password).backgroundColor(CARD_HI).fontColor(C_INK).placeholderColor(C_INK_SOFT).enabled(!this.authSubmitting).onChange((value: string) => { this.password = value; })
           Button('重新登录').enabled(!this.authSubmitting).onClick(() => { this.submitReauthenticate(); })
           Button('取消').enabled(!this.authSubmitting).onClick(() => { this.cancelReauthenticate(); })
         }.padding(24).backgroundColor(C_CARD).width('90%')
       }
       if (this.signedOut) {
         Column({ space: 12 }) {
-          Text(this.logoutNotice || '正在退出当前连接…')
+          Text(this.logoutNotice || '正在退出当前连接…').fontColor(C_INK)
           Button('返回连接').onClick(() => { this.signedOut = false; this.phase = 'login'; })
         }.padding(24).backgroundColor(C_CARD).width('100%').height('100%').justifyContent(FlexAlign.Center)
       }

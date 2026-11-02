@@ -1,4 +1,4 @@
-import { PAPER, CARD, INK, INK_SOFT, ERROR, CARD_RADIUS } from '../common/Theme';
+import { PAPER, CARD, CARD_HI, INK, INK_SOFT, ERROR, CARD_RADIUS } from '../common/Theme';
 import { common } from '@kit.AbilityKit';
 import { promptAction } from '@kit.ArkUI';
 import { requestHostReauthentication } from '../common/HostReauthentication';
@@ -116,7 +116,7 @@ struct TransfersPage {
                   Button(item.paused ? '继续' : '重试').margin(4).enabled(!this.busyKey)
                     .onClick(() => { this.perform(item.key, () => retryQueueItem(this.context, item.key)); })
                 }
-                Button('删除').margin(4).enabled(!this.busyKey).onClick(() => { this.confirmRemove(item.key, false); })
+                Button('删除').margin(4).backgroundColor(ERROR).fontColor(CARD_HI).enabled(!this.busyKey).onClick(() => { this.confirmRemove(item.key, false); })
               }
             }.padding(16).width('100%').backgroundColor(CARD).borderRadius(CARD_RADIUS)
           }, (item: QueueRow) => item.key)
