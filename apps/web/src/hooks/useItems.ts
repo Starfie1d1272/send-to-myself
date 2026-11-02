@@ -13,7 +13,7 @@ export function useItems(params: ListParams) {
 export function useItemMutations() {
   const qc = useQueryClient();
   const invalidate = () => qc.invalidateQueries({ queryKey: ["items"] });
-  const onError = (err: Error) => { if (err instanceof ApiError && err.status === 401) void qc.invalidateQueries({ queryKey: ["auth", "me"] }); if (err instanceof ApiError && err.status === 409 && err.code === "purge_in_progress") void invalidate(); };
+  const onError = (err: Error) => { if (err instanceof ApiError && err.status === 401) void qc.invalidateQueries({ queryKey: ["auth", "me"] }); if (err instanceof ApiError && ((err.status === 409 && err.code === "purge_in_progress") || (err.status === 503 && err.code === "cleanup_failed"))) void invalidate(); };
   return {
     create: useMutation({ mutationFn: (i: CreateItemInput) => api.create(i), onError, onSuccess: invalidate }),
     upload: useMutation({
@@ -25,6 +25,7 @@ export function useItemMutations() {
       onError, onSuccess: invalidate,
     }),
     remove: useMutation({ mutationFn: (id: string) => api.remove(id), onError, onSuccess: invalidate }),
+    permanent: useMutation({ mutationFn: (id: string) => api.permanentlyRemove(id), onError, onSuccess: invalidate }),
     restore: useMutation({ mutationFn: (id: string) => api.restore(id), onError, onSuccess: invalidate }),
     refetchPreview: useMutation({
       mutationFn: (id: string) => api.refetchPreview(id),

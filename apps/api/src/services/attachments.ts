@@ -1,6 +1,6 @@
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "../db/client.js";
-import { type AttachmentInsert, type AttachmentRow, attachments } from "../db/schema.js";
+import { type AttachmentInsert, type AttachmentRow, attachments, items } from "../db/schema.js";
 import { newId } from "../lib/id.js";
 import { makeKey, putBuffer, remove } from "../lib/storage.js";
 import { isImageMime, makeThumbnail, thumbKey as thumbnailKey } from "../lib/thumbnail.js";
@@ -65,5 +65,5 @@ export function listByItems(itemIds: string[]): Map<string, AttachmentRow[]> {
 }
 
 export function getAttachment(id: string): AttachmentRow | null {
-  return db.select().from(attachments).where(eq(attachments.id, id)).get() ?? null;
+  return db.select({ attachment: attachments }).from(attachments).innerJoin(items, eq(items.id, attachments.itemId)).where(and(eq(attachments.id, id), isNull(items.purgeStartedAt))).get()?.attachment ?? null;
 }

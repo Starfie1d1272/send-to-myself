@@ -4,8 +4,13 @@ import { createApp } from "./app.js";
 import { env } from "./env.js";
 import { purgeExpiredSessions } from "./lib/auth.js";
 
-purgeExpiredSessions();
+import { initializeRetention, startTrashScan } from "./services/trash.js";
 
-serve({ fetch: createApp().fetch, port: env.port }, (info) => {
+purgeExpiredSessions();
+initializeRetention();
+
+const server = serve({ fetch: createApp().fetch, port: env.port }, (info) => {
+  const stopTrashScan = startTrashScan();
+  server.once("close", stopTrashScan);
   console.log(`[api] listening on http://localhost:${info.port}`);
 });

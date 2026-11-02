@@ -20,7 +20,7 @@ export async function sendWithRetryKey(api: InboxClient, content: string, files:
     try {
       const cached = JSON.parse(raw);
       if (typeof cached?.key !== "string" || !cached.key || typeof cached.createdAt !== "number") throw new Error("invalid cache");
-      if (Date.now() - cached.createdAt < 7 * 86400_000) key = cached.key;
+      key = cached.key;
     } catch { throw new Error("重试记录损坏，请先检查最近记录是否已收到，再修改内容发送。"); }
   }
   key ??= randomUUID();

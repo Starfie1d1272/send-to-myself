@@ -5,6 +5,7 @@ import { createItemInput, timelineFilter, updateItemInput } from "@sendtomyself/
 import { decodeCursor } from "../lib/cursor.js";
 import { env } from "../env.js";
 import type { IncomingFile } from "../services/attachments.js";
+import { permanentlyDeleteItem } from "../services/trash.js";
 import * as svc from "../services/items.js";
 
 export const itemsRoute = new Hono();
@@ -15,7 +16,7 @@ const bool = (v: string | undefined): boolean | undefined =>
 // 发送（不分类，仅正文；附件走 /upload）
 itemsRoute.post("/", zValidator("json", createItemInput), (c) => {
   try { return c.json(svc.createItem(c.req.valid("json")), 201); }
-  catch (error) { if (error instanceof svc.ItemError) return c.json({ error: error.message }, 400); throw error; }
+  catch (error) { if (error instanceof svc.ItemError) return error.message === "already_deleted" || error.message === "purge_in_progress" ? c.json({ error: error.message }, 409) : c.json({ error: error.message }, 400); throw error; }
 });
 
 let activeUploads = 0;
@@ -63,8 +64,8 @@ itemsRoute.post("/upload", async (c) => {
     });
   }
 
-  const item = await svc.createItemWithFiles(content, files, dedupeKey);
-  return c.json(item, 201);
+  try { return c.json(await svc.createItemWithFiles(content, files, dedupeKey), 201); }
+  catch (error) { if (error instanceof svc.ItemError && error.message === "already_deleted") return c.json({ error: error.message }, 409); throw error; }
 });
 
 // 时间线 / 搜索 / 筛选（游标分页）
@@ -99,7 +100,7 @@ itemsRoute.patch("/:id", zValidator("json", updateItemInput), (c) => {
   try {
     const item = svc.updateItem(c.req.param("id"), c.req.valid("json"));
     return item ? c.json(item) : c.json({ error: "not_found" }, 404);
-  } catch (error) { if (error instanceof svc.ItemError) return c.json({ error: error.message }, 400); throw error; }
+  } catch (error) { if (error instanceof svc.ItemError) return error.message === "already_deleted" || error.message === "purge_in_progress" ? c.json({ error: error.message }, 409) : c.json({ error: error.message }, 400); throw error; }
 });
 
 // 软删除
@@ -109,10 +110,19 @@ itemsRoute.delete("/:id", (c) =>
     : c.json({ error: "not_found" }, 404),
 );
 
+itemsRoute.delete("/:id/permanent", async (c) => {
+  const result = await permanentlyDeleteItem(c.req.param("id"));
+  if (result === "not_in_trash") return c.json({ error: result }, 409);
+  if (result === "cleanup_failed") return c.json({ error: result }, 503);
+  return c.body(null, 204);
+});
+
 // 从回收站恢复
 itemsRoute.post("/:id/restore", (c) => {
-  const item = svc.restoreItem(c.req.param("id"));
-  return item ? c.json(item) : c.json({ error: "not_found" }, 404);
+  try {
+    const item = svc.restoreItem(c.req.param("id"));
+    return item ? c.json(item) : c.json({ error: "not_found" }, 404);
+  } catch (error) { if (error instanceof svc.ItemError && error.message === "purge_in_progress") return c.json({ error: error.message }, 409); throw error; }
 });
 
 // 手动重抓链接预览

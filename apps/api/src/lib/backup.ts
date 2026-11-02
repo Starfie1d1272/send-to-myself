@@ -19,9 +19,15 @@ async function fingerprint(root: string, key: string): Promise<StoredFile> {
 function inspect(db: Database.Database) {
   if (db.pragma("integrity_check", { simple: true }) !== "ok") throw new Error("Database integrity check failed");
   if ((db.pragma("foreign_key_check") as unknown[]).length) throw new Error("Database foreign key check failed");
-  const items = db.prepare("SELECT * FROM items").all();
-  const attachments = db.prepare("SELECT * FROM attachments").all() as Array<{ storage_key: string; thumb_key: string | null; size: number }>;
-  return { items, attachments };
+  const items = db.prepare("SELECT * FROM items").all() as Array<{ id: string; purge_started_at?: number | null }>;
+  const purging = new Set(items.filter(item => item.purge_started_at != null).map(item => item.id));
+  const attachments = db.prepare("SELECT * FROM attachments").all() as Array<{ item_id: string; storage_key: string; thumb_key: string | null; size: number }>;
+  return { items, attachments, purging };
+}
+
+async function fingerprintIfPresent(root: string, key: string, allowMissing: boolean): Promise<StoredFile | undefined> {
+  try { return await fingerprint(root, key); }
+  catch (error) { if (allowMissing && (error as NodeJS.ErrnoException).code === "ENOENT") return undefined; throw error; }
 }
 
 /** Caller stops writers while the snapshot and its attachment archive are made. */
@@ -36,13 +42,14 @@ export async function snapshot(dbPath: string, destination: string, uploads: str
     const data = inspect(db);
     const files: StoredFile[] = [];
     for (const attachment of data.attachments) {
-      const file = await fingerprint(uploads, attachment.storage_key);
-      if (file.size !== attachment.size) throw new Error(`Attachment size mismatch: ${file.key}`);
-      files.push(file);
-      if (attachment.thumb_key) files.push(await fingerprint(uploads, attachment.thumb_key));
+      const file = await fingerprintIfPresent(uploads, attachment.storage_key, data.purging.has(attachment.item_id));
+      if (file && file.size !== attachment.size) throw new Error(`Attachment size mismatch: ${file.key}`);
+      if (file) files.push(file);
+      const thumb = attachment.thumb_key && await fingerprintIfPresent(uploads, attachment.thumb_key, data.purging.has(attachment.item_id));
+      if (thumb) files.push(thumb);
     }
     await writeFile(resolve(destination, "manifest.json"), JSON.stringify({ version: 1, files }, null, 2));
-    await writeFile(resolve(destination, "export.json"), JSON.stringify({ exportedAt: new Date().toISOString(), ...data }, null, 2));
+    await writeFile(resolve(destination, "export.json"), JSON.stringify({ exportedAt: new Date().toISOString(), items: data.items, attachments: data.attachments }, null, 2));
   } finally { db.close(); }
 }
 
@@ -50,15 +57,15 @@ export async function snapshot(dbPath: string, destination: string, uploads: str
 export async function verifyBackup(directory: string, uploads: string): Promise<void> {
   const db = new Database(resolve(directory, "app.db"), { readonly: true, fileMustExist: true });
   try {
-    const { attachments } = inspect(db);
+    const { attachments, purging } = inspect(db);
     const actual = new Map<string, StoredFile>();
     for (const attachment of attachments) {
-      const file = await fingerprint(uploads, attachment.storage_key);
-      if (file.size !== attachment.size) throw new Error(`Attachment size mismatch: ${file.key}`);
-      actual.set(file.key, file);
+      const file = await fingerprintIfPresent(uploads, attachment.storage_key, purging.has(attachment.item_id));
+      if (file && file.size !== attachment.size) throw new Error(`Attachment size mismatch: ${file.key}`);
+      if (file) actual.set(file.key, file);
       if (attachment.thumb_key) {
-        const thumb = await fingerprint(uploads, attachment.thumb_key);
-        actual.set(thumb.key, thumb);
+        const thumb = await fingerprintIfPresent(uploads, attachment.thumb_key, purging.has(attachment.item_id));
+        if (thumb) actual.set(thumb.key, thumb);
       }
     }
     let manifest: { version: number; files: StoredFile[] };

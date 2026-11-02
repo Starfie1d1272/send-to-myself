@@ -148,6 +148,9 @@ export const api = {
   remove(id: string): Promise<null> {
     return fetch(`/api/items/${id}`, businessOpts({ method: "DELETE" })).then(handle);
   },
+  permanentlyRemove(id: string): Promise<null> {
+    return fetch(`/api/items/${id}/permanent`, businessOpts({ method: "DELETE" })).then(handle);
+  },
   restore(id: string): Promise<Item> {
     return fetch(`/api/items/${id}/restore`, businessOpts({ method: "POST" })).then(handle);
   },

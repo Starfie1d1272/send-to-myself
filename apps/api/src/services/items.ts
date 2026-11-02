@@ -9,8 +9,9 @@ import type {
   ItemPage,
   UpdateItemInput,
 } from "@sendtomyself/shared";
+import { env } from "../env.js";
 import { db } from "../db/client.js";
-import { attachments, type AttachmentInsert, type ItemInsert, items } from "../db/schema.js";
+import { attachments, deletedDedupeKeys, type AttachmentInsert, type ItemInsert, items } from "../db/schema.js";
 import { decodeCursor, encodeCursor } from "../lib/cursor.js";
 import { newId } from "../lib/id.js";
 import { isoToSec, rowToItem } from "../lib/mapper.js";
@@ -54,6 +55,7 @@ function computeContent(content: string, files: Array<{ mimeType: string }>, cur
 function findByDedupeKey(dedupeKey: string | undefined): Item | null {
   if (!dedupeKey) return null;
   const row = db.select().from(items).where(eq(items.dedupeKey, dedupeKey)).get();
+  if ((row && row.purgeStartedAt !== null) || db.select().from(deletedDedupeKeys).where(eq(deletedDedupeKeys.dedupeKey, dedupeKey)).get()) throw new ItemError("already_deleted");
   return row ? rowToItem(row, attachmentSvc.listByItem(row.id)) : null;
 }
 
@@ -246,6 +248,7 @@ export function getItem(id: string): Item | null {
 export function updateItem(id: string, patch: UpdateItemInput): Item | null {
   const existing = db.select().from(items).where(eq(items.id, id)).get();
   if (!existing) return null;
+  if (existing.purgeStartedAt !== null) throw new ItemError("purge_in_progress");
 
   const atts = attachmentSvc.listByItem(id);
   const content = patch.content ?? existing.content;
@@ -274,7 +277,7 @@ export function updateItem(id: string, patch: UpdateItemInput): Item | null {
     set.kind = computed.kind;
     set.sensitive = computed.sensitive;
   } else if (patch.sensitive !== undefined) set.sensitive = override ?? detectSecret(content).sensitive;
-  db.update(items).set(set).where(eq(items.id, id)).run();
+  db.update(items).set(set).where(and(eq(items.id, id), isNull(items.purgeStartedAt))).run();
   const row = db.select().from(items).where(eq(items.id, id)).get()!;
   const dto = rowToItem(row, atts);
   if (urls) schedulePreview(dto, urls);
@@ -287,7 +290,9 @@ export function updateItem(id: string, patch: UpdateItemInput): Item | null {
 export function softDeleteItem(id: string): boolean {
   const existing = db.select().from(items).where(eq(items.id, id)).get();
   if (!existing) return false;
-  db.update(items).set({ deletedAt: nowSec(), updatedAt: nowSec() }).where(eq(items.id, id)).run();
+  if (existing.deletedAt !== null) return true;
+  const now = nowSec();
+  db.update(items).set({ deletedAt: now, trashRetentionStartedAt: env.trashRetentionDays > 0 ? now : null, updatedAt: now }).where(eq(items.id, id)).run();
   bus.publish({ type: "item.deleted", payload: { id } });
   return true;
 }
@@ -296,7 +301,8 @@ export function softDeleteItem(id: string): boolean {
 export function restoreItem(id: string): Item | null {
   const existing = db.select().from(items).where(eq(items.id, id)).get();
   if (!existing) return null;
-  db.update(items).set({ deletedAt: null, updatedAt: nowSec() }).where(eq(items.id, id)).run();
+  if (existing.purgeStartedAt !== null) throw new ItemError("purge_in_progress");
+  db.update(items).set({ deletedAt: null, trashRetentionStartedAt: null, updatedAt: nowSec() }).where(and(eq(items.id, id), isNull(items.purgeStartedAt))).run();
   const row = db.select().from(items).where(eq(items.id, id)).get()!;
   const dto = rowToItem(row, attachmentSvc.listByItem(id));
   bus.publish({ type: "item.updated", payload: { id: dto.id } });
