@@ -26,8 +26,8 @@
 
 ## 下载
 
-- NAS 核心：[1.0.2 正式版](https://github.com/Starfie1d1272/send-to-myself/releases/tag/v1.0.2) · [1.1.0 RC1](https://github.com/Starfie1d1272/send-to-myself/releases/tag/v1.1.0-rc.1) · [GHCR 镜像](https://github.com/Starfie1d1272/send-to-myself/pkgs/container/send-to-myself)
-- 桌面：[1.0.0 正式版](https://github.com/Starfie1d1272/send-to-myself/releases/tag/desktop-v1.0.0) · [1.1.0 RC1](https://github.com/Starfie1d1272/send-to-myself/releases/tag/desktop-v1.1.0-rc.1)
+- NAS 核心：[1.0.2 正式版](https://github.com/Starfie1d1272/send-to-myself/releases/tag/v1.0.2) · [1.1.0 RC2](https://github.com/Starfie1d1272/send-to-myself/releases/tag/v1.1.0-rc.2) · [GHCR 镜像](https://github.com/Starfie1d1272/send-to-myself/pkgs/container/send-to-myself)
+- 桌面：[1.0.0 正式版](https://github.com/Starfie1d1272/send-to-myself/releases/tag/desktop-v1.0.0) · [1.1.0 RC2](https://github.com/Starfie1d1272/send-to-myself/releases/tag/desktop-v1.1.0-rc.2)
 - 鸿蒙：[1.1.1 RC1 开发预览](https://github.com/Starfie1d1272/send-to-myself/releases/tag/harmony-v1.1.1-rc.1)（未签名 HAP）；Android / iPhone 可使用浏览器。
 
 版本、验证范围与平台限制见[交付表](docs/RELEASES.md)。
