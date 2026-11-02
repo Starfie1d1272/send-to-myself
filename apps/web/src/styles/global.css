@@ -3,6 +3,7 @@
    ============================================================ */
 
 :root {
+  color-scheme: light;
   --font-display: "Fraunces", Georgia, "Songti SC", serif;
   --font-ui: "Hanken Grotesk", -apple-system, BlinkMacSystemFont, "PingFang SC",
     "HarmonyOS Sans SC", "Microsoft YaHei", sans-serif;
@@ -1165,20 +1166,18 @@ body {
 .timeline__more { display: flex; justify-content: center; padding: 24px 0; }
 .composer__error { color: var(--red); font-size: 13px; margin: 8px 12px; }
 
-.att__copy { display: block; margin: 6px 0; font-size: 12px; cursor: pointer; }
-.device-dialog { width: min(480px, calc(100vw - 32px)); max-height: 85vh; overflow: auto; padding: 24px; border: 1px solid var(--line); border-radius: 12px; color: var(--ink); background: var(--paper); }
+.att__copy { display: block; margin: 6px 0; font-size: 12px; cursor: pointer; padding: 4px 9px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--ink-soft); }
+.device-dialog { width: min(480px, calc(100vw - 32px)); max-width: none; max-height: calc(100dvh - 32px); overflow: auto; padding: 24px; border: 1px solid var(--line); border-radius: 14px; color: var(--ink); background: var(--card); overflow-wrap: anywhere; }
 .device-dialog::backdrop { background: rgba(0,0,0,.4); }
 .device-dialog__header { display: flex; align-items: center; justify-content: space-between; }
 .device-dialog p { margin: 12px 0; line-height: 1.6; }
 .device-dialog label { display: block; margin: 12px 0; }
-.device-dialog input { display: block; box-sizing: border-box; width: 100%; margin: 6px 0; padding: 8px; }
+.device-dialog input { display: block; width: 100%; margin: 6px 0; padding: 8px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--card-hi); color: var(--ink); font: inherit; font-size: 16px; }
 .device-dialog button { cursor: pointer; margin-right: 8px; }
 .device-dialog li { display: flex; justify-content: space-between; align-items: center; margin: 12px 0; }
 
 .masthead__devices { flex-shrink: 0; white-space: nowrap; padding: 5px 9px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--ink-soft); font: inherit; font-size: 12px; cursor: pointer; }
-.att__copy { padding: 4px 9px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--ink-soft); }
 .device-dialog button:not(.send) { padding: 5px 9px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--ink-soft); }
-.device-dialog input { border: 1px solid var(--line); border-radius: 6px; background: var(--paper-2); color: var(--ink); font: inherit; font-size: 14px; }
 .device-dialog li span { min-width: 0; overflow-wrap: anywhere; }
 @media (max-width: 560px) {
   .masthead { flex-wrap: wrap; gap: 12px; }
@@ -1197,3 +1196,33 @@ body {
 .filterbar > button, .filterbar .chips > button:not(.chip), .actions > button, .actions .due-wrap > button, .item__body > button:not(.redacted):not(.suggest), .att__file-actions > a {
   border: 1px solid var(--line-strong); background: var(--paper-2); color: var(--ink-soft); border-radius: 8px; padding: 6px 10px; cursor: pointer; font: inherit; font-size: 13px;
 }
+
+/* Shared controls and accessible interaction states. */
+.button { min-height: 36px; padding: 8px 12px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--card-hi); color: var(--ink); font: inherit; cursor: pointer; }
+.button--primary { background: var(--accent); border-color: var(--accent); color: var(--card-hi); }
+.button--secondary { background: var(--card-hi); }
+.button--quiet { background: transparent; }
+.button--danger { color: var(--red); border-color: var(--red); }
+.field { width: 100%; min-width: 0; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--card-hi); color: var(--ink); font: inherit; font-size: 16px; }
+.inline-status { color: var(--ink-soft); line-height: 1.6; overflow-wrap: anywhere; }
+.inline-status--success { color: var(--green); }
+.inline-status--error { color: var(--red); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+body { line-height: 1.6; }
+.shell { padding-bottom: calc(120px + env(safe-area-inset-bottom)); }
+.state__sub, .redacted__hint, .login__sub { color: var(--ink-soft); }
+.item, .item__row, .item__body, .att, .att__file { min-width: 0; }
+.att__file-name { white-space: normal; overflow-wrap: anywhere; }
+.device-dialog button { min-height: 36px; }
+@media (max-width: 560px), (pointer: coarse) {
+  .attach-btn, .icon-btn, .actions .icon-btn, .tray__x, .check { min-width: 44px; min-height: 44px; }
+  .send, .chip, .device-dialog button { min-height: 44px; }
+  .shell { padding-bottom: calc(100px + env(safe-area-inset-bottom)); }
+}
+@media (max-width: 560px) { .chips--filter { flex-wrap: wrap; overflow: visible; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; } }
+
+.app-menu { position: relative; }
+.app-menu__panel { position: absolute; right: 0; top: 100%; z-index: 5; display: grid; min-width: 170px; max-width: calc(100vw - 32px); padding: 8px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--card-hi); box-shadow: var(--shadow-md); }
+.app-menu__panel button { min-height: 44px; padding: 8px 12px; border: 0; border-radius: 6px; background: transparent; color: var(--ink); text-align: left; font: inherit; cursor: pointer; }
+.app-menu__panel button:hover, .app-menu__panel button:focus-visible { background: var(--paper-2); }

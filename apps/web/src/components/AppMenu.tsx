@@ -15,10 +15,10 @@ export function AppMenu(props: AppMenuProps) {
     document.addEventListener("mousedown", click); document.addEventListener("keydown", key);
     return () => { document.removeEventListener("mousedown", click); document.removeEventListener("keydown", key); };
   }, [open]);
-  const item = (label: string, action: () => void, disabled = false) => <button role="menuitem" disabled={disabled} onClick={() => { setOpen(false); action(); }}>{label}</button>;
+  const item = (label: string, action: () => void, disabled = false) => <button role="menuitem" disabled={disabled} onClick={() => { ref.current?.querySelector("button")?.focus(); setOpen(false); action(); }}>{label}</button>;
   const oldNative = !!getNativeBridge() && !hasNativeAuth();
-  return <div ref={ref} style={{ position: "relative" }}><button aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>更多</button>
-    {open && <div role="menu" style={{ position: "absolute", right: 0, top: "100%", zIndex: 5, display: "grid", minWidth: 170, padding: 8, background: "#fffaf0", boxShadow: "0 4px 20px #0003" }}>
+  return <div ref={ref} className="app-menu"><button className="button button--quiet" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>更多</button>
+    {open && <div role="menu" className="app-menu__panel">
       {item("连接手机 / 电脑", props.onOpenConnect)}
       {props.onOpenTransfers && item("传输任务", props.onOpenTransfers)}
       {item("服务器信息", props.onOpenServerInfo)}

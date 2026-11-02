@@ -1,4 +1,6 @@
-import { useRef, useState } from "react";
+import { Dialog } from "./ui/Dialog";
+import { InlineStatus } from "./ui/InlineStatus";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthAccess } from "../hooks/useAuth";
 import { api, ApiError } from "../lib/api";
@@ -7,7 +9,6 @@ import { copyText } from "../lib/clipboard";
 /** Token plaintext exists only in this mounted dialog and is never persisted. */
 export function AccessTokens({ onClose }: { onClose: () => void }) {
   const access = useAuthAccess();
-  const dialog = useRef<HTMLDialogElement>(null);
   const [name, setName] = useState("");
   const [token, setToken] = useState("");
   const [message, setMessage] = useState("");
@@ -20,7 +21,7 @@ export function AccessTokens({ onClose }: { onClose: () => void }) {
   const revoke = useMutation({ mutationFn: api.revokeDevice, onSuccess: () => {
     setToken(""); void qc.invalidateQueries({ queryKey: ["devices"] });
   } });
-  return <dialog ref={element => { dialog.current = element; if (element && !element.open) element.showModal(); }} className="device-dialog" onCancel={onClose} aria-labelledby="device-title">
+  return <Dialog onClose={onClose} labelledBy="device-title">
     <div className="device-dialog__header"><h2 id="device-title">接入令牌</h2><button onClick={onClose} aria-label="关闭接入令牌">关闭</button></div>
     <p>供 Raycast 和 API 工具使用，每个工具单独创建。不是所有已登录设备的列表。</p>
     <a href="https://github.com/Starfie1d1272/send-to-myself/blob/main/apps/raycast/README.md" target="_blank" rel="noreferrer">Raycast 安装说明</a>
@@ -33,10 +34,10 @@ export function AccessTokens({ onClose }: { onClose: () => void }) {
       <button disabled={copying} onClick={async () => { setCopying(true); try { setMessage(await copyText(token) ? "已复制令牌" : "复制失败，请手动复制令牌"); } finally { setCopying(false); } }}>{copying ? "复制中…" : "复制令牌"}</button>
       <button onClick={() => { setToken(""); setMessage(""); }}>已保存</button>
     </div>}
-    {(devices.error || create.error || revoke.error) && <p role="alert">{[devices.error, create.error, revoke.error].some(error => error instanceof ApiError && error.status === 401) ? "请在浏览器打开同一地址，用口令登录后管理接入令牌" : "操作失败，请重试。"}</p>}
-    {message && <p role="status">{message}</p>}
+    {(devices.error || create.error || revoke.error) && <InlineStatus tone="error">{[devices.error, create.error, revoke.error].some(error => error instanceof ApiError && error.status === 401) ? "请在浏览器打开同一地址，用口令登录后管理接入令牌" : "操作失败，请重试。"}</InlineStatus>}
+    {message && <InlineStatus>{message}</InlineStatus>}
     {devices.isLoading ? <p>加载设备…</p> : <ul>{devices.data?.devices.map(device => <li key={device.tail}>
       <span>{device.name} · 尾号 {device.tail} · 创建于 {new Date(device.createdAt * 1000).toLocaleString()} · 最近使用 {device.lastUsedAt === null ? "尚未使用" : new Date(device.lastUsedAt * 1000).toLocaleString()}</span><button disabled={revoke.isPending} onClick={() => revoke.mutate(device.tail)}>吊销</button>
     </li>)}</ul>}
-  </dialog>;
+  </Dialog>;
 }

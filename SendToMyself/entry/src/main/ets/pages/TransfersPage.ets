@@ -1,3 +1,4 @@
+import { PAPER, CARD, INK, INK_SOFT, ERROR, CARD_RADIUS } from '../common/Theme';
 import { common } from '@kit.AbilityKit';
 import { promptAction } from '@kit.ArkUI';
 import { requestHostReauthentication } from '../common/HostReauthentication';
@@ -82,10 +83,10 @@ struct TransfersPage {
     Column() {
       Row() {
         Button('返回').onClick(() => { this.getUIContext().getRouter().back(); })
-        Text('传输任务').fontColor('#241d16').fontSize(20).fontWeight(FontWeight.Medium).layoutWeight(1).margin({ left: 12 })
+        Text('传输任务').fontColor(INK).fontSize(20).fontWeight(FontWeight.Medium).layoutWeight(1).margin({ left: 12 })
         Button('刷新').enabled(!this.loading).onClick(() => { this.error = ''; this.refresh(); })
       }.width('100%').padding(12)
-      if (this.error) { Text(this.error).fontColor('#a8331e').padding(12).width('100%') }
+      if (this.error) { Text(this.error).fontColor(ERROR).padding(12).width('100%') }
       Button('重新登录当前连接').enabled(!this.busyKey).onClick(() => {
         this.getUIContext().getRouter().back();
         setTimeout(() => { requestHostReauthentication().catch(() => {
@@ -94,16 +95,16 @@ struct TransfersPage {
       })
       Scroll() {
         Column({ space: 12 }) {
-          Text('待发送 · ' + this.queue.length.toString()).fontColor('#241d16').fontSize(18).width('100%')
-          if (this.queue.length === 0) { Text('没有待发送内容').fontColor('#5b5044').padding(16) }
+          Text('待发送 · ' + this.queue.length.toString()).fontColor(INK).fontSize(18).width('100%')
+          if (this.queue.length === 0) { Text('没有待发送内容').fontColor(INK_SOFT).padding(16) }
           ForEach(this.queue, (item: QueueRow) => {
             Column({ space: 10 }) {
-              Text(item.content || '附件').fontColor('#241d16').fontSize(16).width('100%')
+              Text(item.content || '附件').fontColor(INK).fontSize(16).width('100%')
                 .maxLines(this.expandedKey === item.key ? 10000 : 3).textOverflow({ overflow: TextOverflow.Ellipsis })
-              if (item.files) { Text(item.files).fontColor('#241d16').fontSize(14).width('100%') }
-              Text(item.status).fontColor('#241d16').fontSize(13).fontColor('#5b5044').width('100%')
+              if (item.files) { Text(item.files).fontColor(INK).fontSize(14).width('100%') }
+              Text(item.status).fontColor(INK).fontSize(13).fontColor(INK_SOFT).width('100%')
               if (this.expandedKey === item.key) {
-                Text(new Date(item.createdAt).toLocaleString() + '\n' + item.serverUrl).fontColor('#241d16').fontSize(12).width('100%')
+                Text(new Date(item.createdAt).toLocaleString() + '\n' + item.serverUrl).fontColor(INK).fontSize(12).width('100%')
               }
               Flex({ wrap: FlexWrap.Wrap }) {
                 Button(this.expandedKey === item.key ? '收起' : '详情').margin(4)
@@ -117,14 +118,14 @@ struct TransfersPage {
                 }
                 Button('删除').margin(4).enabled(!this.busyKey).onClick(() => { this.confirmRemove(item.key, false); })
               }
-            }.padding(16).width('100%').backgroundColor('#fbf7ef').borderRadius(12)
+            }.padding(16).width('100%').backgroundColor(CARD).borderRadius(CARD_RADIUS)
           }, (item: QueueRow) => item.key)
-          Text('下载到本机 · ' + this.downloads.length.toString()).fontColor('#241d16').fontSize(18).width('100%').margin({ top: 12 })
-          Text('传输可在后台继续。下载完成后可分享或保存，移除可释放本机空间。').fontColor('#241d16').fontSize(13).fontColor('#5b5044').width('100%')
+          Text('下载到本机 · ' + this.downloads.length.toString()).fontColor(INK).fontSize(18).width('100%').margin({ top: 12 })
+          Text('传输可在后台继续。下载完成后可分享或保存，移除可释放本机空间。').fontColor(INK).fontSize(13).fontColor(INK_SOFT).width('100%')
           ForEach(this.downloads, (item: DownloadRow) => {
             Column({ space: 10 }) {
-              Text(item.filename).fontColor('#241d16').fontSize(16).width('100%')
-              Text(item.status).fontColor('#241d16').fontSize(13).fontColor('#5b5044').width('100%')
+              Text(item.filename).fontColor(INK).fontSize(16).width('100%')
+              Text(item.status).fontColor(INK).fontSize(13).fontColor(INK_SOFT).width('100%')
               Flex({ wrap: FlexWrap.Wrap }) {
                 if (item.ready) {
                   Button('分享').margin(4).enabled(!this.busyKey)
@@ -137,10 +138,10 @@ struct TransfersPage {
                 }
                 Button('移除').margin(4).enabled(!this.busyKey).onClick(() => { this.confirmRemove(item.id, true); })
               }
-            }.padding(16).width('100%').backgroundColor('#fbf7ef').borderRadius(12)
+            }.padding(16).width('100%').backgroundColor(CARD).borderRadius(CARD_RADIUS)
           }, (item: DownloadRow) => item.id)
         }.padding(16).width('100%')
       }.layoutWeight(1).width('100%')
-    }.width('100%').height('100%').backgroundColor('#f2ece1')
+    }.width('100%').height('100%').backgroundColor(PAPER)
   }
 }

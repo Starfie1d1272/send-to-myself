@@ -1,6 +1,7 @@
+import { Dialog } from "./ui/Dialog";
 import { captureDetectionContext } from "../lib/detectionContext";
 import { useEffect, useRef, useState } from "react";
-import { motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import type { Item } from "@sendtomyself/shared";
 import {
   dueBucket,
@@ -142,6 +143,7 @@ export function ItemCard({
 
   const urls = itemUrls(item);
   const preview = itemPreview(item);
+  const reducedMotion = useReducedMotion();
   const suggestion = itemDueSuggestion(item);
   const bucket = dueBucket(item.dueAt);
   const showSuggestion = !trash && suggestion && !item.dueAt && !item.isTodo;
@@ -152,10 +154,10 @@ export function ItemCard({
 
   return (
     <motion.li
-      layout
-      initial={{ opacity: 0, y: -12, scale: 0.98 }}
+      layout={!reducedMotion}
+      initial={reducedMotion ? false : { opacity: 0, y: -12, scale: 0.98 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.18 } }}
+      exit={reducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.96, transition: { duration: 0.18 } }}
       transition={{ type: "spring", stiffness: 520, damping: 38 }}
       className={`item item--gap-${gap}${item.pinned ? " item--pinned" : ""}${
         item.completed ? " item--done" : ""
@@ -167,7 +169,7 @@ export function ItemCard({
             disabled={busy || editing}
             className={`check${item.completed ? " check--on" : ""}`}
             onClick={() => patch({ completed: !item.completed })}
-            aria-label="完成"
+            aria-label={item.completed ? "标记未完成" : "标记完成"}
             title={item.completed ? "标记未完成" : "标记完成"}
           >
             {item.completed && <IconCheck width={14} height={14} />}
@@ -264,14 +266,14 @@ export function ItemCard({
         </div>
       </div>
 
-      {confirmDelete && <dialog ref={el => { if (el && !el.open) el.showModal(); }} onCancel={() => setConfirmDelete(false)} aria-labelledby={`purge-${item.id}`} className="device-dialog"><h2 id={`purge-${item.id}`}>永久删除这条内容？</h2><p>正文和 {attachments.length} 个附件将从 NAS 删除，无法从回收站恢复。</p><button onClick={() => setConfirmDelete(false)}>取消</button><button onClick={() => { setConfirmDelete(false); void run(async () => { await permanent.mutateAsync(item.id); await clearEditDraft(item.id); }); }}>永久删除</button></dialog>}
+      {confirmDelete && <Dialog onClose={() => setConfirmDelete(false)} labelledBy={`purge-${item.id}`}><h2 id={`purge-${item.id}`}>永久删除这条内容？</h2><p>正文和 {attachments.length} 个附件将从 NAS 删除，无法从回收站恢复。</p><button onClick={() => setConfirmDelete(false)}>取消</button><button onClick={() => { setConfirmDelete(false); void run(async () => { await permanent.mutateAsync(item.id); await clearEditDraft(item.id); }); }}>永久删除</button></Dialog>}
       {notice && <p role="status">{notice}</p>}
       {error && <p className="composer__error" role="alert">{error} {editing ? <><button disabled={busy} onClick={() => void saveEdit()}>重试保存</button><button onClick={() => void copyText(draft)}>复制未保存内容</button></> : <button disabled={busy} onClick={() => { if (retry.current) void (menuOpen ? menuAction(retry.current.operation, retry.current.preview) : run(retry.current.operation, retry.current.preview)); }}>重试</button>}</p>}
       {copyError && <p className="composer__error" role="alert">{copyError}</p>}
       <fieldset className="actions" disabled={busy || editing} style={{ border: 0, padding: 0, margin: 0 }}>
         {trash ? (
           <>
-            <button className="icon-btn" title="恢复" disabled={!!item.purgeStartedAt} onClick={() => void run(() => restore.mutateAsync(item.id))}><IconRestore /></button>
+            <button className="icon-btn" aria-label="恢复" title="恢复" disabled={!!item.purgeStartedAt} onClick={() => void run(() => restore.mutateAsync(item.id))}><IconRestore /></button>
             <button onClick={() => item.purgeStartedAt ? void run(async () => { await permanent.mutateAsync(item.id); await clearEditDraft(item.id); }) : setConfirmDelete(true)}>{busy ? "正在清理…" : item.purgeStartedAt ? "重试清理" : "永久删除"}</button>
           </>
         ) : (

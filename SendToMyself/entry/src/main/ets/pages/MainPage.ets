@@ -12,14 +12,7 @@ import { NativeBridge, bridgePermission } from '../common/NativeBridge';
 import { registerHostReauthentication, unregisterHostReauthentication } from '../common/HostReauthentication';
 
 // 与 Web 端 (apps/web/src/styles/global.css) 共用的设计语言
-const C_PAPER = '#f2ece1';
-const C_CARD = '#fbf7ef';
-const C_INK = '#241d16';
-const C_INK_SOFT = '#5b5044';
-const C_INK_FAINT = '#938573';
-const C_LINE = '#d3c4ab';
-const C_ACCENT = '#bc4b2a';
-const C_RED = '#a8331e';
+import { PAPER as C_PAPER, CARD as C_CARD, CARD_HI, INK as C_INK, INK_SOFT as C_INK_SOFT, INK_FAINT as C_INK_FAINT, LINE_STRONG as C_LINE, ACCENT as C_ACCENT, ERROR as C_RED } from '../common/Theme';
 
 type Phase = 'loading' | 'login' | 'web';
 
@@ -440,7 +433,7 @@ struct MainPage {
           .enabled(!this.busy)
           .width('100%')
           .height(48)
-          .backgroundColor(Color.White)
+          .backgroundColor(CARD_HI)
           .borderRadius(10)
           .borderWidth(1)
           .borderColor(C_LINE)
@@ -458,7 +451,7 @@ struct MainPage {
           .enabled(!this.busy)
           .width('100%')
           .height(48)
-          .backgroundColor(Color.White)
+          .backgroundColor(CARD_HI)
           .borderRadius(10)
           .borderWidth(1)
           .borderColor(C_LINE)
