@@ -2,7 +2,7 @@
 # 只需修改 AUTH_PASSWORD 和 source；端口冲突时只改左侧宿主端口。
 # Compose 中口令的 $ 须写成 $$：例如 pa$$word 表示实际口令 pa$word。
 # 局域网 HTTP 使用 false；启用 HTTPS 后在同一项目改为 true。
-# 完整步骤见 docs/DEPLOY.md。
+# 备份前停止 app，复制完整 data 目录；维护步骤见 docs/DEPLOY.md 的“备份与恢复”。
 services:
   app:
     image: ghcr.io/starfie1d1272/send-to-myself:1.0.2

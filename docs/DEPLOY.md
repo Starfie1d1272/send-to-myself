@@ -88,7 +88,50 @@ server {
 | 另一设备内容不实时出现 | 当前连接、反代 SSE 缓冲 | 刷新确认数据在；按对应反代说明关闭缓冲 |
 | 出门后内网 IP 不可达 | 是否已有远程访问路径 | 使用已验证的远程地址；不能只把 http 改成 https |
 
-备份前停止 app，完整复制实际 `/data` 对应的宿主目录并妥善保管；运行中的 SQLite WAL 不能只复制数据库文件。恢复前保留当前目录副本。现有 [可靠性说明](RELIABILITY.md) 介绍仓库脚本及恢复演练；脚本当前面向仓库根目录配置，不能直接假定它操作 NAS 自定义映射。数据含明文，口令需另行保管。
+## 备份与恢复
+
+### 无需终端
+
+以下以项目 `sendtomyself` 为例；在 NAS 实际的 Docker 项目、容器和文件管理界面操作，界面名称因设备而异。此流程尚待 NAS 真机核对。
+
+备份：
+
+1. 在 app 容器详情确认 `/data` 对应的宿主绝对目录，记录原项目名、核心固定镜像版本、数据路径和访问地址。
+2. 导出或保存 Compose 配置及使用的环境文件；Caddy 用户另存叠加配置、Caddyfile 和证书配置。配置可能包含登录口令，与数据同样妥善保管，不要公开。
+3. 停止 **app** 并确认已停止；Caddy 可以继续运行。在文件管理中复制**完整 data 目录**到另一备份目录，等待复制完成。保留存在的 `app.db`、`app.db-wal`、`app.db-shm`、`uploads` 和其他内容，不挑选文件或删除 WAL。
+4. 重新启动 app，打开页面查看已有内容；将版本、路径记录和配置与备份一起保存。同一磁盘上的副本有助于误操作恢复，但不能替代磁盘损坏后的异机备份。
+
+恢复和回退：
+
+1. 使用备份记录的相同核心固定版本准备目标项目，保持 app 停止。新 NAS 可先创建项目、容器和 data 目录，但不要开始写入。
+2. 保存当前配置，将当前 data 重命名为 `data.before-restore-日期时间`。将备份的完整 data 复制到原路径，不要与旧目录合并。
+3. 确认 `/data` 映射仍指向原绝对路径，使用项目的重新部署或重建容器入口重建 app，不删除宿主目录。登录后查看旧文字、图片和 PDF，发送新内容并在第二台设备确认。
+4. 失败时停止 app，另存本次恢复目录，将 `data.before-restore-...` 放回原路径，恢复原配置和镜像并重新部署。两个候选目录都保留至确认完成。
+
+完整 data 副本与下方脚本快照包是不同形态，不能把图形界面副本当脚本包，也不能将只有 `app.db` 的目录当完整备份。完整数据库必须保留，`export.json` 不是完整恢复格式。已开始永久删除的内容不保证可恢复；恢复后相关清理将继续，详见 [STM-05](https://github.com/Starfie1d1272/send-to-myself/issues/47) 的后续实现。
+
+### 高级脚本
+
+需要 Bash、Docker Compose 和 tar，以及包含备份工具的现有 app 镜像；主机无需 Node、pnpm、SQLite 或 jq。取得本仓库的 `scripts/backup.sh`、`scripts/restore.sh` 和 `scripts/lib/deployment.sh`。必须传入实际原项目名、按部署顺序传入所有 Compose 文件；配置使用变量插值时显式传 `--env-file`。不传时脚本使用空环境文件，不读取当前目录 `.env`。路径可含空格。仅支持一个 app 和单一宿主 bind `/data`，不支持命名卷或拆分数据库及附件路径。
+
+基础部署（将示例项目名替换为实际原项目名）：
+
+```bash
+scripts/backup.sh --file /实际项目目录/compose.yml --project-name sendtomyself --output /备份目录
+scripts/restore.sh --file /实际项目目录/compose.yml --project-name sendtomyself --backup /备份目录/快照目录 --dry-run
+scripts/restore.sh --file /实际项目目录/compose.yml --project-name sendtomyself --backup /备份目录/快照目录
+```
+
+Caddy 部署使用相同项目名和文件顺序：
+
+```bash
+scripts/backup.sh --file /实际项目目录/compose.yml --file /实际项目目录/compose.caddy.yml --project-name sendtomyself --output /备份目录
+scripts/restore.sh --file /实际项目目录/compose.yml --file /实际项目目录/compose.caddy.yml --project-name sendtomyself --backup /备份目录/快照目录 --dry-run
+```
+
+备份短暂停止原运行的 app，快照数据库并校验附件，然后归档；停止状态保持停止。快照包含数据库、附件归档、manifest、JSON 和 `deployment/` 配置副本及 `deployment.json`。另行保存 Caddyfile 和其他外部配置。配置副本是调用时版本，可能已经改为尚未部署的新版本；元数据中的实际容器镜像才是备份时版本。恢复时先按该版本调整目标配置，完成验证后再升级。历史无 manifest 的快照仍可校验数据库和附件存在及大小，但无法证明文件哈希。
+
+恢复先在实际 data 的父目录解包并校验，`--dry-run` 不停服务或更改 data。正式恢复保留 `data.before-restore-*`，运行中的 app 重建并检查健康；原先停止时仍停止，下次启动前须按原项目重建 app。若启动失败，保留新旧两个目录，按上面的图形界面回退步骤恢复原目录、配置与镜像。成功后仍需登录、查看和下载旧附件，并从另一设备发送新内容。异常中断留下维护锁时，确认没有维护任务后再手动删除提示的锁目录。
 
 ## 源码开发
 
