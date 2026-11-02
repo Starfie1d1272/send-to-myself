@@ -12,6 +12,8 @@ export interface ComposerDraft {
 const DB = "send-to-myself-drafts";
 const STORE = "drafts";
 const KEY = "composer";
+const EPOCH = "session-epoch";
+let sessionEpoch: number | undefined;
 let connection: Promise<IDBDatabase> | undefined;
 let writes: Promise<void> = Promise.resolve();
 let frozen = false;
@@ -39,6 +41,7 @@ interface StoredDraft { detectionContext?: DetectionContext; content: string; fi
 export async function loadDraft(): Promise<ComposerDraft> {
   await writes;
   const db = await database();
+  if (sessionEpoch === undefined) await resumeDraftSession();
   return new Promise((resolve, reject) => {
     const request = db.transaction(STORE).objectStore(STORE).get(KEY);
     request.onsuccess = () => {
@@ -59,30 +62,34 @@ export function saveDraft(draft: ComposerDraft): Promise<void> {
   return writeDraft(draft, generation);
 }
 
+function stored(draft: ComposerDraft): StoredDraft {
+  return { content: draft.content, detectionContext: draft.detectionContext, dedupeKey: draft.dedupeKey,
+    webSendAttempted: draft.webSendAttempted, nativeHandoffPending: draft.nativeHandoffPending,
+    files: draft.files.map(file => ({ blob: file, name: file.name, lastModified: file.lastModified })) };
+}
 function writeDraft(draft: ComposerDraft, expectedGeneration?: number): Promise<void> {
-  const snapshot: StoredDraft = {
-    content: draft.content,
-    detectionContext: draft.detectionContext,
-    dedupeKey: draft.dedupeKey,
-    webSendAttempted: draft.webSendAttempted,
-    nativeHandoffPending: draft.nativeHandoffPending,
-    files: draft.files.map((file) => ({ blob: file, name: file.name, lastModified: file.lastModified })),
-  };
-  const write = writes.catch(() => {}).then(async () => {
+  const snapshot = stored(draft);
+  return enqueue(() => transaction<void>((store, done) => {
     if (expectedGeneration !== undefined && (frozen || generation !== expectedGeneration)) throw new Error("草稿写入已暂停");
-    const db = await database();
-    if (expectedGeneration !== undefined && (frozen || generation !== expectedGeneration)) throw new Error("草稿写入已暂停");
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction(STORE, "readwrite");
-      if (!snapshot.content && snapshot.files.length === 0 && !snapshot.nativeHandoffPending && !snapshot.detectionContext) tx.objectStore(STORE).delete(KEY);
-      else tx.objectStore(STORE).put(snapshot, KEY);
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-      tx.onabort = () => reject(tx.error ?? new Error("草稿保存失败"));
-    });
-  });
-  writes = write;
-  return write;
+    if (!snapshot.content && !snapshot.files.length && !snapshot.nativeHandoffPending && !snapshot.detectionContext) store.delete(KEY);
+    else store.put(snapshot, KEY);
+    done();
+  }));
+}
+/** Persist the attempt only while the composer still belongs to this window. */
+export function prepareComposerDraft(draft: ComposerDraft, expectedKey: string | undefined): Promise<boolean> {
+  if (frozen) return Promise.reject(new Error("草稿写入已暂停"));
+  const expectedGeneration = generation;
+  const snapshot = stored(draft);
+  return enqueue(() => transaction<boolean>((store, done) => {
+    const request = store.get(KEY);
+    request.onsuccess = () => {
+      if (frozen || generation !== expectedGeneration) { done(false); return; }
+      const current = request.result as StoredDraft | undefined;
+      if (current && current.dedupeKey !== expectedKey) { done(false); return; }
+      store.put(snapshot, KEY); done(true);
+    };
+  }));
 }
 
 export const clearDraft = () => writeDraft({ content: "", files: [] });
@@ -100,15 +107,51 @@ function enqueue<T>(fn: () => Promise<T>): Promise<T> {
   return result;
 }
 function transaction<T>(operation: (store: IDBObjectStore, done: (value: T) => void, fail: (error: Error) => void) => void): Promise<T> {
+  const localGeneration = generation;
   return database().then(db => new Promise<T>((resolve, reject) => {
     const tx = db.transaction(STORE, "readwrite");
+    const store = tx.objectStore(STORE);
     let result: T;
-    operation(tx.objectStore(STORE), value => { result = value; }, reject);
-    tx.oncomplete = () => resolve(result);
-    tx.onerror = () => reject(tx.error);
-    tx.onabort = () => reject(tx.error ?? new Error("草稿存储失败"));
+    let failure: Error | undefined;
+    const request = store.get(EPOCH);
+    request.onsuccess = () => {
+      const epoch = typeof request.result === "number" ? request.result : 0;
+      if (sessionEpoch === undefined) sessionEpoch = epoch;
+      if (sessionEpoch !== epoch) {
+        freezeDraft(true);
+        if (typeof window !== "undefined") window.dispatchEvent(new Event("send-to-myself:session-stale"));
+      }
+      if (frozen || generation !== localGeneration || sessionEpoch !== epoch) {
+        failure = new Error("草稿写入已暂停"); tx.abort(); return;
+      }
+      try { operation(store, value => { result = value; }, error => { failure = error; }); }
+      catch (error) { failure = error instanceof Error ? error : new Error("草稿写入失败"); tx.abort(); }
+    };
+    tx.oncomplete = () => failure ? reject(failure) : resolve(result);
+    tx.onerror = () => reject(failure ?? tx.error);
+    tx.onabort = () => reject(failure ?? tx.error ?? new Error("草稿存储失败"));
   }));
 }
+export async function resumeDraftSession(): Promise<void> {
+  sessionEpoch = undefined;
+  const db = await database();
+  await new Promise<void>((resolve, reject) => {
+    const request = db.transaction(STORE).objectStore(STORE).get(EPOCH);
+    request.onsuccess = () => { sessionEpoch = typeof request.result === "number" ? request.result : 0; resolve(); };
+    request.onerror = () => reject(request.error);
+  });
+}
+/** Advance the epoch and clear drafts in one transaction so old windows cannot write back. */
+export async function retireDraftSession(): Promise<void> {
+  const db = await database();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE, "readwrite"); const store = tx.objectStore(STORE);
+    const request = store.get(EPOCH);
+    request.onsuccess = () => { const next = (typeof request.result === "number" ? request.result : 0) + 1; store.put(next, EPOCH); store.delete(KEY); store.delete(IDBKeyRange.bound("edit:", "edit:\uffff")); };
+    tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error ?? new Error("草稿清理失败"));
+  });
+}
+
 export function clearDraftIfKey(key: string, expectedGeneration?: number): Promise<void> {
   return enqueue(() => transaction<void>((store, done) => {
     const request = store.get(KEY);
