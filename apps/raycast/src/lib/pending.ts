@@ -1,6 +1,6 @@
 import type { DetectionContext } from "./types";
 import { createHash, randomUUID } from "node:crypto";
-import { AlreadyDeletedError, InboxClient } from "./client";
+import { InboxClient } from "./client";
 
 export interface PendingStore {
   getItem<T extends string>(key: string): Promise<T | undefined>;
@@ -63,12 +63,7 @@ export async function sendWithRetryKey(api: InboxClient, content: string, files:
     if (selected.legacy) await store.setItem(resolvedPrefix + attempt.key, "1");
     else await store.removeItem(prefix + attempt.key);
   };
-  let result;
-  try { result = await api.send(content, files, attempt.key, attempt.detectionContext); }
-  catch (error) {
-    if (error instanceof AlreadyDeletedError) await removeAttempt();
-    throw error;
-  }
+  const result = await api.send(content, files, attempt.key, attempt.detectionContext);
   // Keep retry identity until the caller has also cleared its durable draft.
   await onConfirmed?.();
   await removeAttempt();
