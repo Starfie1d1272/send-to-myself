@@ -4,6 +4,7 @@ import type {
   CreateItemInput,
   Item,
   ItemKind,
+  ItemMeta,
   TimelineFilter,
   ItemPage,
   UpdateItemInput,
@@ -25,11 +26,28 @@ export type ListResult = ItemPage;
 
 export class ItemError extends Error {}
 
-/** 依内容与附件推断展示类型（SPEC §2）。 */
-function inferKind(contentKind: ItemKind, files: Array<{ mimeType: string }>): ItemKind {
-  if (files.some((f) => f.mimeType.startsWith("image/"))) return "image";
-  if (files.length > 0) return "file";
-  return contentKind;
+/** Compute automatic fields only on creation or an actual content change. */
+function computeContent(content: string, files: Array<{ mimeType: string }>, currentMeta: ItemMeta,
+  override: boolean | null, previousContent?: string) {
+  const det = detect(content);
+  const kind: ItemKind = files.some((file) => file.mimeType.startsWith("image/"))
+    ? "image" : files.length ? "file" : det.kind;
+  const meta: ItemMeta = {
+    ...currentMeta,
+    suggestions: { todo: det.todo, urls: det.urls, due: det.due, secretHint: det.secret.hint ?? null },
+  };
+  const first = det.urls[0];
+  const oldFirst = previousContent === undefined ? undefined : detectUrls(previousContent)[0];
+  let fetchUrls: string[] | undefined = det.urls;
+  if (!first) {
+    delete meta.preview;
+  } else if (oldFirst === first && meta.preview?.url === first && meta.preview.status === "ok") {
+    fetchUrls = undefined;
+  } else {
+    // Old in-flight requests cannot commit after the content changes.
+    meta.preview = { url: first, status: "pending" };
+  }
+  return { kind, sensitive: override ?? det.secret.sensitive, meta, fetchUrls };
 }
 
 /** 命中幂等键的现有记录（离线队列补发去重，SPEC §16）。无键或未命中返回 null。 */
@@ -42,33 +60,24 @@ function findByDedupeKey(dedupeKey: string | undefined): Item | null {
 /** 组装 item 插入行 + 识别建议（SPEC §1「发送时不分类」+ §6 自动识别）。 */
 function buildRow(
   content: string,
-  kind: ItemKind,
-  det: ReturnType<typeof detect>,
+  computed: ReturnType<typeof computeContent>,
   dedupeKey?: string,
 ): ItemInsert {
   const ts = nowSec();
   return {
     id: newId(),
     content,
-    kind,
+    kind: computed.kind,
     category: "none",
     isTodo: false,
     completed: false,
     dueAt: null,
     completedAt: null,
     pinned: false,
-    sensitive: det.secret.sensitive, // 疑似密钥自动遮罩
+    sensitive: computed.sensitive,
     deletedAt: null,
     dedupeKey: dedupeKey ?? null,
-    meta: JSON.stringify({
-      ...(det.urls[0] ? { preview: { url: det.urls[0], status: "pending" } } : {}),
-      suggestions: {
-        todo: det.todo,
-        urls: det.urls,
-        due: det.due, // { dueAt, matchedText } | null，待用户确认
-        secretHint: det.secret.hint ?? null,
-      },
-    }),
+    meta: JSON.stringify(computed.meta),
     createdAt: ts,
     updatedAt: ts,
   };
@@ -82,13 +91,13 @@ export function createItem(input: CreateItemInput): Item {
   const dup = findByDedupeKey(input.dedupeKey);
   if (dup) return dup; // 离线补发重试，已存在则原样返回，不重复创建
   if (!input.content.trim()) throw new ItemError("empty");
-  const det = detect(input.content);
-  const row = buildRow(input.content, det.kind, det, input.dedupeKey);
+  const computed = computeContent(input.content, [], {}, null);
+  const row = buildRow(input.content, computed, input.dedupeKey);
   db.insert(items).values(row).run();
   const stored = db.select().from(items).where(eq(items.id, row.id!)).get()!;
   const dto = rowToItem(stored);
   bus.publish({ type: "item.created", payload: dto });
-  schedulePreview(dto, det.urls);
+  if (computed.fetchUrls) schedulePreview(dto, computed.fetchUrls);
   return dto;
 }
 
@@ -101,9 +110,8 @@ export async function createItemWithFiles(
   const dup = findByDedupeKey(dedupeKey);
   if (dup) return dup; // 离线补发重试，已存在则原样返回
   if (!content.trim() && !files.length) throw new ItemError("empty");
-  const det = detect(content);
-  const kind = inferKind(det.kind, files);
-  const row = buildRow(content, kind, det, dedupeKey);
+  const computed = computeContent(content, files, {}, null);
+  const row = buildRow(content, computed, dedupeKey);
   const prepared: AttachmentInsert[] = [];
   let dto: Item;
   let created = false;
@@ -131,7 +139,7 @@ export async function createItemWithFiles(
     return dto;
   }
   bus.publish({ type: "item.created", payload: dto });
-  schedulePreview(dto, det.urls);
+  if (computed.fetchUrls) schedulePreview(dto, computed.fetchUrls);
   return dto;
 }
 
@@ -259,19 +267,12 @@ export function updateItem(id: string, patch: UpdateItemInput): Item | null {
   set.sensitiveOverride = override;
   let urls: string[] | undefined;
   if (content !== existing.content) {
-    const det = detect(content);
-    urls = det.urls;
-    const meta = existing.meta ? JSON.parse(existing.meta) : {};
-    const oldFirst = detectUrls(existing.content)[0];
-    meta.suggestions = { todo: det.todo, urls: det.urls, due: det.due, secretHint: det.secret.hint ?? null };
-    if (oldFirst !== urls[0]) {
-      delete meta.preview;
-      if (urls[0]) meta.preview = { url: urls[0], status: "pending" };
-    }
-    set.meta = JSON.stringify(meta);
-    set.kind = inferKind(det.kind, atts);
-    set.sensitive = override ?? det.secret.sensitive;
-    if (oldFirst === urls[0]) urls = undefined;
+    const currentMeta: ItemMeta = existing.meta ? JSON.parse(existing.meta) : {};
+    const computed = computeContent(content, atts, currentMeta, override, existing.content);
+    urls = computed.fetchUrls;
+    set.meta = JSON.stringify(computed.meta);
+    set.kind = computed.kind;
+    set.sensitive = computed.sensitive;
   } else if (patch.sensitive !== undefined) set.sensitive = override ?? detectSecret(content).sensitive;
   db.update(items).set(set).where(eq(items.id, id)).run();
   const row = db.select().from(items).where(eq(items.id, id)).get()!;
