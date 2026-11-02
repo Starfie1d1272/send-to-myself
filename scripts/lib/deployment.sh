@@ -60,13 +60,30 @@ locate_deployment() {
   mkdir "$LOCK" 2>/dev/null || die "维护锁已存在或无法创建：$LOCK；确认无维护任务后手动清理"
   LOCK_OWNED=1
 }
+# Bound Docker CLI calls as well as the request inside the container. The
+# deadline is shared by every inspection, request and retry in one health check.
+health_command() {
+  local remaining=$1 pid watchdog status
+  shift
+  "$@" & pid=$!
+  ( sleep "$remaining" & timer=$!; trap 'kill "$timer" 2>/dev/null || :; exit' TERM; wait "$timer" || exit; kill -KILL "$pid" 2>/dev/null || : ) >/dev/null 2>&1 & watchdog=$!
+  if wait "$pid"; then status=0; else status=$?; fi
+  kill "$watchdog" 2>/dev/null || :
+  wait "$watchdog" 2>/dev/null || :
+  return "$status"
+}
 health() {
-  local i state
-  for ((i=0;i<30;i++)); do
-    state=$(docker inspect --format '{{.State.Status}}' "$CID") || return 1
+  local deadline=$((SECONDS + 60)) remaining state
+  while (( SECONDS < deadline )); do
+    remaining=$((deadline - SECONDS))
+    state=$(health_command "$remaining" docker inspect --format '{{.State.Status}}' "$CID") || return 1
     [ "$state" = running ] || return 1
-    if docker exec "$CID" node -e 'fetch("http://127.0.0.1:"+(process.env.PORT||8787)+"/health").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))' >/dev/null 2>&1; then return 0; fi
-    sleep 2
+    remaining=$((deadline - SECONDS))
+    (( remaining > 0 )) || return 1
+    if health_command "$remaining" docker exec "$CID" node -e 'fetch("http://127.0.0.1:"+(process.env.PORT||8787)+"/health",{signal:AbortSignal.timeout(Number(process.argv[1])*1000)}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))' "$remaining" >/dev/null 2>&1; then return 0; fi
+    remaining=$((deadline - SECONDS))
+    (( remaining > 0 )) || break
+    if (( remaining < 2 )); then sleep "$remaining"; else sleep 2; fi
   done
   return 1
 }
