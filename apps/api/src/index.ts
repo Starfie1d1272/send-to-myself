@@ -9,7 +9,8 @@ import { initializeRetention, startTrashScan } from "./services/trash.js";
 purgeExpiredSessions();
 initializeRetention();
 
-serve({ fetch: createApp().fetch, port: env.port }, (info) => {
-  startTrashScan();
+const server = serve({ fetch: createApp().fetch, port: env.port }, (info) => {
+  const stopTrashScan = startTrashScan();
+  server.once("close", stopTrashScan);
   console.log(`[api] listening on http://localhost:${info.port}`);
 });

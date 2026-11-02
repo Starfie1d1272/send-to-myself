@@ -28,7 +28,7 @@ export async function prepareAttachment(
       ? await makeThumbnail(storageKey, data)
       : null;
     // best-effort 缩略图失败时也可能留下部分写入的文件。
-    if (!thumbKey) await remove(candidateThumbKey).catch(() => {});
+    if (!thumbKey) await remove(candidateThumbKey);
     return {
       id: newId(), itemId, filename: file.filename, mimeType: file.mimeType,
       size: file.size, storageKey, thumbKey, createdAt: nowSec(),

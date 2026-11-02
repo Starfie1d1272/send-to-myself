@@ -31,7 +31,7 @@ export function TimelinePage() {
   const realtime = useRealtime(refresh, access.authenticated && !access.reauthRequired && !access.exiting);
 
   const { data: auth } = useAuth();
-  const { data: info } = useQuery({ queryKey: ["server-info"], queryFn: api.info, enabled: filter === "trash" && access.authenticated && !access.reauthRequired && !access.exiting });
+  const { data: info } = useQuery({ queryKey: ["server", "info"], queryFn: api.info, enabled: filter === "trash" && access.authenticated && !access.reauthRequired && !access.exiting });
 
 
   const items = data?.pages.flatMap((page) => page.items) ?? [];
