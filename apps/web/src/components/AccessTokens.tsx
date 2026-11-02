@@ -38,8 +38,8 @@ export function AccessTokens({ onClose }: { onClose: () => void }) {
     {create.error && <InlineStatus tone="error">{create.error instanceof ApiError && create.error.status === 401 ? "请在浏览器打开同一地址，用口令登录后管理接入令牌" : "创建令牌失败，请重试。"}</InlineStatus>}
     {revoke.error && <InlineStatus tone="error">{revoke.error instanceof ApiError && revoke.error.status === 401 ? "请在浏览器打开同一地址，用口令登录后管理接入令牌" : "吊销令牌失败，请重试。"}</InlineStatus>}
     {message && <InlineStatus>{message}</InlineStatus>}
-    {devices.isLoading ? <p>加载令牌…</p> : <ul className="detail-list">{devices.data?.devices.map(device => <li key={device.tail}>
+    {devices.isLoading ? <p>加载令牌…</p> : devices.data && (devices.data.devices.length === 0 ? <p>暂无接入令牌</p> : <ul className="detail-list">{devices.data?.devices.map(device => <li key={device.tail}>
       <div className="detail-list__body"><strong>{device.name}</strong><span>标识 {device.tail}</span><span>创建于 {new Date(device.createdAt * 1000).toLocaleString()}</span><span>最近使用 {device.lastUsedAt === null ? "尚未使用" : new Date(device.lastUsedAt * 1000).toLocaleString()}</span></div><button disabled={revoke.isPending} onClick={() => revoke.mutate(device.tail)}>吊销</button>
-    </li>)}</ul>}
+    </li>)}</ul>)}
   </Dialog>;
 }
