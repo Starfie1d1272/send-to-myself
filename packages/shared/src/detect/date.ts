@@ -15,7 +15,7 @@ export interface DueSuggestion {
 // The remaining zh parsers are Hant casual and Hant/Hans date, relative
 // weekday, weekday, time-expression and deadline parsers; these use the legacy
 // host-local refDate/instant. Pin Chrono until this adaptation is rechecked.
-// Only the clone is adapted; legacy Date callers keep the original parser.
+// Only the clone is wrapped; legacy Date callers use the original parser.
 const commonParserPrototypes = new Set(chrono.en.casual.parsers.map(parser => Object.getPrototypeOf(parser)));
 const contextualZh = chrono.zh.casual.clone();
 contextualZh.parsers = contextualZh.parsers.map((parser) => {
@@ -31,70 +31,8 @@ contextualZh.parsers = contextualZh.parsers.map((parser) => {
   };
   return {
     pattern: (context) => parser.pattern(view(context)),
-    extract: (context, match) => {
-      const adjusted = view(context);
-      // Chrono adds sub-day durations with host-local Date setters. Run those
-      // parsers at a stable local noon, then apply their duration to the
-      // sender's fixed-offset wall clock using UTC arithmetic.
-      if (/DeadlineFormatParser$|AgoFormatParser$/.test(parser.constructor.name) &&
-          /秒|分钟|小时|鐘|钟/.test(match[0])) {
-        for (let day = 15; day <= 17; day++) {
-          const anchor = new Date(2000, 0, day, 12, 0, 0, 0);
-          const sampleContext = Object.assign(Object.create(adjusted) as chrono.ParsingContext, {
-            refDate: anchor,
-          });
-          const sample = parser.extract(sampleContext, match);
-          if (!(sample instanceof chrono.ParsingResult)) break;
-          const c = sample.start;
-          const sampleTime = Date.UTC(c.get("year")!, c.get("month")! - 1, c.get("day")!, c.get("hour")!, c.get("minute")!, c.get("second")!);
-          const localResult = new Date(c.get("year")!, c.get("month")! - 1, c.get("day")!, c.get("hour")!, c.get("minute")!, c.get("second")!);
-          // Retry on a different anchor if Chrono landed on a host DST
-          // transition, where local setters can normalize a missing hour.
-          if (new Date(localResult.getTime() - 3_600_000).getTimezoneOffset() !==
-              new Date(localResult.getTime() + 3_600_000).getTimezoneOffset()) continue;
-          const wall = new Date(context.reference.instant.getTime() + context.reference.getTimezoneOffset() * 60_000 +
-            sampleTime - Date.UTC(2000, 0, day, 12));
-          c.imply("year", wall.getUTCFullYear());
-          c.imply("month", wall.getUTCMonth() + 1);
-          c.imply("day", wall.getUTCDate());
-          c.assign("hour", wall.getUTCHours());
-          c.assign("minute", wall.getUTCMinutes());
-          c.assign("second", wall.getUTCSeconds());
-          return sample;
-        }
-      }
-      return parser.extract(adjusted, match);
-    },
+    extract: (context, match) => parser.extract(view(context), match),
   } satisfies chrono.Parser;
-});
-
-// ForwardDateRefiner compares a host-local wall-clock Date with an absolute
-// result Date for weekdays and yearless dates. Make both sides wall-clock for
-// those comparisons; restore the real date methods before returning results.
-contextualZh.refiners = contextualZh.refiners.map((refiner) => {
-  if (refiner.constructor.name !== "ForwardDateRefiner") return refiner;
-  return {
-    refine(context, results) {
-      for (const result of results) {
-        const components = [result.start, result.end].filter((c): c is chrono.ParsingComponents => !!c);
-        const wallComparison = result.start.isOnlyWeekdayComponent() || result.start.isDateWithUnknownYear();
-        if (!wallComparison) {
-          refiner.refine(context, [result]);
-          continue;
-        }
-        const original = components.map(c => c.date);
-        try {
-          for (const c of components) {
-            c.date = () => new Date(c.get("year")!, c.get("month")! - 1, c.get("day")!, c.get("hour")!, c.get("minute")!, c.get("second")!, c.get("millisecond")!);
-          }
-          refiner.refine(context, [result]);
-        } finally {
-          components.forEach((c, i) => { c.date = original[i]!; });
-        }
-      }
-      return results;
-    },
-  } satisfies chrono.Refiner;
 });
 
 // 这些关键词出现时才更倾向于把解析到的日期当作 DDL，降低误识别（发布时间/上课时间）。
@@ -109,7 +47,7 @@ export function detectDueDate(text: string, ref: Date | DetectionContext = new D
   // forwardDate：把「本周五」「25号」这类歧义解析为未来，符合 DDL 语义。
   const results = ref instanceof Date
     ? chrono.zh.parse(text, ref, { forwardDate: true })
-    : contextualZh.parse(text, { instant: new Date(ref.capturedAt), timezone: ref.utcOffsetMinutes }, { forwardDate: true });
+    : contextualZh.parse(text, { instant: new Date(ref.capturedAt), timezone: ref.utcOffsetMinutes }, { forwardDate: false });
   if (results.length === 0) return null;
 
   // 优先取附近带「截止/提交/前」等关键词的结果；否则取第一个。
@@ -119,7 +57,7 @@ export function detectDueDate(text: string, ref: Date | DetectionContext = new D
   if (!preferred) return null;
 
   return {
-    dueAt: preferred.start.date().toISOString(),
+    dueAt: (ref instanceof Date ? preferred.start.date() : contextualDate(preferred, ref)).toISOString(),
     matchedText: preferred.text,
   };
 }
@@ -127,4 +65,49 @@ export function detectDueDate(text: string, ref: Date | DetectionContext = new D
 function contextAround(text: string, index: number, len: number): string {
   const start = Math.max(0, index - 6);
   return text.slice(start, index + len + 6);
+}
+
+// Chrono's Chinese relative sub-day parsers use host-local Date setters. Use
+// their recognized text with the sender's instant instead. This finite adapter
+// follows the number and unit syntax of the pinned Chinese parsers.
+function relativeSubDay(text: string): number | null {
+  const match = /^(\d+|[零〇一二两兩三四五六七八九十]+|半|几|幾)\s*(?:个|個)?(秒(?:钟|鐘)?|分钟|分鐘|小时|小時|钟|鐘)(?:(?:之|过|過)?后|(?:之)?内|(?:之)?後|(?:之)?內|(?:之)?前)$/.exec(text);
+  if (!match) return null;
+  const digits: Record<string, number> = { 零: 0, 〇: 0, 一: 1, 二: 2, 两: 2, 兩: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
+  const value = match[1]!;
+  let n = value === "半" ? 0.5 : value === "几" || value === "幾" ? 3 : Number(value);
+  if (Number.isNaN(n)) {
+    n = 0;
+    for (const char of value) n = char === "十" ? (n === 0 ? 10 : n * 10) : n + digits[char]!;
+  }
+  const unit = match[2]!;
+  const factor = unit.startsWith("秒") ? 1000 : unit.startsWith("分") ? 60_000 : 3_600_000;
+  return n * factor * (text.endsWith("前") ? -1 : 1);
+}
+
+// Apply forward-date semantics on absolute instants; calendar arithmetic uses
+// UTC fields of the sender's fixed-offset wall clock, never the NAS timezone.
+function contextualDate(result: chrono.ParsedResult, context: DetectionContext): Date {
+  const instant = new Date(context.capturedAt);
+  const relative = relativeSubDay(result.text);
+  if (relative !== null) return new Date(instant.getTime() + relative);
+
+  const start = result.start;
+  let date = start.date();
+  if (date >= instant || !(start instanceof chrono.ParsingComponents)) return date;
+  const offset = context.utcOffsetMinutes * 60_000;
+  const wall = new Date(date.getTime() + offset);
+  if (start.isOnlyTime()) {
+    wall.setUTCDate(wall.getUTCDate() + 1);
+  } else if (start.isOnlyWeekdayComponent()) {
+    wall.setUTCDate(wall.getUTCDate() + 7);
+  } else if (start.isDateWithUnknownYear()) {
+    for (let i = 0; i < 3 && wall.getTime() - offset < instant.getTime(); i++) {
+      wall.setUTCFullYear(wall.getUTCFullYear() + 1);
+    }
+  } else {
+    return date;
+  }
+  date = new Date(wall.getTime() - offset);
+  return date;
 }
