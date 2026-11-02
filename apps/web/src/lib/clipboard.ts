@@ -1,3 +1,5 @@
+import { recheckAuthOnUnauthorized } from "./api";
+
 /** Desktop commands expose writes only, scoped to the configured server origin. */
 function nativeInvoke(): ((command: string, args: Record<string, unknown>) => Promise<unknown>) | undefined {
   return (window as unknown as { __TAURI__?: { core?: { invoke?: (command: string, args: Record<string, unknown>) => Promise<unknown> } } }).__TAURI__?.core?.invoke;
@@ -45,6 +47,7 @@ export async function copyImage(url: string): Promise<boolean> {
   if (!invoke && !browser) return false;
   try {
     const response = await fetch(url, { credentials: "include", redirect: "error" });
+    recheckAuthOnUnauthorized(response.status);
     if (!response.ok) return false;
     const blob = await response.blob();
     if (!blob.type.startsWith("image/") || blob.size > 50 * 1024 * 1024) return false;

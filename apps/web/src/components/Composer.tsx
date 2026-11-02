@@ -5,7 +5,7 @@ import { formatSize } from "../lib/format";
 import { IconFile, IconPaperclip, IconX } from "./icons";
 
 export function Composer() {
-  const { draft, change, send, addNative, checkReceipt, webFallback, newRequired, canSend, overLimit, ready, pending, draftError, error, notice, progress, info, badFilename, deleted, sendAsNew, stop } = useComposer();
+  const { draft, change, send, addNative, checkReceipt, webFallback, newRequired, canSend, overLimit, ready, pending, draftError, error, notice, progress, info, badFilename, deleted, pendingAttempts, selectedAttempt, refreshAttempts, restoreAttempt, restoreShared, sendAsNew, stop } = useComposer();
   const value = draft.content;
   const files = draft.files;
   const [dragging, setDragging] = useState(false);
@@ -103,6 +103,12 @@ export function Composer() {
       )}
 
       {draftError && <p className="composer__error" role="alert">草稿未能保存到本机，请勿关闭窗口。</p>}
+      {selectedAttempt && <button type="button" disabled={pending} onClick={() => void restoreShared()}>返回当前草稿</button>}
+      {pendingAttempts.length > 0 && <details onToggle={event => { if (event.currentTarget.open) void refreshAttempts(); }}>
+        <summary>待确认发送（{pendingAttempts.length}）</summary>
+        <p>恢复后可检查或重试，不会自动发送。</p>
+        <ul>{pendingAttempts.map((item, index) => <li key={item.key}><button type="button" disabled={pending || !ready} onClick={() => void restoreAttempt(item.key)}>恢复第 {index + 1} 笔 · {item.capturedAt ? new Date(item.capturedAt).toLocaleString() : "时间未知"} · {item.hasText ? "文字" : "无文字"} · {item.fileCount} 个附件{item.native ? " · 原生交接" : ""}</button></li>)}</ul>
+      </details>}
       {error && <p className="composer__error" role="alert">{error} {(deleted || newRequired || draft.nativeHandoffPending || draft.webSendAttempted) && <> {deleted ? "原内容已永久删除；如需保留，可作为新内容发送。" : "旧任务可能仍在发送，重新发送可能重复。"} <button onClick={sendAsNew}>再发一份</button></>} {draft.nativeHandoffPending && <button onClick={() => void checkReceipt()}>重新检查</button>}</p>}
       {webFallback && <button onClick={() => fileInput.current?.click()}>改用当前页面上传</button>}
       {webFallback && files.length > 0 && <p>此批附件将在当前页面发送，请保持页面开启</p>}

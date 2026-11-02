@@ -35,7 +35,11 @@ function responseError(status: number, text: string): ApiError {
   } catch { /* Non-JSON responses must not expose proxy content. */ }
   return new ApiError(status, `HTTP ${status}`);
 }
+export function recheckAuthOnUnauthorized(status: number): void {
+  if (status === 401 && typeof window !== "undefined") window.dispatchEvent(new Event("send-to-myself:auth-check"));
+}
 async function handle(r: Response) {
+  if (!/\/api\/auth\/(?:me|login|logout)(?:\?|$)/.test(r.url)) recheckAuthOnUnauthorized(r.status);
   if (!r.ok) throw responseError(r.status, await r.text().catch(() => ""));
   return r.status === 204 ? null : r.json();
 }

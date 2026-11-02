@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { useQueryClient } from "@tanstack/react-query";
 import { AuthAccessContext, useAuth } from "../hooks/useAuth";
 import { api, ApiError, freezeBusiness } from "../lib/api";
-import { clearDraft, clearAllEditDrafts, freezeDraft } from "../lib/draft";
+import { freezeDraft, resumeDraftSession, retireDraftSession } from "../lib/draft";
 import { getNativeBridge, hasNativeAuth } from "../lib/nativeBridge";
 import { LoginView } from "./LoginView";
 
@@ -25,6 +25,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const [notice, setNotice] = useState("");
   const [confirmationPending, setConfirmationPending] = useState(false);
   const cleanup = useRef<Promise<void> | null>(null);
+  const lastRemoteLogout = useRef("");
   const native = hasNativeAuth();
   const authenticated = !!auth.data && (!auth.data.authEnabled || auth.data.authenticated) && !signedOut;
   const reauthRequired = entered && !signedOut && !!auth.data && auth.data.authEnabled && !auth.data.authenticated;
@@ -36,8 +37,10 @@ export function AuthGate({ children }: { children: ReactNode }) {
     cleanup.current = (async () => {
       await qc.cancelQueries();
       let failed = false;
-      try { await clearDraft(); } catch { failed = true; }
-      try { await clearAllEditDrafts(); } catch { failed = true; }
+      const noticeId = `${Date.now()}-${Math.random()}`;
+      if (typeof BroadcastChannel !== "undefined") { const channel = new BroadcastChannel("send-to-myself-session"); channel.postMessage(noticeId); channel.close(); }
+      try { localStorage.setItem("send-to-myself-session-logout", noticeId); } catch { /* cross-window notification is best effort */ }
+      try { await retireDraftSession(); } catch { failed = true; }
       qc.clear();
       qc.setQueryData(["auth", "me"], { authEnabled: true, authenticated: false });
       setEntered(false);
@@ -53,6 +56,42 @@ export function AuthGate({ children }: { children: ReactNode }) {
     window.addEventListener("send-to-myself:host-logout", handler);
     return () => window.removeEventListener("send-to-myself:host-logout", handler);
   }, [finishLogout]);
+  useEffect(() => {
+    const recheck = () => { void qc.invalidateQueries({ queryKey: ["auth", "me"] }); };
+    // Images and download navigations do not expose HTTP status to the page.
+    // Check the existing session when a protected image fails or a download starts.
+    const imageError = (event: Event) => {
+      if (!(event.target instanceof HTMLImageElement)) return;
+      try { const url = new URL(event.target.currentSrc || event.target.src, window.location.href); if (url.origin === window.location.origin && url.pathname.startsWith("/api/")) recheck(); } catch { /* invalid resource URL */ }
+    };
+    const download = (event: Event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const link = target.closest("a[download]");
+      if (!(link instanceof HTMLAnchorElement)) return;
+      try { const url = new URL(link.href, window.location.href); if (url.origin === window.location.origin && url.pathname.startsWith("/api/attachments/")) recheck(); } catch { /* invalid resource URL */ }
+    };
+    window.addEventListener("send-to-myself:auth-check", recheck);
+    window.addEventListener("error", imageError, true);
+    window.addEventListener("click", download, true);
+    return () => { window.removeEventListener("send-to-myself:auth-check", recheck); window.removeEventListener("error", imageError, true); window.removeEventListener("click", download, true); };
+  }, [qc]);
+
+  useEffect(() => {
+    const stop = (noticeId: string) => {
+      if (!noticeId || lastRemoteLogout.current === noticeId) return;
+      lastRemoteLogout.current = noticeId;
+      freezeBusiness(true); freezeDraft(true); setExiting(false); setSignedOut(true); setEntered(false);
+      void qc.cancelQueries(); qc.clear(); qc.setQueryData(["auth", "me"], { authEnabled: true, authenticated: false });
+    };
+    const channel = typeof BroadcastChannel === "undefined" ? undefined : new BroadcastChannel("send-to-myself-session");
+    if (channel) channel.onmessage = event => { if (typeof event.data === "string") stop(event.data); };
+    const storage = (event: StorageEvent) => { if (event.key === "send-to-myself-session-logout" && event.newValue) stop(event.newValue); };
+    const stale = () => stop(`stale-${Date.now()}`);
+    window.addEventListener("storage", storage);
+    window.addEventListener("send-to-myself:session-stale", stale);
+    return () => { channel?.close(); window.removeEventListener("storage", storage); window.removeEventListener("send-to-myself:session-stale", stale); };
+  }, [qc]);
 
   const submit = async (password: string): Promise<boolean> => {
     setPending(true); setError("");
@@ -68,6 +107,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
       try { state = await api.me(); } catch { setConfirmationPending(true); setError("登录结果暂时无法确认，请重试连接"); return false; }
       if (!state.authenticated) { setConfirmationPending(false); setError("口令已验证，但登录会话未建立。请核对 HTTP/HTTPS 和 Cookie 配置"); return false; }
       setConfirmationPending(false); cleanup.current = null; setSignedOut(false); setExiting(false); setNotice("");
+      await resumeDraftSession(true).catch(() => {});
       freezeDraft(false); freezeBusiness(false);
       qc.setQueryData(["auth", "me"], state);
       void qc.invalidateQueries({ queryKey: ["items"] });

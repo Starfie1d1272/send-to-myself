@@ -18,8 +18,16 @@ export function useRealtime(onChange: () => void, enabled: boolean) {
   useEffect(() => {
     if (!enabled) return;
     setStatus("connecting");
-    return subscribeRealtime(onChange, setStatus);
-  }, [onChange, enabled, generation]);
+    let active = true;
+    let checking = false;
+    const unsubscribe = subscribeRealtime(onChange, state => {
+      setStatus(state);
+      if (state !== "reconnecting" || checking) return;
+      checking = true;
+      void api.me().then(auth => { if (active) qc.setQueryData(["auth", "me"], auth); }).catch(() => {}).finally(() => { checking = false; });
+    });
+    return () => { active = false; unsubscribe(); };
+  }, [onChange, enabled, generation, qc]);
   const retry = useCallback(async () => {
     setRetryError("");
     try {

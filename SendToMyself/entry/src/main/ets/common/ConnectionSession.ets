@@ -55,12 +55,13 @@ async function readLocked(): Promise<ConnectionSession | null> {
 export async function readConnection(context: common.Context): Promise<ConnectionSession | null> {
   return withTransferLock(context, 'connection', () => readLocked());
 }
-export async function commitConnection(context: common.Context, origin: string, token: string, expectedRevision?: string): Promise<ConnectionSession> {
+export async function commitConnection(context: common.Context, origin: string, token: string, expectedRevision?: string, expectedOrigin?: string): Promise<ConnectionSession> {
   const normalized = normalizeOrigin(origin);
   if (!token || length(token) > 256) throw new Error('LOCAL_STORAGE_FAILED');
   return withTransferLock(context, 'connection', async () => {
     const current = await readLocked();
-    if (expectedRevision && (!current || current.revision !== expectedRevision || current.origin !== normalized)) throw new Error('CONNECTION_CHANGED');
+    if (expectedRevision !== undefined && (expectedRevision === '' ? current !== null :
+      (!current || current.revision !== expectedRevision || current.origin !== (expectedOrigin ?? normalized)))) throw new Error('CONNECTION_CHANGED');
     const record: ConnectionSession = { version: 1, origin: normalized, deviceToken: token, revision: util.generateRandomUUID() };
     await write(record, current !== null);
     return record;

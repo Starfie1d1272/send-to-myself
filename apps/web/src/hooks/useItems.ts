@@ -7,7 +7,12 @@ import { itemPages } from "../lib/timeline";
 
 export function useItems(params: ListParams) {
   const access = useAuthAccess();
-  return useInfiniteQuery({ ...itemPages(params), placeholderData: (previous) => previous, enabled: access.authenticated && !access.reauthRequired && !access.exiting });
+  const qc = useQueryClient();
+  const pages = itemPages(params);
+  return useInfiniteQuery({ ...pages, queryFn: async context => {
+    try { return await pages.queryFn(context); }
+    catch (error) { if (error instanceof ApiError && error.status === 401) void qc.invalidateQueries({ queryKey: ["auth", "me"] }); throw error; }
+  }, placeholderData: (previous) => previous, enabled: access.authenticated && !access.reauthRequired && !access.exiting });
 }
 
 export function useItemMutations() {
