@@ -2,7 +2,7 @@ import { captureDetectionContext } from "../lib/detectionContext";
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../lib/api";
-import { clearDraftIfKey, clearNativeHandoffIfKey, draftGeneration, draftIsWritable, loadDraft, newDedupeKey, prepareComposerDraft, saveDraft, type ComposerDraft } from "../lib/draft";
+import { clearDraftIfKey, clearNativeHandoffIfKey, disownAttempt, draftGeneration, draftIsWritable, loadDraft, newDedupeKey, prepareComposerDraft, saveDraft, type ComposerDraft } from "../lib/draft";
 import { canOpenNativeUpload, openNativeUpload, readNativeUploadReceipt } from "../lib/nativeTransfers";
 import { mutationErrorMessage } from "../lib/mutation-error";
 import { useAuthAccess } from "./useAuth";
@@ -44,6 +44,7 @@ export function useComposer() {
     if (attempt.current || handoffBusy.current || !ready) return;
     if (current.current.nativeHandoffPending && content === current.current.content) { setError("交接结果尚未确认，请查看传输任务或重新检查"); return; }
     if (current.current.webSendAttempted || current.current.nativeHandoffPending) setNotice(deleted ? "上一笔内容已永久删除；修改后将作为新内容发送" : "将作为新内容发送；上一笔发送结果可能尚未确认");
+    disownAttempt();
     const next = { content, files, dedupeKey: newDedupeKey(), webSendAttempted: false };
     current.current = next; setDraft(next); setError(""); setBadFile(undefined); setDeleted(false);
     void saveDraft(next).then(() => setDraftError(false)).catch(() => setDraftError(true));

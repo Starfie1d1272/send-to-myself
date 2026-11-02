@@ -13,6 +13,21 @@ const DB = "send-to-myself-drafts";
 const STORE = "drafts";
 const KEY = "composer";
 const EPOCH = "session-epoch";
+const ATTEMPT_POINTER = "send-to-myself-pending-attempt";
+const attemptKey = (key: string) => `attempt:${key}`;
+function attemptPointer(): string | undefined {
+  try { return sessionStorage.getItem(ATTEMPT_POINTER) || undefined; } catch { return undefined; }
+}
+function setAttemptPointer(key: string): boolean {
+  try { sessionStorage.setItem(ATTEMPT_POINTER, key); return true; } catch { return false; }
+}
+function clearAttemptPointer(key: string): void {
+  try { if (sessionStorage.getItem(ATTEMPT_POINTER) === key) sessionStorage.removeItem(ATTEMPT_POINTER); } catch { /* storage may be unavailable */ }
+}
+export function disownAttempt(): void {
+  const key = attemptPointer();
+  if (key) clearAttemptPointer(key);
+}
 let sessionEpoch: number | undefined;
 let connection: Promise<IDBDatabase> | undefined;
 let writes: Promise<void> = Promise.resolve();
@@ -43,10 +58,21 @@ export async function loadDraft(): Promise<ComposerDraft> {
   const db = await database();
   if (sessionEpoch === undefined) await resumeDraftSession();
   return new Promise((resolve, reject) => {
-    const request = db.transaction(STORE).objectStore(STORE).get(KEY);
+    const store = db.transaction(STORE).objectStore(STORE);
+    const pointer = attemptPointer();
+    const request = store.get(pointer ? attemptKey(pointer) : KEY);
     request.onsuccess = () => {
+      if (pointer && !request.result) {
+        clearAttemptPointer(pointer);
+        const fallback = store.get(KEY);
+        fallback.onsuccess = () => finish(fallback.result as StoredDraft | undefined);
+        fallback.onerror = () => reject(fallback.error);
+        return;
+      }
+      finish(request.result as StoredDraft | undefined);
+    };
+    const finish = (saved: StoredDraft | undefined) => {
       try {
-      const saved = request.result as StoredDraft | undefined;
       resolve(saved ? { content: saved.content, detectionContext: saved.detectionContext, nativeHandoffPending: saved.nativeHandoffPending, webSendAttempted: saved.webSendAttempted ?? !!saved.dedupeKey, ...(saved.dedupeKey ? { dedupeKey: saved.dedupeKey } : {}), files: saved.files.map((file) =>
         new File([file.blob], file.name, { type: file.blob.type, lastModified: file.lastModified })) }
         : { content: "", files: [] });
@@ -81,13 +107,16 @@ export function prepareComposerDraft(draft: ComposerDraft, expectedKey: string |
   if (frozen) return Promise.reject(new Error("草稿写入已暂停"));
   const expectedGeneration = generation;
   const snapshot = stored(draft);
+  const pointed = !!draft.dedupeKey && setAttemptPointer(draft.dedupeKey);
   return enqueue(() => transaction<boolean>((store, done) => {
     const request = store.get(KEY);
     request.onsuccess = () => {
       if (frozen || generation !== expectedGeneration) { done(false); return; }
       const current = request.result as StoredDraft | undefined;
-      if (current && current.dedupeKey !== expectedKey) { done(false); return; }
-      store.put(snapshot, KEY); done(true);
+      if (pointed && draft.dedupeKey) store.put(snapshot, attemptKey(draft.dedupeKey));
+      const owned = !current || current.dedupeKey === expectedKey;
+      if (owned) store.put(snapshot, KEY);
+      done(owned || pointed);
     };
   }));
 }
@@ -151,19 +180,27 @@ export async function retireDraftSession(): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(STORE, "readwrite"); const store = tx.objectStore(STORE);
     const request = store.get(EPOCH);
-    request.onsuccess = () => { const next = (typeof request.result === "number" ? request.result : 0) + 1; store.put(next, EPOCH); store.delete(KEY); store.delete(IDBKeyRange.bound("edit:", "edit:\uffff")); };
+    request.onsuccess = () => { const next = (typeof request.result === "number" ? request.result : 0) + 1; store.put(next, EPOCH); store.delete(KEY); store.delete(IDBKeyRange.bound("edit:", "edit:\uffff")); store.delete(IDBKeyRange.bound("attempt:", "attempt:\uffff")); };
     tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error ?? new Error("草稿清理失败"));
   });
 }
 
 export function clearDraftIfKey(key: string, expectedGeneration?: number): Promise<void> {
-  return enqueue(() => transaction<void>((store, done) => {
+  return enqueue(() => transaction<boolean>((store, done) => {
     const request = store.get(KEY);
-    request.onsuccess = () => { if ((expectedGeneration === undefined || (!frozen && generation === expectedGeneration)) && (request.result as StoredDraft | undefined)?.dedupeKey === key) store.delete(KEY); done(); };
-  }));
+    request.onsuccess = () => { const permitted = expectedGeneration === undefined || (!frozen && generation === expectedGeneration); if (permitted) { if ((request.result as StoredDraft | undefined)?.dedupeKey === key) store.delete(KEY); store.delete(attemptKey(key)); } done(permitted); };
+  })).then(permitted => { if (permitted) clearAttemptPointer(key); });
 }
 export function clearNativeHandoffIfKey(key: string, expectedGeneration: number): Promise<void> {
   return enqueue(() => transaction<void>((store, done) => {
+    const attempt = store.get(attemptKey(key));
+    attempt.onsuccess = () => {
+      const saved = attempt.result as StoredDraft | undefined;
+      if (!frozen && generation === expectedGeneration && saved?.nativeHandoffPending) {
+        delete saved.nativeHandoffPending;
+        store.put(saved, attemptKey(key));
+      }
+    };
     const request = store.get(KEY);
     request.onsuccess = () => {
       const saved = request.result as StoredDraft | undefined;
