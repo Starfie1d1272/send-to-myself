@@ -99,20 +99,10 @@ jobs:
           # desktop-v1.0.0 → 1.0.0
           VER="${TAG#desktop-v}"
           ACTUAL=$(node -p "require('./apps/desktop/src-tauri/tauri.conf.json').version")
-          [[ "$VER" == "$ACTUAL" ]] || { echo "Tag and desktop version differ" >&2; exit 1; }
-          # 提取 CHANGELOG 中对应版本的整段
-          BODY=$(awk -v ver="$VER" '
-            index($0, "## [desktop-" ver "]") == 1 { found=1; next }
-            found && /^## \[/ { exit }
-            found { print }
-          ' CHANGELOG.md)
-          [ -n "$BODY" ] || { echo "Missing desktop changelog section" >&2; exit 1; }
-          BODY="$BODY"$'\n\n'"Build SHA: ${{ github.sha }}. Minimum core: 1.1.0."
+          [[ "${VER%%-*}" == "$ACTUAL" ]] || { echo "Tag and desktop version differ" >&2; exit 1; }
+          node scripts/extract-changelog.mjs desktop "$VER" > release-notes.md
+          printf '\nBuild SHA: %s. Minimum core: 1.1.0.\n' "$GITHUB_SHA" >> release-notes.md
           echo "version=$VER" >> "$GITHUB_OUTPUT"
-          # 多行输出到 GITHUB_OUTPUT
-          echo "body<<EOF" >> "$GITHUB_OUTPUT"
-          echo "$BODY" >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
@@ -121,7 +111,7 @@ jobs:
 
       - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64
         with:
-          body: ${{ steps.changelog.outputs.body }}
+          body_path: release-notes.md
           prerelease: ${{ contains(steps.changelog.outputs.version, '-') }}
           files: |
             dist/**/*.dmg

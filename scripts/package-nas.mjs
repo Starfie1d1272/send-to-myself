@@ -16,11 +16,16 @@ try {
   for (const file of ['README-NAS.md', 'docker-compose.caddy.yml', 'Caddyfile']) cpSync(`deploy/${file}`, join(dir, file));
   for (const file of ['backup.sh', 'restore.sh', 'lib/deployment.sh']) cpSync(`scripts/${file}`, join(dir, 'scripts', file));
   const template = readFileSync('deploy/docker-compose.yml', 'utf8');
+  const emptyEnv = join(dir, '.empty-env');
+  writeFileSync(emptyEnv, '');
+  const parsedImage = file => JSON.parse(execFileSync('docker', ['compose', '--project-name', 'stm-package-check', '--project-directory', dir, '--env-file', emptyEnv, '--file', file, 'config', '--format', 'json'], { encoding: 'utf8' })).services?.app?.image;
+  if (!parsedImage(resolve('deploy/docker-compose.yml'))) throw new Error('Compose template has no app image');
   const pattern = /^(\s+image:\s*)\S+\s*$/gm;
   if ([...template.matchAll(pattern)].length !== 1) throw new Error('Expected exactly one image in Compose template');
   const compose = template.replace(pattern, `$1${image}`);
-  if (!compose.includes(`image: ${image}\n`)) throw new Error('Compose image mismatch');
   writeFileSync(join(dir, 'docker-compose.yml'), compose);
+  if (parsedImage(join(dir, 'docker-compose.yml')) !== image) throw new Error('Parsed Compose app.image does not match VERSION image');
+  rmSync(emptyEnv);
   writeFileSync(join(dir, 'VERSION.json'), JSON.stringify({ coreVersion: version, sourceRevision: revision, image, digest, packagedAt: new Date().toISOString() }, null, 2) + '\n');
   const files = ['README-NAS.md', 'docker-compose.yml', 'docker-compose.caddy.yml', 'Caddyfile', 'scripts/backup.sh', 'scripts/restore.sh', 'scripts/lib/deployment.sh', 'VERSION.json'];
   writeFileSync(join(dir, 'SHA256SUMS'), files.map(f => `${createHash('sha256').update(readFileSync(join(dir, f))).digest('hex')}  ${f}`).join('\n') + '\n');
@@ -28,5 +33,6 @@ try {
   const archive = resolve(output, `sendtomyself-nas-${version}.zip`);
   rmSync(archive, { force: true });
   execFileSync('zip', ['-q', archive, ...files, 'SHA256SUMS'], { cwd: dir });
+  writeFileSync(`${archive}.sha256`, `${createHash('sha256').update(readFileSync(archive)).digest('hex')}  ${archive.split('/').pop()}\n`);
   console.log(archive);
 } finally { rmSync(dir, { recursive: true, force: true }); }
