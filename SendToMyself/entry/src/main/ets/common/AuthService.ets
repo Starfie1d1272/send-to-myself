@@ -5,6 +5,7 @@ import { http } from '@kit.NetworkKit';
 import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { DOMAIN, TAG } from './Constants';
+import { withTransferLock } from './TransferLock';
 import { anonymousPost, extractSessionCookie, getJson, stopProtectedRequests, protectedRequestsStopped } from './HttpClient';
 import { AuthenticatedConnection, ConnectionSession, commitConnection, clearTokenIfCurrent, normalizeOrigin, readConnection } from './ConnectionSession';
 
@@ -70,12 +71,25 @@ export async function checkTokenValid(context: common.Context, connection: Authe
 export interface NativeLogoutResult {
   status: string; serverOrigin: string; cookieCleared: boolean; transferStop: string; remoteSessionLogout: string;
 }
+// Cookie writes share a lock across processes. Do not hold the connection lock over
+// WebCookieManager I/O: acquire the cookie lock first, then perform a short read.
+export async function installSessionCookie(context: common.Context, origin: string, revision: string, cookie: string): Promise<void> {
+  await withTransferLock(context, 'web-cookie', async () => {
+    const current = await readConnection(context);
+    if (!current || current.origin !== origin || current.revision !== revision || !current.deviceToken) throw new Error('CONNECTION_CHANGED');
+    if (origin.startsWith('http://') && /(?:^|;)\s*secure(?:;|$)/i.test(cookie)) throw new Error('SECURE_COOKIE_ON_HTTP');
+    webview.WebCookieManager.configCookieSync(origin, cookie, false, true);
+    await webview.WebCookieManager.saveCookieAsync();
+  });
+}
 export async function clearSignedOutCookie(context: common.Context, origin: string, revision: string): Promise<void> {
-  const current = await readConnection(context);
-  if (!current || current.origin !== origin || current.revision !== revision || current.deviceToken !== null) throw new Error('CONNECTION_CHANGED');
-  const expired = 'stm_session=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax' + (origin.startsWith('https://') ? '; Secure' : '');
-  webview.WebCookieManager.configCookieSync(origin, expired, false, true);
-  await webview.WebCookieManager.saveCookieAsync();
+  await withTransferLock(context, 'web-cookie', async () => {
+    const current = await readConnection(context);
+    if (!current || current.origin !== origin || current.revision !== revision || current.deviceToken !== null) throw new Error('CONNECTION_CHANGED');
+    const expired = 'stm_session=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax' + (origin.startsWith('https://') ? '; Secure' : '');
+    webview.WebCookieManager.configCookieSync(origin, expired, false, true);
+    await webview.WebCookieManager.saveCookieAsync();
+  });
 }
 export async function logoutCurrentConnection(context: common.Context, activeOrigin: string,
   onSignedOut: (origin: string, revision: string) => void, expectedRevision?: string): Promise<NativeLogoutResult> {

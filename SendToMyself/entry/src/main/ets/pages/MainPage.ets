@@ -1,7 +1,7 @@
 import { webview } from '@kit.ArkWeb';
 import { url } from '@kit.ArkTS';
 import { readConnection, requireConnection, clearTokenIfCurrent, normalizeOrigin, AuthenticatedConnection, ConnectionSession, assertCurrentConnection, authenticatedSnapshot } from '../common/ConnectionSession';
-import { checkTokenValid, loginAndMintToken, logoutCurrentConnection, clearSignedOutCookie } from '../common/AuthService';
+import { checkTokenValid, loginAndMintToken, logoutCurrentConnection, clearSignedOutCookie, installSessionCookie } from '../common/AuthService';
 import { startNetMonitor, stopNetMonitor } from '../common/NetMonitor';
 import { processQueue, queueStatus } from '../common/QueueService';
 import { hilog } from '@kit.PerformanceAnalysisKit';
@@ -129,7 +129,7 @@ struct MainPage {
       const after = await readConnection(this.context);
       if (!after || after.origin !== origin || after.revision !== result.connection.revision) throw new Error('CONNECTION_CHANGED');
       this.authRevision = after.revision;
-      await this.injectCookieToWeb(result.webSetCookie, origin);
+      await installSessionCookie(this.context, origin, after.revision, result.webSetCookie);
       await assertCurrentConnection(this.context, after);
       this.activeOrigin = origin; this.serverUrl = origin; this.hasToken = true;
       this.signedOut = false; this.webCookieBlocked = false; this.cookieCleanupNeeded = false;
@@ -162,14 +162,6 @@ struct MainPage {
       if (result.remoteSessionLogout === 'unconfirmed') this.logoutNotice += ' 未能确认NAS上的网页会话已注销。';
       return JSON.stringify(result);
     } finally { this.busy = false; }
-  }
-
-  private async injectCookieToWeb(cookie: string, origin: string): Promise<void> {
-    if (origin.startsWith('http://') && /(?:^|;)\s*secure(?:;|$)/i.test(cookie)) {
-      throw new Error('HTTP连接不能使用Secure Cookie，请检查服务器配置');
-    }
-    webview.WebCookieManager.configCookieSync(origin, cookie, false, true);
-    await webview.WebCookieManager.saveCookieAsync();
   }
 
   async aboutToAppear(): Promise<void> {
@@ -294,9 +286,11 @@ struct MainPage {
       const switching = this.connectionSettings && this.phase === 'web';
       if (switching) { this.phase = 'login'; await new Promise<void>((resolve) => { setTimeout(resolve, 0); }); }
       this.connectionSettings = false; this.signedOut = false;
+      this.activeOrigin = result.connection.origin; this.serverUrl = result.connection.origin;
+      this.hasToken = !!result.connection.deviceToken; this.webCookieBlocked = true;
       let current: ConnectionSession | null;
       try { current = await readConnection(this.context); }
-      catch (_error) { this.hasToken = false; this.errorMsg = '暂时无法读取本机连接，请重试'; return; }
+      catch (_error) { this.errorMsg = '连接已保存，暂时无法读取本机连接，请重试恢复网页会话'; return; }
       if (!current || current.origin !== result.connection.origin || current.revision !== result.connection.revision || !current.deviceToken) {
         this.hasToken = false; this.errorMsg = '连接已改变，请重试'; return;
       }
@@ -304,7 +298,7 @@ struct MainPage {
       this.serverUrl = current.origin;
       this.hasToken = true;
       this.connectionSettings = false; this.signedOut = false; this.cookieCleanupNeeded = false;
-      try { await this.injectCookieToWeb(result.webSetCookie, current.origin); this.webCookieBlocked = false; }
+      try { await installSessionCookie(this.context, current.origin, current.revision, result.webSetCookie); this.webCookieBlocked = false; }
       catch (_error) { this.phase = 'login'; this.webCookieBlocked = true; this.errorMsg = '网页会话未建立，请检查Cookie配置并重试'; return; }
       const afterCookie = await readConnection(this.context);
       if (!afterCookie || afterCookie.origin !== current.origin || afterCookie.revision !== current.revision || !afterCookie.deviceToken) {
@@ -316,8 +310,29 @@ struct MainPage {
       startNetMonitor(this.context, () => { this.loadQueueStatus(); });
       this.retryQueue();
     } catch (_error) {
-      if (this.connectionSettings) { this.phase = 'login'; this.connectionSettings = false; this.signedOut = false; }
-      this.hasToken = false; this.errorMsg = '无法完成登录或读取本机连接，请重试';
+      if (this.connectionSettings) {
+        try {
+          const current = await readConnection(this.context);
+          const unchanged = this.settingsRevision === '' ? current === null :
+            !!current && current.origin === this.settingsOrigin && current.revision === this.settingsRevision;
+          if (unchanged) {
+            this.errorMsg = '连接未更改，请检查服务器后重试或取消';
+            return;
+          }
+          // A different generation may already be committed; never reveal the old WebView.
+          this.phase = 'login'; this.connectionSettings = false; this.signedOut = false;
+          if (current) {
+            this.activeOrigin = current.origin; this.serverUrl = current.origin;
+            this.hasToken = !!current.deviceToken; this.webCookieBlocked = !!current.deviceToken;
+            this.errorMsg = '连接已改变，请恢复当前网页会话';
+          } else { this.hasToken = false; this.errorMsg = '连接已改变，请重新连接'; }
+        } catch (_readError) {
+          this.phase = 'login'; this.connectionSettings = false; this.signedOut = false;
+          this.hasToken = false; this.errorMsg = '无法确认当前连接，请重试';
+        }
+      } else {
+        this.hasToken = false; this.errorMsg = '无法完成登录或读取本机连接，请重试';
+      }
       hilog.error(DOMAIN, TAG, 'Login or credential storage failed');
     } finally { this.busy = false; }
   }
