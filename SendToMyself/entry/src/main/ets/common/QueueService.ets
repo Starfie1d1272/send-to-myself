@@ -1,7 +1,7 @@
 import { preferences } from '@kit.ArkData';
 import { common } from '@kit.AbilityKit';
-import { postTextItem, isAuthError, isNetworkError } from './HttpClient';
-import { readConnection, requireConnection, normalizeOrigin, beginAuthorizedDispatch } from './ConnectionSession';
+import { postTextItem, isAuthError, isNetworkError, isAlreadyDeleted } from './HttpClient';
+import { readConnection, requireConnection, normalizeOrigin, beginAuthorizedDispatch, ConnectionSession } from './ConnectionSession';
 import { SharedFileData, legacyFile, cleanSharedFiles } from './ShareFiles';
 import { PREFS_NAME_QUEUE, PREFS_KEY_QUEUE } from './Constants';
 import { withTransferLock, TransferBusyError } from './TransferLock';
@@ -18,6 +18,7 @@ export interface QueueItemData {
   agentId?: string;
   agentSessionRevision?: string;
   cancelRequested?: boolean;
+  terminalDeleted?: boolean;
   createdAt: number;
 }
 export interface QueueRow {
@@ -29,19 +30,35 @@ export interface QueueRow {
   status: string;
   active: boolean;
   paused: boolean;
+  terminalDeleted: boolean;
 }
 export interface QueueStatus { count: number; error: string }
 let processing: Promise<void> | undefined = undefined;
 
-async function loadQueue(context: common.Context): Promise<QueueItemData[]> {
+interface WebReceipt { serverOrigin: string; dedupeKey: string; acceptedAt: number }
+interface QueueEnvelope { items: QueueItemData[]; webReceipts: WebReceipt[] }
+export type EnqueueResult = 'accepted' | 'not_accepted' | 'unknown';
+
+async function loadEnvelope(context: common.Context): Promise<QueueEnvelope> {
   await preferences.removePreferencesFromCache(context, PREFS_NAME_QUEUE);
   const prefs = await preferences.getPreferences(context, PREFS_NAME_QUEUE);
-  return JSON.parse(await prefs.get(PREFS_KEY_QUEUE, '[]') as string) as QueueItemData[];
+  const value = JSON.parse(await prefs.get(PREFS_KEY_QUEUE, '[]') as string) as QueueEnvelope | QueueItemData[];
+  if (Array.isArray(value)) return { items: value as QueueItemData[], webReceipts: [] };
+  const envelope = value as QueueEnvelope;
+  return { items: envelope.items, webReceipts: envelope.webReceipts ?? [] };
+}
+async function loadQueue(context: common.Context): Promise<QueueItemData[]> {
+  return (await loadEnvelope(context)).items;
+}
+async function saveEnvelope(context: common.Context, envelope: QueueEnvelope): Promise<void> {
+  const prefs = await preferences.getPreferences(context, PREFS_NAME_QUEUE);
+  await prefs.put(PREFS_KEY_QUEUE, JSON.stringify(envelope));
+  await prefs.flush();
 }
 async function saveQueue(context: common.Context, items: QueueItemData[]): Promise<void> {
-  const prefs = await preferences.getPreferences(context, PREFS_NAME_QUEUE);
-  await prefs.put(PREFS_KEY_QUEUE, JSON.stringify(items));
-  await prefs.flush();
+  const envelope = await loadEnvelope(context);
+  envelope.items = items;
+  await saveEnvelope(context, envelope);
 }
 async function readQueue(context: common.Context): Promise<QueueItemData[]> {
   return withTransferLock(context, 'queue', () => loadQueue(context));
@@ -66,18 +83,56 @@ async function finishItem(context: common.Context, item: QueueItemData): Promise
   cleanSharedFiles(filesOf(item));
   if (item.agentId) { try { await removeTask(item.agentId); } catch (_error) {} }
 }
-export async function enqueue(context: common.Context, key: string, kind: 'text' | 'upload',
-  content?: string, files?: SharedFileData[], targetOrigin?: string): Promise<void> {
-  const current = await readConnection(context);
-  if (!current || (targetOrigin && current.origin !== targetOrigin)) throw new Error('连接已改变，内容未加入队列');
+async function persistEnqueue(context: common.Context, key: string, kind: 'text' | 'upload',
+  content?: string, files?: SharedFileData[], targetOrigin?: string, web: boolean = false): Promise<EnqueueResult> {
+  let current: ConnectionSession | null;
+  try { current = await readConnection(context); } catch (_error) { return 'not_accepted'; }
+  if (!current || !key || key.length > 64 || (targetOrigin && current.origin !== targetOrigin)) return 'not_accepted';
   const server = current.origin;
-  await withTransferLock(context, 'queue', async () => {
-    const items = await loadQueue(context);
-    if (!items.some((item: QueueItemData) => item.dedupeKey === key)) {
-      items.push({ dedupeKey: key, kind: kind, content: content, files: files,
+  let writeStarted = false;
+  try {
+    return await withTransferLock<EnqueueResult>(context, 'queue', async () => {
+      let envelope = await loadEnvelope(context);
+      const existing = envelope.items.find((item: QueueItemData) => item.dedupeKey === key);
+      if (existing && (!existing.serverUrl || normalizeOrigin(existing.serverUrl) !== server)) return 'not_accepted';
+      if (!existing) envelope.items.push({ dedupeKey: key, kind: kind, content: content, files: files,
         serverUrl: server, createdAt: Date.now() });
-      await saveQueue(context, items);
-    }
+      if (web && !envelope.webReceipts.some((receipt: WebReceipt) => receipt.serverOrigin === server && receipt.dedupeKey === key)) {
+        envelope.webReceipts.push({ serverOrigin: server, dedupeKey: key, acceptedAt: Date.now() });
+        if (envelope.webReceipts.length > 64) envelope.webReceipts.shift();
+      }
+      try { writeStarted = true; await saveEnvelope(context, envelope); }
+      catch (_error) {
+        try {
+          envelope = await loadEnvelope(context);
+          const confirmed = envelope.items.some((item: QueueItemData) => item.dedupeKey === key &&
+            !!item.serverUrl && normalizeOrigin(item.serverUrl) === server);
+          const receipt = !web || envelope.webReceipts.some((entry: WebReceipt) => entry.dedupeKey === key && entry.serverOrigin === server);
+          if (!confirmed || !receipt) return 'unknown';
+        } catch (_readError) { return 'unknown'; }
+      }
+      if (existing && files) {
+        const referenced = filesOf(existing).map((file: SharedFileData) => file.path);
+        cleanSharedFiles(files.filter((file: SharedFileData) => !referenced.includes(file.path)));
+      }
+      return 'accepted';
+    });
+  } catch (_error) { return writeStarted ? 'unknown' : 'not_accepted'; }
+}
+export async function enqueue(context: common.Context, key: string, kind: 'text' | 'upload',
+  content?: string, files?: SharedFileData[], targetOrigin?: string): Promise<EnqueueResult> {
+  return persistEnqueue(context, key, kind, content, files, targetOrigin);
+}
+export async function enqueueWebUpload(context: common.Context, key: string, content: string,
+  files: SharedFileData[], targetOrigin: string): Promise<EnqueueResult> {
+  return persistEnqueue(context, key, 'upload', content, files, targetOrigin, true);
+}
+export async function getUploadReceipt(context: common.Context, key: string, origin: string): Promise<boolean> {
+  return withTransferLock(context, 'queue', async () => {
+    const envelope = await loadEnvelope(context);
+    return envelope.items.some((item: QueueItemData) => item.dedupeKey === key && !!item.serverUrl &&
+      normalizeOrigin(item.serverUrl) === origin) || envelope.webReceipts.some((receipt: WebReceipt) =>
+      receipt.dedupeKey === key && receipt.serverOrigin === origin);
   });
 }
 export async function isQueued(context: common.Context, key: string): Promise<boolean> {
@@ -93,6 +148,7 @@ async function processItem(context: common.Context, key: string, retry: boolean)
   await withTransferLock(context, 'item-' + key, async () => {
     const item = (await readQueue(context)).find((entry: QueueItemData) => entry.dedupeKey === key);
     if (!item) return;
+    if (item.terminalDeleted) return;
     if (item.cancelRequested) {
       if (item.agentId) await removeTask(item.agentId);
       await finishItem(context, item);
@@ -164,6 +220,7 @@ async function processItem(context: common.Context, key: string, retry: boolean)
       }
     } catch (error) {
       item.lastError = (error as Error).message;
+      if (isAlreadyDeleted(error as Error)) item.terminalDeleted = true;
       await updateItem(context, item);
       if (isAuthError(error as Error) || isNetworkError(error as Error)) throw error as Error;
     }
@@ -236,7 +293,7 @@ export async function listQueue(context: common.Context): Promise<QueueRow[]> {
     if (item.cancelRequested) { status = '正在取消，内容将从本机移除'; active = false; }
     rows.push({ key: item.dedupeKey, content: item.content ?? '',
       files: filesOf(item).map((file: SharedFileData) => file.filename).join('\n'),
-      serverUrl: item.serverUrl ?? '', createdAt: item.createdAt, status: status, active: active, paused: paused });
+      serverUrl: item.serverUrl ?? '', createdAt: item.createdAt, status: status, active: active, paused: paused, terminalDeleted: item.terminalDeleted === true });
   }
   return rows;
 }

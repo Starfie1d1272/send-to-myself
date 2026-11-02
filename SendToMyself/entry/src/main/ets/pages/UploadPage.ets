@@ -1,60 +1,80 @@
 import { common } from '@kit.AbilityKit';
-import { picker } from '@kit.CoreFileKit';
-import { util } from '@kit.ArkTS';
-import { SharedFileData, copySharedFileAsync, cleanSharedFiles } from '../common/ShareFiles';
-import { enqueue, retryQueueItem } from '../common/QueueService';
-import { readConnection } from '../common/ConnectionSession';
+import { fileIo, picker } from '@kit.CoreFileKit';
+import { copySharedFileAsync, SharedFileData } from '../common/ShareFiles';
+import { currentHandoff, UploadHandoff } from '../common/UploadHandoff';
+import { readConnection, requireConnection } from '../common/ConnectionSession';
+import { getJson } from '../common/HttpClient';
 
+interface Limits { maxUploadBytes: number; maxUploadTotalBytes: number; maxUploadFiles: number }
 @Entry
 @Component
 struct UploadPage {
-  @State content: string = '';
+  @State files: SharedFileData[] = [];
   @State busy: boolean = false;
   @State status: string = '';
+  @State cancelled: boolean = false;
+  @State expanded: boolean = false;
+  private handoff?: UploadHandoff;
+  private visible: boolean = false;
   private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
-
-  onBackPress(): boolean { return this.busy; }
-  private async selectAndSend(): Promise<void> {
-    if (this.busy) return;
-    this.busy = true;
-    this.status = '';
-    const files: SharedFileData[] = [];
-    let persisted = false;
+  aboutToAppear(): void { this.visible = true; this.handoff = currentHandoff(); if (this.handoff) this.select(); else this.getUIContext().getRouter().back(); }
+  aboutToDisappear(): void { this.visible = false; this.handoff?.cancel(); }
+  onBackPress(): boolean { if (this.busy) { if (!this.handoff?.writing) { this.cancelled = true; this.handoff?.cancel(); } return true; } return false; }
+  private async select(): Promise<void> {
+    const handoff = this.handoff; if (!handoff || this.busy) return;
+    this.busy = true; this.cancelled = false;
     try {
-      const connection = await readConnection(this.context);
-      if (!connection) throw new Error('请先连接服务器');
-      const uris = await new picker.DocumentViewPicker(this.context).select({ maxSelectNumber: 20 });
-      if (uris.length === 0) return;
+      const uris = await new picker.DocumentViewPicker(this.context).select({ maxSelectNumber: 20 - handoff.files.length });
+      if (!handoff.canPrepare()) { if (this.visible) this.getUIContext().getRouter().back(); return; }
+      if (this.cancelled) { handoff.cancel(); this.getUIContext().getRouter().back(); return; }
+      if (!uris.length && handoff.files.length === 0) { handoff.finish('cancelled'); this.getUIContext().getRouter().back(); return; }
       for (let i = 0; i < uris.length; i++) {
-        this.status = '正在保存在本机 · ' + (i + 1).toString() + '/' + uris.length.toString();
-        files.push(await copySharedFileAsync(this.context, uris[i]));
+        this.status = '正在准备 ' + (i + 1).toString() + '/' + uris.length.toString() + ' 个附件，尚未发送';
+        const file = await copySharedFileAsync(this.context, uris[i], undefined, undefined, this.context.filesDir + '/web-upload-staging/' + handoff.requestId);
+        if (!handoff.addPreparedFile(file)) { if (this.visible) this.getUIContext().getRouter().back(); return; }
+        if (this.cancelled) { handoff.finish('cancelled'); this.getUIContext().getRouter().back(); return; }
       }
-      const key = util.generateRandomUUID();
-      await enqueue(this.context, key, 'upload', this.content.trim(), files, connection.origin);
-      persisted = true;
-      this.content = '';
-      await retryQueueItem(this.context, key);
-      await this.getUIContext().getRouter().replaceUrl({ url: 'pages/TransfersPage' });
-    } catch (error) {
-      if (!persisted) cleanSharedFiles(files);
-      this.status = persisted ? '内容已保存在待发送队列，可在传输页重试' : '未加入队列：' + (error as Error).message;
-    } finally { this.busy = false; }
+      if (!handoff.canPrepare()) return;
+      this.files = [...handoff.files]; this.status = '文件限制将在发送时检查';
+    } catch (_error) { if (handoff.canPrepare()) handoff.finish('not_queued', 'prepare_failed'); if (this.visible) this.getUIContext().getRouter().back(); }
+    finally { this.busy = false; }
+  }
+  private async send(): Promise<void> {
+    const handoff = this.handoff; if (!handoff || this.busy || !handoff.files.length) return;
+    this.busy = true;
+    try {
+      const current = await readConnection(this.context);
+      if (!handoff.canPrepare()) { if (this.visible) this.getUIContext().getRouter().back(); return; }
+      if (!current || current.origin !== handoff.origin) { handoff.finish('not_queued', 'route_failed'); this.getUIContext().getRouter().back(); return; }
+      let limits: Limits | undefined;
+      try {
+        const connection = await requireConnection(this.context);
+        const response = await Promise.race([getJson(this.context, connection, '/api/info'), new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 4000))]);
+        if (response.responseCode === 200) limits = JSON.parse(response.result as string) as Limits;
+      } catch (_error) {}
+      if (!handoff.canPrepare()) { if (this.visible) this.getUIContext().getRouter().back(); return; }
+      if (limits) {
+        const sizes = handoff.files.map((file: SharedFileData) => fileIo.statSync(file.path).size);
+        if (sizes.length > limits.maxUploadFiles || sizes.some((size: number) => size > limits!.maxUploadBytes) || sizes.reduce((a: number, b: number) => a + b, 0) > limits.maxUploadTotalBytes) { this.status = '附件超过服务器限制，请调整'; return; }
+      }
+      if (this.cancelled) { handoff.finish('cancelled'); this.getUIContext().getRouter().back(); return; }
+      await handoff.submit(this.context); if (this.visible) this.getUIContext().getRouter().back();
+    } catch (_error) { if (!handoff.finished) { if (handoff.writing) handoff.finish('unknown'); else handoff.finish('not_queued', 'prepare_failed'); this.getUIContext().getRouter().back(); } }
+    finally { this.busy = false; }
   }
   build() {
-    Column({ space: 18 }) {
-      Row() {
-        Button('返回').enabled(!this.busy).onClick(() => { this.getUIContext().getRouter().back(); })
-        Text('后台发送文件').fontColor('#241d16').fontSize(22).margin({ left: 12 })
-      }.width('100%')
-      Text('添加说明后选择文件。内容保存在本机后加入传输队列，可切换到其他应用。').fontColor('#241d16').fontSize(15).width('100%')
-      TextArea({ placeholder: '说明（可选）', text: this.content }).fontColor('#241d16').backgroundColor('#fbf7ef').height(160).enabled(!this.busy)
-        .maxLength(20000).onChange((value: string) => { this.content = value; })
-      Button(this.busy ? '准备中…' : '选择文件并发送').width('100%').enabled(!this.busy)
-        .onClick(() => { this.selectAndSend(); })
-      Button('查看传输与待发送').width('100%').enabled(!this.busy)
-        .onClick(() => { this.getUIContext().getRouter().replaceUrl({ url: 'pages/TransfersPage' }); })
-      if (this.status) { Text(this.status).fontColor('#241d16').fontSize(14).width('100%') }
-      Text('后台传输仍受服务器文件大小限制。').fontColor('#241d16').fontSize(13).fontColor('#5b5044').width('100%')
+    Column({ space: 16 }) {
+      Text('发送附件').fontSize(22)
+      Text(this.handoff?.content || '（无文字）').maxLines(this.expanded ? 10000 : 8).onClick(() => { this.expanded = !this.expanded; })
+      Text('需要修改文字时返回首页')
+      ForEach(this.files, (file: SharedFileData, index: number) => {
+        Row() { Text(file.filename + ' · ' + fileIo.statSync(file.path).size.toString() + ' B').layoutWeight(1)
+          Button('移除').enabled(!this.busy).onClick(() => { const handoff = this.handoff; if (!handoff) return; handoff.removePreparedFile(index); this.files = [...handoff.files]; }) }
+      }, (file: SharedFileData) => file.path)
+      Text(this.status)
+      Button('继续添加').enabled(!this.busy && this.files.length < 20).onClick(() => this.select())
+      Button('发送').enabled(!this.busy && this.files.length > 0).onClick(() => this.send())
+      Button(this.busy ? '取消准备' : '返回').enabled(!this.handoff?.writing).onClick(() => { if (this.busy) { this.cancelled = true; this.handoff?.cancel(); } else { this.handoff?.cancel(); this.getUIContext().getRouter().back(); } })
     }.padding(20).width('100%').height('100%').backgroundColor('#f2ece1')
   }
 }

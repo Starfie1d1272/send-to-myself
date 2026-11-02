@@ -9,12 +9,14 @@ export interface ShareResultData {
   success: boolean;
   needsLogin: boolean;
   queued: boolean;
+  unknown?: boolean;
   errorMessage?: string;
 }
 class ShareResult implements ShareResultData {
   success: boolean;
   needsLogin: boolean;
   queued: boolean;
+  unknown?: boolean;
   errorMessage?: string;
   constructor(success: boolean, login: boolean, queued: boolean, error?: string) {
     this.success = success; this.needsLogin = login; this.queued = queued; this.errorMessage = error;
@@ -34,6 +36,7 @@ export async function handleShare(want: Want, context: common.Context): Promise<
       if (params['content']) content.push(params['content'] as string);
     }
   }
+  let key = util.generateRandomUUID();
   let files: SharedFileData[] = [];
   try {
     for (let i = 0; i < records.length; i++) {
@@ -41,7 +44,7 @@ export async function handleShare(want: Want, context: common.Context): Promise<
       if (record.content) content.push(record.content);
       if (record.uri) {
         if (/^https?:\/\//i.test(record.uri)) content.push(record.uri);
-        else files.push(await copySharedFileAsync(context, record.uri, record.title, record.utd));
+        else files.push(await copySharedFileAsync(context, record.uri, record.title, record.utd, context.filesDir + '/shared-queue/' + key));
       }
     }
   } catch (_error) {
@@ -50,10 +53,11 @@ export async function handleShare(want: Want, context: common.Context): Promise<
   }
   let text = content.join('\n');
   if (!text.trim() && files.length === 0) return new ShareResult(false, false, false, 'No share content');
-  let key = util.generateRandomUUID();
   try {
     // Persist before the first request; process termination cannot lose accepted shares.
-    await enqueue(context, key, files.length ? 'upload' : 'text', text, files, connection.origin);
+    const result = await enqueue(context, key, files.length ? 'upload' : 'text', text, files, connection.origin);
+    if (result === 'unknown') { const uncertain = new ShareResult(false, false, false, '本机保存结果尚未确认，内容已保留，请打开应用检查'); uncertain.unknown = true; return uncertain; }
+    if (result === 'not_accepted') { cleanSharedFiles(files); return new ShareResult(false, false, false, '无法保存待发送内容，请重新分享'); }
   } catch (_error) {
     cleanSharedFiles(files);
     return new ShareResult(false, false, false, '无法保存待发送内容，请重新分享');

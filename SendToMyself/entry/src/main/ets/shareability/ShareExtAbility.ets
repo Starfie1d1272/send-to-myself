@@ -25,6 +25,9 @@ export default class ShareExtAbility extends ShareExtensionAbility {
       } else if (result.queued) {
         storage.setOrCreate<string>('shareMessage', result.errorMessage || '已保存在本机，打开应用或恢复网络后重试');
         storage.setOrCreate<string>('shareResult', 'queued');
+      } else if (result.unknown) {
+        storage.setOrCreate<string>('shareMessage', result.errorMessage || '本机保存结果尚未确认');
+        storage.setOrCreate<string>('shareResult', 'unknown');
       } else if (result.needsLogin) {
         storage.setOrCreate<string>('shareResult', 'needsLogin');
       } else {

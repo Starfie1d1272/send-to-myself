@@ -196,3 +196,7 @@ Web 构建检查桥接调用与页面类型；官方 SDK 的 `assembleHap` 检�
 - `require-auth` 中间件接受 `Authorization: Bearer` 或 session cookie。
 - `/api/auth/devices` 令牌管理（仅 session 可铸造/吊销）。
 - `items.dedupeKey` 唯一索引 + 幂等去重；`createItem` / `/upload` 均接受 `dedupeKey`。
+
+### STM-08 版本边界
+
+新 Web 与新壳共同提供首页原生附件确认和本机接受回执；新 Web 在旧壳或普通浏览器中使用网页文件选择；旧 Web 配合新壳时旧工具入口进入传输任务，附件仍走网页选择；旧 Web 配合旧壳保留旧行为。回执缺失不能证明没有入队，pending 草稿在桥不可用时仍保留。新下载使用核心的受保护附件 metadata；已完成的本机副本可在传输任务中离线保存或分享。异常退出或交接未知可能留下孤立 staging 副本，不自动扫描删除。此环境无 Harmony SDK 和真机，新增能力尚未完成 assembleHap 或设备验收，不代表稳定发布。

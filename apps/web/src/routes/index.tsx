@@ -8,7 +8,7 @@ import { AccessTokens } from "../components/AccessTokens";
 import { ConnectDevices } from "../components/ConnectDevices";
 import { ServerInfo } from "../components/ServerInfo";
 import { AppMenu } from "../components/AppMenu";
-import { getNativeBridge } from "../lib/nativeBridge";
+import { canOpenNativeTransfers, openNativeTransfers } from "../lib/nativeTransfers";
 import { Composer } from "../components/Composer";
 import { FilterBar } from "../components/FilterBar";
 import { Timeline } from "../components/Timeline";
@@ -16,7 +16,6 @@ import { useAuth, useAuthAccess } from "../hooks/useAuth";
 
 export function TimelinePage() {
   const [toolsError, setToolsError] = useState("");
-  const native = getNativeBridge();
   const access = useAuthAccess();
   const [dialog, setDialog] = useState<"connect" | "tokens" | "info" | null>(null);
   const [state, setState] = useState(initialTimelineState);
@@ -67,7 +66,7 @@ export function TimelinePage() {
             <span className="masthead__date">{dateStr}</span>
             <AppMenu onOpenConnect={() => setDialog("connect")} onOpenTokens={() => setDialog("tokens")}
               onOpenServerInfo={() => setDialog("info")} onOpenTrash={() => changeState({ ...initialTimelineState, view: "trash" })}
-              onOpenTransfers={typeof native?.openTools === "function" ? () => { setToolsError(""); void native.openTools!().catch(() => setToolsError("暂时无法打开传输菜单，请重试")); } : undefined}
+              onOpenTransfers={canOpenNativeTransfers() ? () => { setToolsError(""); void openNativeTransfers().catch(() => setToolsError("暂时无法打开传输菜单，请重试")); } : undefined}
               onLogout={auth?.authEnabled ? access.logout : undefined} logoutPending={access.logoutPending} />
           </div>
         </header>

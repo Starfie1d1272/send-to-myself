@@ -1,4 +1,4 @@
-import { UIExtensionContentSession } from '@kit.AbilityKit';
+import { common, UIExtensionContentSession } from '@kit.AbilityKit';
 
 @Entry
 @Component
@@ -8,6 +8,7 @@ struct SharePage {
   @LocalStorageLink('shareError') @Watch('onErrorChange') error: string = '';
   @LocalStorageLink('shareMessage') message: string = '';
   @State statusColor: ResourceColor = Color.Gray;
+  @State opening: boolean = false;
   private session: UIExtensionContentSession | undefined = undefined;
 
   aboutToAppear(): void {
@@ -27,7 +28,7 @@ struct SharePage {
     if (!this.error) return;
     this.statusText = '失败：' + this.error;
     this.statusColor = Color.Red;
-    this.autoClose(3000);
+
   }
 
   handleResult(result: string): void {
@@ -38,16 +39,29 @@ struct SharePage {
     } else if (result === 'queued') {
       this.statusText = this.message || '已保存在本机，打开应用或恢复网络后重试';
       this.statusColor = Color.Orange;
-      this.autoClose(1500);
+
     } else if (result === 'needsLogin') {
       this.statusText = '请先在应用内登录';
       this.statusColor = Color.Red;
-      this.autoClose(2000);
+
     } else {
-      this.statusText = '发送失败';
+      this.statusText = this.message || '发送失败';
       this.statusColor = Color.Red;
-      this.autoClose(2000);
+
     }
+  }
+
+  private async openApp(): Promise<void> {
+    if (this.opening) return;
+    this.opening = true;
+    try {
+      const context = getContext(this) as common.UIExtensionContext;
+      await context.startAbility({ bundleName: 'com.sendtomyself.harmony', abilityName: 'EntryAbility' });
+      if (this.session) await this.session.terminateSelf();
+    } catch (_error) {
+      this.statusText = '暂时无法打开应用，请手动打开后查看传输任务';
+      this.statusColor = Color.Red;
+    } finally { this.opening = false; }
   }
 
   autoClose(delayMs: number): void {
@@ -64,6 +78,10 @@ struct SharePage {
         .fontSize(20)
         .fontWeight(FontWeight.Medium)
         .fontColor(this.statusColor)
+      if ((this.result || this.error) && this.result !== 'success') {
+        Button('打开应用处理').enabled(!this.opening).onClick(() => { this.openApp(); })
+        Button('关闭').onClick(() => { if (this.session) this.session.terminateSelf(); })
+      }
     }
     .width('100%')
     .height('100%')

@@ -1,4 +1,6 @@
 import { common } from '@kit.AbilityKit';
+import { promptAction } from '@kit.ArkUI';
+import { requestHostReauthentication } from '../common/HostReauthentication';
 import { QueueRow, listQueue, processQueue, reconcileQueue, retryQueueItem, removeQueueItem, pauseQueueItem } from '../common/QueueService';
 import { DownloadRow, listDownloads, refreshDownloads, retryDownload, removeDownload,
   shareDownload, saveDownload } from '../common/NativeDownloads';
@@ -28,7 +30,7 @@ struct TransfersPage {
     this.refresh();
     if (this.timer < 0) this.timer = setInterval(() => { this.refresh(); }, 2000);
   }
-  onPageHide(): void { this.stop(); }
+  onPageHide(): void { this.autoOpen = {}; this.stop(); }
   aboutToDisappear(): void { this.stop(); }
   private stop(): void {
     this.visible = false;
@@ -68,7 +70,7 @@ struct TransfersPage {
   private confirmRemove(key: string, download: boolean): void {
     this.getUIContext().showAlertDialog({
       title: download ? '移除本机下载？' : '取消发送并删除？',
-      message: download ? '删除本机副本，服务器上的附件会保留。' : '停止这条传输并删除本机待发送内容。若服务器已经收到，已发送内容会保留。',
+      message: download ? '删除本机副本，服务器上的附件会保留。' : '将停止本机任务并移除本机副本。已到达 NAS 的内容不会撤回。',
       primaryButton: { value: '保留', action: () => {} },
       secondaryButton: { value: '删除', action: () => {
         this.perform(key, () => download ? removeDownload(this.context, key) : removeQueueItem(this.context, key));
@@ -80,10 +82,16 @@ struct TransfersPage {
     Column() {
       Row() {
         Button('返回').onClick(() => { this.getUIContext().getRouter().back(); })
-        Text('传输与待发送').fontColor('#241d16').fontSize(20).fontWeight(FontWeight.Medium).layoutWeight(1).margin({ left: 12 })
+        Text('传输任务').fontColor('#241d16').fontSize(20).fontWeight(FontWeight.Medium).layoutWeight(1).margin({ left: 12 })
         Button('刷新').enabled(!this.loading).onClick(() => { this.error = ''; this.refresh(); })
       }.width('100%').padding(12)
       if (this.error) { Text(this.error).fontColor('#a8331e').padding(12).width('100%') }
+      Button('重新登录当前连接').enabled(!this.busyKey).onClick(() => {
+        this.getUIContext().getRouter().back();
+        setTimeout(() => { requestHostReauthentication().catch(() => {
+          promptAction.showToast({ message: '无法打开重新登录，请在首页重试' });
+        }); }, 0);
+      })
       Scroll() {
         Column({ space: 12 }) {
           Text('待发送 · ' + this.queue.length.toString()).fontColor('#241d16').fontSize(18).width('100%')
@@ -103,7 +111,7 @@ struct TransfersPage {
                 if (item.active) {
                   Button('暂停').margin(4).enabled(!this.busyKey)
                     .onClick(() => { this.perform(item.key, () => pauseQueueItem(this.context, item.key)); })
-                } else {
+                } else if (!item.terminalDeleted) {
                   Button(item.paused ? '继续' : '重试').margin(4).enabled(!this.busyKey)
                     .onClick(() => { this.perform(item.key, () => retryQueueItem(this.context, item.key)); })
                 }
