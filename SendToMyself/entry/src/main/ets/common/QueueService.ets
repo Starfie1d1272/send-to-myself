@@ -1,3 +1,4 @@
+import { DetectionContext } from './DetectionContext';
 import { preferences } from '@kit.ArkData';
 import { common } from '@kit.AbilityKit';
 import { postTextItem, isAuthError, isNetworkError, isAlreadyDeleted } from './HttpClient';
@@ -9,6 +10,7 @@ import { createUpload, taskInfo, removeTask, progressText, request } from './Tra
 
 export interface QueueItemData {
   dedupeKey: string;
+  detectionContext?: DetectionContext;
   kind: 'text' | 'upload';
   content?: string;
   files?: SharedFileData[];
@@ -84,7 +86,7 @@ async function finishItem(context: common.Context, item: QueueItemData): Promise
   if (item.agentId) { try { await removeTask(item.agentId); } catch (_error) {} }
 }
 async function persistEnqueue(context: common.Context, key: string, kind: 'text' | 'upload',
-  content?: string, files?: SharedFileData[], targetOrigin?: string, web: boolean = false): Promise<EnqueueResult> {
+  content?: string, files?: SharedFileData[], targetOrigin?: string, web: boolean = false, detectionContext?: DetectionContext): Promise<EnqueueResult> {
   let current: ConnectionSession | null;
   try { current = await readConnection(context); } catch (_error) { return 'not_accepted'; }
   if (!current || !key || key.length > 64 || (targetOrigin && current.origin !== targetOrigin)) return 'not_accepted';
@@ -96,7 +98,7 @@ async function persistEnqueue(context: common.Context, key: string, kind: 'text'
       const existing = envelope.items.find((item: QueueItemData) => item.dedupeKey === key);
       if (existing && (!existing.serverUrl || normalizeOrigin(existing.serverUrl) !== server)) return 'not_accepted';
       if (!existing) envelope.items.push({ dedupeKey: key, kind: kind, content: content, files: files,
-        serverUrl: server, createdAt: Date.now() });
+        serverUrl: server, detectionContext: detectionContext, createdAt: Date.now() });
       if (web && !envelope.webReceipts.some((receipt: WebReceipt) => receipt.serverOrigin === server && receipt.dedupeKey === key)) {
         envelope.webReceipts.push({ serverOrigin: server, dedupeKey: key, acceptedAt: Date.now() });
         if (envelope.webReceipts.length > 64) envelope.webReceipts.shift();
@@ -120,12 +122,12 @@ async function persistEnqueue(context: common.Context, key: string, kind: 'text'
   } catch (_error) { return writeStarted ? 'unknown' : 'not_accepted'; }
 }
 export async function enqueue(context: common.Context, key: string, kind: 'text' | 'upload',
-  content?: string, files?: SharedFileData[], targetOrigin?: string): Promise<EnqueueResult> {
-  return persistEnqueue(context, key, kind, content, files, targetOrigin);
+  content?: string, files?: SharedFileData[], targetOrigin?: string, detectionContext?: DetectionContext): Promise<EnqueueResult> {
+  return persistEnqueue(context, key, kind, content, files, targetOrigin, false, detectionContext);
 }
 export async function enqueueWebUpload(context: common.Context, key: string, content: string,
-  files: SharedFileData[], targetOrigin: string): Promise<EnqueueResult> {
-  return persistEnqueue(context, key, 'upload', content, files, targetOrigin, true);
+  files: SharedFileData[], targetOrigin: string, detectionContext?: DetectionContext): Promise<EnqueueResult> {
+  return persistEnqueue(context, key, 'upload', content, files, targetOrigin, true, detectionContext);
 }
 export async function getUploadReceipt(context: common.Context, key: string, origin: string): Promise<boolean> {
   return withTransferLock(context, 'queue', async () => {
@@ -204,12 +206,12 @@ async function processItem(context: common.Context, key: string, retry: boolean)
         throw new Error('待发送内容目标无法确认或属于另一服务器，请切回原服务器');
       }
       if (item.kind === 'text') {
-        await postTextItem(context, connection, item.content ?? '', item.dedupeKey);
+        await postTextItem(context, connection, item.content ?? '', item.dedupeKey, item.detectionContext);
         await finishItem(context, item);
       } else {
         const files = filesOf(item);
         if (files.length === 0) throw new Error('没有可发送的附件');
-        const task = await createUpload(context, connection, item.dedupeKey, item.content ?? '', files);
+        const task = await createUpload(context, connection, item.dedupeKey, item.content ?? '', files, item.detectionContext);
         item.agentId = task.tid;
         item.agentSessionRevision = connection.revision;
         item.lastError = '';

@@ -1,5 +1,8 @@
+import type { DetectionContext } from "@sendtomyself/shared";
+
 export interface ComposerDraft {
   content: string;
+  detectionContext?: DetectionContext;
   files: File[];
   dedupeKey?: string;
   webSendAttempted?: boolean;
@@ -31,7 +34,7 @@ function database(): Promise<IDBDatabase> {
 }
 
 interface StoredFile { blob: Blob; name: string; lastModified: number }
-interface StoredDraft { content: string; files: StoredFile[]; dedupeKey?: string; webSendAttempted?: boolean; nativeHandoffPending?: true }
+interface StoredDraft { detectionContext?: DetectionContext; content: string; files: StoredFile[]; dedupeKey?: string; webSendAttempted?: boolean; nativeHandoffPending?: true }
 
 export async function loadDraft(): Promise<ComposerDraft> {
   await writes;
@@ -41,7 +44,7 @@ export async function loadDraft(): Promise<ComposerDraft> {
     request.onsuccess = () => {
       try {
       const saved = request.result as StoredDraft | undefined;
-      resolve(saved ? { content: saved.content, nativeHandoffPending: saved.nativeHandoffPending, webSendAttempted: saved.webSendAttempted ?? !!saved.dedupeKey, ...(saved.dedupeKey ? { dedupeKey: saved.dedupeKey } : {}), files: saved.files.map((file) =>
+      resolve(saved ? { content: saved.content, detectionContext: saved.detectionContext, nativeHandoffPending: saved.nativeHandoffPending, webSendAttempted: saved.webSendAttempted ?? !!saved.dedupeKey, ...(saved.dedupeKey ? { dedupeKey: saved.dedupeKey } : {}), files: saved.files.map((file) =>
         new File([file.blob], file.name, { type: file.blob.type, lastModified: file.lastModified })) }
         : { content: "", files: [] });
       } catch (error) { reject(error); }
@@ -59,6 +62,7 @@ export function saveDraft(draft: ComposerDraft): Promise<void> {
 function writeDraft(draft: ComposerDraft, expectedGeneration?: number): Promise<void> {
   const snapshot: StoredDraft = {
     content: draft.content,
+    detectionContext: draft.detectionContext,
     dedupeKey: draft.dedupeKey,
     webSendAttempted: draft.webSendAttempted,
     nativeHandoffPending: draft.nativeHandoffPending,
@@ -70,7 +74,7 @@ function writeDraft(draft: ComposerDraft, expectedGeneration?: number): Promise<
     if (expectedGeneration !== undefined && (frozen || generation !== expectedGeneration)) throw new Error("草稿写入已暂停");
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(STORE, "readwrite");
-      if (!snapshot.content && snapshot.files.length === 0 && !snapshot.nativeHandoffPending) tx.objectStore(STORE).delete(KEY);
+      if (!snapshot.content && snapshot.files.length === 0 && !snapshot.nativeHandoffPending && !snapshot.detectionContext) tx.objectStore(STORE).delete(KEY);
       else tx.objectStore(STORE).put(snapshot, KEY);
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
@@ -88,7 +92,7 @@ export function newDedupeKey(): string {
   return Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-export interface EditSnapshot { content: string; savedAt: number }
+export interface EditSnapshot { content: string; savedAt: number; detectionContext?: DetectionContext }
 export interface EditDraft extends EditSnapshot { itemId: string }
 function enqueue<T>(fn: () => Promise<T>): Promise<T> {
   const result = writes.catch(() => {}).then(fn);
@@ -118,7 +122,7 @@ export function clearNativeHandoffIfKey(key: string, expectedGeneration: number)
       const saved = request.result as StoredDraft | undefined;
       if (!frozen && generation === expectedGeneration && saved?.dedupeKey === key && saved.nativeHandoffPending) {
         delete saved.nativeHandoffPending;
-        if (!saved.content && saved.files.length === 0) store.delete(KEY); else store.put(saved, KEY);
+        if (!saved.content && saved.files.length === 0 && !saved.detectionContext) store.delete(KEY); else store.put(saved, KEY);
       }
       done();
     };
@@ -133,9 +137,9 @@ export async function loadEditDraft(id: string): Promise<EditDraft | undefined> 
     request.onerror = () => reject(request.error);
   });
 }
-export function saveEditDraft(id: string, content: string): Promise<EditSnapshot> {
+export function saveEditDraft(id: string, content: string, detectionContext?: DetectionContext): Promise<EditSnapshot> {
   if (frozen) return Promise.reject(new Error("草稿写入已暂停"));
-  const snapshot = { content, savedAt: Date.now() };
+  const snapshot = { content, savedAt: Date.now(), detectionContext };
   return enqueue(() => transaction<EditSnapshot>((store, done, fail) => {
     const key = `edit:${id}`;
     const existing = store.get(key);
@@ -156,7 +160,7 @@ export function clearEditDraft(id: string, expected?: EditSnapshot): Promise<voi
     const request = store.get(key);
     request.onsuccess = () => {
       const value = request.result as EditDraft | undefined;
-      if (value?.content === expected.content && value.savedAt === expected.savedAt) store.delete(key);
+      if (value?.content === expected.content && value.savedAt === expected.savedAt && JSON.stringify(value.detectionContext) === JSON.stringify(expected.detectionContext)) store.delete(key);
       done();
     };
   }));

@@ -15,7 +15,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "chrono-node": "^2.10.2",
+    "chrono-node": "2.10.2",
     "zod": "^4.6.6"
   },
   "devDependencies": {

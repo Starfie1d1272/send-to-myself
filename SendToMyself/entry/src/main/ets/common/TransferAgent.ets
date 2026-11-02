@@ -1,3 +1,4 @@
+import { DetectionContext } from './DetectionContext';
 import { request, BusinessError } from '@kit.BasicServicesKit';
 import { common } from '@kit.AbilityKit';
 import { AuthenticatedConnection } from './ConnectionSession';
@@ -10,13 +11,14 @@ export function transferHeaders(connection: AuthenticatedConnection): Record<str
 }
 
 export async function createUpload(context: common.Context, connection: AuthenticatedConnection, key: string,
-  content: string, files: SharedFileData[]): Promise<request.agent.Task> {
+  content: string, files: SharedFileData[], detectionContext?: DetectionContext): Promise<request.agent.Task> {
   const specs: request.agent.FileSpec[] = files.map((file: SharedFileData): request.agent.FileSpec => {
     return { path: file.path, filename: file.filename, contentType: file.mimeType };
   });
   const data: request.agent.FormItem[] = [
     { name: 'content', value: content }, { name: 'dedupeKey', value: key }, { name: 'files', value: specs }
   ];
+  if (detectionContext) data.push({ name: 'detectionContext', value: JSON.stringify(detectionContext) });
   return request.agent.create(context, {
     action: request.agent.Action.UPLOAD, mode: request.agent.Mode.BACKGROUND,
     url: connection.origin + '/api/items/upload', method: 'POST',

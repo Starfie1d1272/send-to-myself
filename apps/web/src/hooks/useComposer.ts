@@ -1,3 +1,4 @@
+import { captureDetectionContext } from "../lib/detectionContext";
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../lib/api";
@@ -78,13 +79,13 @@ export function useComposer() {
     if (snapshot.webSendAttempted) { setNewRequired(true); setError("原发送可能已到达 NAS，添加附件将作为新内容发送"); return true; }
     handoffBusy.current = true; setPending(true);
     const generation = draftGeneration();
-    const marked: ComposerDraft = { ...snapshot, nativeHandoffPending: true };
+    const marked: ComposerDraft = { ...snapshot, detectionContext: snapshot.detectionContext ?? captureDetectionContext(), nativeHandoffPending: true };
     try { await saveDraft(marked); if (generation === draftGeneration()) setDraftError(false); }
     catch { if (generation === draftGeneration()) { setDraftError(true); setWebFallback(true); setPending(false); } handoffBusy.current = false; return true; }
     if (generation !== draftGeneration()) { handoffBusy.current = false; return true; }
     current.current = marked; setDraft(marked); setPending(true); setError(""); setWebFallback(false);
     try {
-      const result = await openNativeUpload(marked.content, marked.dedupeKey!);
+      const result = await openNativeUpload(marked.content, marked.dedupeKey!, marked.detectionContext);
       if (result.status === "queued") await accepted(marked.dedupeKey!, generation);
       else if (result.status === "cancelled" || result.status === "not_queued") {
         await clearNativeHandoffIfKey(marked.dedupeKey!, generation);
@@ -101,13 +102,13 @@ export function useComposer() {
   const send = async () => {
     if (attempt.current || handoffBusy.current || !allowed(current.current)) return;
     const controller = new AbortController(); attempt.current = controller; setPending(true); setError(""); setNotice(""); setProgress(undefined);
-    const snapshot = { ...current.current, files: [...current.current.files], webSendAttempted: true };
+    const snapshot = { ...current.current, files: [...current.current.files], detectionContext: current.current.detectionContext ?? captureDetectionContext(), webSendAttempted: true };
     const generation = draftGeneration();
     current.current = snapshot; setDraft(snapshot);
     try { await saveDraft(snapshot); setDraftError(false); } catch { setDraftError(true); }
     try {
-      if (snapshot.files.length) await upload.mutateAsync({ content: snapshot.content, files: snapshot.files, dedupeKey: snapshot.dedupeKey, options: { signal: controller.signal, onProgress: setProgress } });
-      else await create.mutateAsync({ content: snapshot.content, dedupeKey: snapshot.dedupeKey });
+      if (snapshot.files.length) await upload.mutateAsync({ content: snapshot.content, files: snapshot.files, dedupeKey: snapshot.dedupeKey, options: { signal: controller.signal, onProgress: setProgress, detectionContext: snapshot.detectionContext } });
+      else await create.mutateAsync({ content: snapshot.content, dedupeKey: snapshot.dedupeKey, detectionContext: snapshot.detectionContext });
       if (generation === draftGeneration() && attempt.current === controller) {
         await clearDraftIfKey(snapshot.dedupeKey!).catch(() => setDraftError(true));
         const next = { content: "", files: [], dedupeKey: newDedupeKey(), webSendAttempted: false };

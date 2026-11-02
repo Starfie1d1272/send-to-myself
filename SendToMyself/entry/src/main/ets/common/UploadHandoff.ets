@@ -1,3 +1,4 @@
+import { DetectionContext } from './DetectionContext';
 import { common } from '@kit.AbilityKit';
 import { util } from '@kit.ArkTS';
 import { SharedFileData, cleanSharedFiles } from './ShareFiles';
@@ -6,13 +7,14 @@ import { readConnection } from './ConnectionSession';
 
 export interface HandoffResult { status: string; dedupeKey: string; serverOrigin: string; reason?: string }
 export class UploadHandoff {
+  detectionContext?: DetectionContext;
   content: string; key: string; origin: string; requestId: string;
   files: SharedFileData[] = [];
   writing: boolean = false; finished: boolean = false;
   private resolve: (value: string) => void;
   promise: Promise<string>;
-  constructor(content: string, key: string, origin: string) {
-    this.content = content; this.key = key; this.origin = origin; this.requestId = util.generateRandomUUID();
+  constructor(content: string, key: string, origin: string, detectionContext?: DetectionContext) {
+    this.detectionContext = detectionContext; this.content = content; this.key = key; this.origin = origin; this.requestId = util.generateRandomUUID();
     let complete: (value: string) => void = () => {};
     this.promise = new Promise<string>((resolve) => { complete = resolve; });
     this.resolve = complete;
@@ -40,7 +42,7 @@ export class UploadHandoff {
     if (!this.canPrepare()) return;
     if (!connection || connection.origin !== this.origin) { this.finish('not_queued', 'route_failed'); return; }
     this.writing = true;
-    const result = await enqueueWebUpload(context, this.key, this.content, this.files, this.origin);
+    const result = await enqueueWebUpload(context, this.key, this.content, this.files, this.origin, this.detectionContext);
     if (result === 'accepted') {
       this.finish('queued');
       retryQueueItem(context, this.key).catch(() => {});
@@ -51,7 +53,7 @@ export class UploadHandoff {
 let active: UploadHandoff | undefined;
 export function currentHandoff(): UploadHandoff | undefined { return active; }
 export async function openHandoff(context: common.Context, content: string, key: string, origin: string,
-  route: () => Promise<void>): Promise<string> {
+  route: () => Promise<void>, detectionContext?: DetectionContext): Promise<string> {
   if (content.length > 100000 || key.length < 1 || key.length > 64) return JSON.stringify({ status: 'not_queued', dedupeKey: key, serverOrigin: origin, reason: 'invalid_input' });
   if (active) {
     if (active.key === key && active.origin === origin) return active.promise;
@@ -62,7 +64,7 @@ export async function openHandoff(context: common.Context, content: string, key:
     if (active.key === key && active.origin === origin) return active.promise;
     throw new Error('BUSY');
   }
-  const handoff = new UploadHandoff(content, key, origin); active = handoff;
+  const handoff = new UploadHandoff(content, key, origin, detectionContext); active = handoff;
   try { await route(); } catch (_error) { handoff.finish('not_queued', 'route_failed'); }
   return handoff.promise;
 }

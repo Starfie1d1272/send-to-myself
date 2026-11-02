@@ -1,5 +1,5 @@
 import { itemSchema } from "@sendtomyself/shared";
-import type { CreateItemInput, Item, UpdateItemInput, ItemPage, TimelineFilter, ServerInfo } from "@sendtomyself/shared";
+import type { CreateItemInput, DetectionContext, Item, UpdateItemInput, ItemPage, TimelineFilter, ServerInfo } from "@sendtomyself/shared";
 
 export type ListResult = ItemPage;
 export type ListParams = TimelineFilter;
@@ -45,6 +45,7 @@ function validItem(value: unknown): Item {
   return parsed.data;
 }
 export interface UploadOptions {
+  detectionContext?: DetectionContext;
   signal?: AbortSignal;
   onProgress?: (progress: { loaded: number; total?: number }) => void;
 }
@@ -109,6 +110,7 @@ export const api = {
     const fd = new FormData();
     fd.set("content", content);
     if (dedupeKey) fd.set("dedupeKey", dedupeKey);
+    if (options?.detectionContext) fd.set("detectionContext", JSON.stringify(options.detectionContext));
     for (const f of files) fd.append("files", f);
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();

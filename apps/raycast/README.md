@@ -28,3 +28,8 @@ Mac 和 Windows 共用服务器上的记录，均为主动发送。无需新增�
 开发：`npm install`，`npm run build`。仓库开发可在根目录 `pnpm install`，`pnpm --filter send-to-myself-raycast build`。
 
 资料：[Raycast Clipboard](https://developers.raycast.com/api-reference/clipboard)、[Manifest / platforms](https://developers.raycast.com/information/manifest)、[本地导入](https://developers.raycast.com/basics/getting-started)、[Preferences](https://developers.raycast.com/api-reference/preferences)。
+
+
+### 日期识别语境
+
+新发送在读取文件前捕获日期识别时刻与固定 UTC 偏移，并与 pending key 一起保存；相同未确认内容重试沿用原值。旧 pending 缺少语境时继续省略，服务端按处理时本地时间识别。固定偏移不包含地区 DST 规则，请核对具体日期并按需调整。

@@ -3,7 +3,7 @@
  * 全部纯函数、无副作用、无网络。仅产出「建议」，由调用方决定是否采纳。
  */
 
-import type { ItemKind } from "../schema.js";
+import type { DetectionContext, ItemKind } from "../schema.js";
 import { detectUrls, isPureLink } from "./url.js";
 import { detectSecret, type SecretDetection } from "./secret.js";
 import { detectDueDate, type DueSuggestion } from "./date.js";
@@ -45,7 +45,7 @@ export interface DetectionResult {
 export function detect(
   content: string,
   attachments?: { hasImage?: boolean; hasFile?: boolean },
-  ref?: Date,
+  ref?: Date | DetectionContext,
 ): DetectionResult {
   return {
     kind: detectKind(content, attachments),

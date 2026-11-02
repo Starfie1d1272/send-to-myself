@@ -1,3 +1,4 @@
+import { captureDetectionContext } from './DetectionContext';
 import { common, Want } from '@kit.AbilityKit';
 import { systemShare } from '@kit.ShareKit';
 import { enqueue, retryQueueItem, isQueued, listQueue, QueueRow } from './QueueService';
@@ -24,6 +25,7 @@ class ShareResult implements ShareResultData {
 }
 
 export async function handleShare(want: Want, context: common.Context): Promise<ShareResultData> {
+  const detectionContext = captureDetectionContext();
   const connection = await readConnection(context);
   if (!connection) return new ShareResult(false, true, false, 'Server not configured');
   let content: string[] = [];
@@ -55,7 +57,7 @@ export async function handleShare(want: Want, context: common.Context): Promise<
   if (!text.trim() && files.length === 0) return new ShareResult(false, false, false, 'No share content');
   try {
     // Persist before the first request; process termination cannot lose accepted shares.
-    const result = await enqueue(context, key, files.length ? 'upload' : 'text', text, files, connection.origin);
+    const result = await enqueue(context, key, files.length ? 'upload' : 'text', text, files, connection.origin, detectionContext);
     if (result === 'unknown') { const uncertain = new ShareResult(false, false, false, '本机保存结果尚未确认，内容已保留，请打开应用检查'); uncertain.unknown = true; return uncertain; }
     if (result === 'not_accepted') { cleanSharedFiles(files); return new ShareResult(false, false, false, '无法保存待发送内容，请重新分享'); }
   } catch (_error) {

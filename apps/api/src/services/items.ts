@@ -2,6 +2,7 @@ import { and, desc, eq, exists, gte, isNotNull, isNull, like, lt, or, sql } from
 import { detect, detectSecret, detectUrls } from "@sendtomyself/shared/detect";
 import type {
   CreateItemInput,
+  DetectionContext,
   Item,
   ItemKind,
   ItemMeta,
@@ -29,8 +30,8 @@ export class ItemError extends Error {}
 
 /** Compute automatic fields only on creation or an actual content change. */
 function computeContent(content: string, files: Array<{ mimeType: string }>, currentMeta: ItemMeta,
-  override: boolean | null, previousContent?: string) {
-  const det = detect(content);
+  override: boolean | null, previousContent?: string, context?: DetectionContext) {
+  const det = detect(content, undefined, context);
   const kind: ItemKind = files.some((file) => file.mimeType.startsWith("image/"))
     ? "image" : files.length ? "file" : det.kind;
   const meta: ItemMeta = {
@@ -93,7 +94,7 @@ export function createItem(input: CreateItemInput): Item {
   const dup = findByDedupeKey(input.dedupeKey);
   if (dup) return dup; // 离线补发重试，已存在则原样返回，不重复创建
   if (!input.content.trim()) throw new ItemError("empty");
-  const computed = computeContent(input.content, [], {}, null);
+  const computed = computeContent(input.content, [], {}, null, undefined, input.detectionContext);
   const row = buildRow(input.content, computed, input.dedupeKey);
   db.insert(items).values(row).run();
   const stored = db.select().from(items).where(eq(items.id, row.id!)).get()!;
@@ -108,11 +109,12 @@ export async function createItemWithFiles(
   content: string,
   files: IncomingFile[],
   dedupeKey?: string,
+  detectionContext?: DetectionContext,
 ): Promise<Item> {
   const dup = findByDedupeKey(dedupeKey);
   if (dup) return dup; // 离线补发重试，已存在则原样返回
   if (!content.trim() && !files.length) throw new ItemError("empty");
-  const computed = computeContent(content, files, {}, null);
+  const computed = computeContent(content, files, {}, null, undefined, detectionContext);
   const row = buildRow(content, computed, dedupeKey);
   const prepared: AttachmentInsert[] = [];
   let dto: Item;
@@ -272,7 +274,7 @@ export function updateItem(id: string, patch: UpdateItemInput): Item | null {
   let urls: string[] | undefined;
   if (content !== existing.content) {
     const currentMeta: ItemMeta = existing.meta ? JSON.parse(existing.meta) : {};
-    const computed = computeContent(content, atts, currentMeta, override, existing.content);
+    const computed = computeContent(content, atts, currentMeta, override, existing.content, patch.detectionContext);
     urls = computed.fetchUrls;
     set.meta = JSON.stringify(computed.meta);
     set.kind = computed.kind;
