@@ -45,11 +45,13 @@ function LinkifiedText({ text }: { text: string }) {
 
 export function ItemCard({
   item,
+  now,
   trash,
   gap = "normal",
   revealEpoch,
 }: {
   item: Item;
+  now: Date;
   trash?: boolean;
   gap?: "first" | "cont" | "normal";
   revealEpoch: string;
@@ -68,14 +70,19 @@ export function ItemCard({
   const editRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => { setRevealed(false); }, [item.content, item.sensitive, revealEpoch]);
   useEffect(() => { const hide = () => { if (document.visibilityState === "hidden") setRevealed(false); }; document.addEventListener("visibilitychange", hide); return () => document.removeEventListener("visibilitychange", hide); }, []);
-  useEffect(() => { if (!menuOpen) return; const key = (e: KeyboardEvent) => { if (e.key === "Escape") { setMenuOpen(false); triggerRef.current?.focus(); } }; const outside = (e: MouseEvent) => { if (!menuRef.current?.contains(e.target as Node)) { setMenuOpen(false); triggerRef.current?.focus(); } }; document.addEventListener("keydown", key); document.addEventListener("mousedown", outside); return () => { document.removeEventListener("keydown", key); document.removeEventListener("mousedown", outside); }; }, [menuOpen]);
+  useEffect(() => { if (!menuOpen) return; const key = (e: KeyboardEvent) => { if (e.key === "Escape") { setMenuOpen(false); triggerRef.current?.focus(); } }; const outside = (e: MouseEvent) => { if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false); }; document.addEventListener("keydown", key); document.addEventListener("mousedown", outside); return () => { document.removeEventListener("keydown", key); document.removeEventListener("mousedown", outside); }; }, [menuOpen]);
   const [editing, setEditing] = useState(false);
+  const wasEditing = useRef(false);
   const [draft, setDraft] = useState("");
 
   const [error, setError] = useState("");
   const [draftStatus, setDraftStatus] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (editing) wasEditing.current = true;
+    else if (wasEditing.current && !busy) { wasEditing.current = false; triggerRef.current?.focus(); }
+  }, [editing, busy]);
   const lock = useRef(false);
   const snapshot = useRef<EditSnapshot | undefined>(undefined);
   const memoryAttempt = useRef<{ content: string; detectionContext: ReturnType<typeof captureDetectionContext> } | undefined>(undefined);
@@ -184,7 +191,7 @@ export function ItemCard({
   const preview = itemPreview(item);
   const reducedMotion = useReducedMotion();
   const suggestion = itemDueSuggestion(item);
-  const bucket = dueBucket(item.dueAt);
+  const bucket = dueBucket(item.dueAt, now);
   const showSuggestion = !trash && (!item.sensitive || revealed) && suggestion && !item.dueAt && !item.isTodo;
   const attachments = item.attachments ?? [];
   // 命中具体密钥 → 只遮罩密钥本身；手动标敏感但无命中 → 整条遮罩
@@ -329,14 +336,14 @@ export function ItemCard({
         ) : (
           <>
             {item.content.trim() && (!item.sensitive || revealed) && <button onClick={copy}>{copied ? "已复制" : "复制文字"}</button>}
-            <div className="due-wrap" ref={menuRef}>
+            <div className="due-wrap" ref={menuRef} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setMenuOpen(false); }}>
               <button ref={triggerRef} aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}>更多</button>
               {menuOpen && <div className="due-menu">
                 <button onClick={() => void menuAction(() => update.mutateAsync({id:item.id,patch:{pinned:!item.pinned}}))}>{item.pinned ? "取消收藏" : "收藏"}</button>
                 <button onClick={() => void menuAction(() => update.mutateAsync({id:item.id,patch:{isTodo:!item.isTodo}}))}>{item.isTodo ? "取消待办" : "设为待办"}</button>
-                <button onClick={() => setDueOpen(!dueOpen)}>截止日期</button>
+                <button aria-expanded={dueOpen} onClick={() => setDueOpen(!dueOpen)}>截止日期</button>
                 {dueOpen && <div>{(["today","tomorrow","sunday"] as const).map(k => <button key={k} onClick={() => void menuAction(() => update.mutateAsync({id:item.id,patch:{dueAt:quickDue(k)}}))}>{k === "today" ? "今天" : k === "tomorrow" ? "明天" : "本周日"} 23:59</button>)}<form onSubmit={e => { e.preventDefault(); if (customDue) void menuAction(() => update.mutateAsync({id:item.id,patch:{dueAt:new Date(customDue).toISOString()}})); }}><label>自定义 <input type="datetime-local" value={customDue} onChange={e => setCustomDue(e.target.value)} /></label><button type="submit">确定</button></form>{item.dueAt && <button onClick={() => void menuAction(() => update.mutateAsync({id:item.id,patch:{dueAt:null}}))}>清除截止日期</button>}</div>}
-                <button onClick={() => setTagOpen(!tagOpen)}>标记</button>
+                <button aria-expanded={tagOpen} onClick={() => setTagOpen(!tagOpen)}>标记</button>
                 {tagOpen && ([['none','无'],['idea','想法'],['read_later','稍后看']] as const).map(([value,label]) => <button key={value} onClick={() => void menuAction(() => update.mutateAsync({id:item.id,patch:{category:value}}))}>{label}</button>)}
                 <button onClick={() => { setMenuOpen(false); void startEdit(); }}>编辑</button>
                 <button onClick={() => void menuAction(() => update.mutateAsync({id:item.id,patch:{sensitive:!item.sensitive}}))}>{item.sensitive ? "取消敏感遮罩" : "标记为敏感"}</button>

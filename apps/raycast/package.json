@@ -52,8 +52,8 @@
       "name": "deviceToken",
       "type": "password",
       "required": true,
-      "title": "设备令牌",
-      "description": "在 SendToMyself 桌面窗口的“设备接入”中创建，勿填写登录密码"
+      "title": "接入令牌",
+      "description": "在 SendToMyself 桌面窗口的“更多 → 接入令牌”中创建，勿填写登录密码"
     }
   ],
   "scripts": {
