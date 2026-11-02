@@ -49,7 +49,7 @@ export class NativeBridge {
   async reauthenticate(): Promise<string> { const source = await this.verifyPage(); return this.reauthAction(source); }
   async logout(): Promise<string> { const source = await this.verifyPage(); return this.logoutAction(source); }
   async openTools(): Promise<string> { try { await this.openTransfers(); return 'opened'; } catch (_error) { throw new Error('请回到应用首页操作'); } }
-  async openTransfers(): Promise<string> { await this.verifyPage(); this.showTools(); return JSON.stringify({ status: 'opened' }); }
+  async openTransfers(): Promise<string> { const source = await this.verifyPage(); await this.verifyStillCurrent(source); this.showTools(); return JSON.stringify({ status: 'opened' }); }
   async openUpload(content: string, key: string, detectionContextJson?: string): Promise<string> {
     const connection = await this.verifyPage();
     if (!this.uploadRoute) throw new Error('BUSY');
