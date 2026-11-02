@@ -27,10 +27,10 @@ export function AccessTokens({ onClose }: { onClose: () => void }) {
     <a href="https://github.com/Starfie1d1272/send-to-myself/blob/main/apps/raycast/README.md" target="_blank" rel="noreferrer">Raycast 安装说明</a>
     <form onSubmit={event => { event.preventDefault(); if (name.trim() && !create.isPending) create.mutate(); }}>
       <label>设备名称<input value={name} placeholder="例如：书房 Mac 的 Raycast" maxLength={40} onChange={event => setName(event.target.value)} autoFocus /></label>
-      <button className="send" type="submit" disabled={!name.trim() || create.isPending || !!token}>{create.isPending ? "创建中…" : "创建设备令牌"}</button>
+      <button className="send" type="submit" disabled={!name.trim() || create.isPending || !!token}>{create.isPending ? "创建中…" : "创建接入令牌"}</button>
     </form>
-    {token && <div className="device-dialog__token"><p>令牌仅显示这一次，请复制到 Raycast 的“设备令牌”设置。拥有此令牌即可访问全部内容。</p>
-      <input aria-label="新设备令牌" type="password" readOnly value={token} onFocus={event => event.target.select()} />
+    {token && <div className="device-dialog__token"><p>令牌仅显示这一次，请复制到 Raycast 的“接入令牌”设置。拥有此令牌即可访问全部内容。</p>
+      <input aria-label="新接入令牌" type="password" readOnly value={token} onFocus={event => event.target.select()} />
       <button disabled={copying} onClick={async () => { setCopying(true); try { setMessage(await copyText(token) ? "已复制令牌" : "复制失败，请手动复制令牌"); } finally { setCopying(false); } }}>{copying ? "复制中…" : "复制令牌"}</button>
       <button onClick={() => { setToken(""); setMessage(""); }}>已保存</button>
     </div>}

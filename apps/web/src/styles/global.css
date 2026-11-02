@@ -623,7 +623,7 @@ body {
 .due-menu {
   position: absolute;
   right: 0;
-  top: 36px;
+  top: 100%;
   z-index: 5;
   display: flex;
   flex-direction: column;
@@ -1224,7 +1224,7 @@ body { line-height: 1.6; }
 @media (max-width: 560px), (pointer: coarse) {
   .secret--shown { min-height: 44px; min-width: 44px; }
   .attach-btn, .icon-btn, .actions .icon-btn, .tray__x, .check { min-width: 44px; min-height: 44px; }
-  .send, .chip, .button, .device-dialog button, .filterbar > button, .filterbar .chips > button, .actions > button, .actions .due-wrap > button, .item__body > button:not(.redacted):not(.suggest), .att__copy, .att details summary { min-height: 44px; }
+  .send, .chip, .button, .device-dialog button, .filterbar > button, .filterbar .chips > button, .actions > button, .actions .due-wrap > button, .item__body > button:not(.redacted):not(.suggest), .att__copy, .att details summary, .due-menu button, .item__edit-actions button { min-height: 44px; }
   .att details summary { width: fit-content; padding: 9px 10px; }
   .att__copy, .att__file-actions > a { display: inline-flex; align-items: center; white-space: nowrap; }
   .lightbox__close { width: 44px; height: 44px; }
