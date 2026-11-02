@@ -78,14 +78,15 @@ export function ItemCard({
   const snapshot = useRef<EditSnapshot | undefined>(undefined);
   const lastWrite = useRef<Promise<void>>(Promise.resolve());
   const retry = useRef<{ operation: () => Promise<unknown>; preview: boolean } | null>(null);
-  const run = async (operation: () => Promise<unknown>, preview = false) => {
+  const run = async (operation: () => Promise<unknown>, preview = false, missingSnapshot?: () => EditSnapshot | undefined) => {
     if (lock.current) return false;
     lock.current = true; setBusy(true); setError(""); setNotice(""); retry.current = { operation, preview };
     try { await operation(); retry.current = null; setNotice("已保存"); return true; }
     catch (err) {
       setError(preview ? "预览抓取失败，原链接仍保留，请重试。" : err instanceof ApiError && err.code === "cleanup_failed" ? "永久删除未完成，请检查 NAS 存储后重试" : mutationErrorMessage(err));
       if (err instanceof ApiError && err.status === 404 && editing) {
-        await lastWrite.current; await clearEditDraft(item.id).catch(() => {});
+        const expected = missingSnapshot?.();
+        if (expected) await clearEditDraft(item.id, expected).catch(() => {});
       }
       return false;
     } finally { lock.current = false; setBusy(false); }
@@ -121,32 +122,47 @@ export function ItemCard({
   };
   useEffect(() => { if (editing && !busy && (!item.sensitive || revealed)) editRef.current?.focus(); }, [editing, busy, item.sensitive, revealed]);
   const changeDraft = (value: string) => {
+    if (lock.current) return;
     setDraft(value); setError("");
     lastWrite.current = saveEditDraft(item.id, value).then(saved => { snapshot.current = saved; setDraftStatus(""); }).catch(err => {
       setDraftStatus(err instanceof Error && err.message === "draft_full" ? "本机编辑草稿已满，本次修改仅保留在当前页面；请保存到 NAS 后再关闭。" : "修改尚未保存到本机，请勿关闭窗口");
     });
   };
-  const clearSnapshot = async () => {
-    await lastWrite.current;
-    if (snapshot.current) await clearEditDraft(item.id, snapshot.current).catch(() => setDraftStatus("修改尚未保存到本机，请勿关闭窗口"));
-  };
   const saveEdit = async () => {
     if (!draft.trim() && !item.attachments?.length) { setError("请输入文字"); return; }
-    await lastWrite.current;
-    const context = snapshot.current?.content === draft ? snapshot.current.detectionContext ?? captureDetectionContext() : captureDetectionContext();
-    if (!snapshot.current?.detectionContext || snapshot.current.content !== draft) {
-      try { snapshot.current = await saveEditDraft(item.id, draft, context); } catch { snapshot.current = { content: draft, savedAt: Date.now(), detectionContext: context }; setDraftStatus("修改尚未保存到本机，请勿关闭窗口"); }
-    }
-    if (await run(() => update.mutateAsync({ id: item.id, patch: { content: draft, detectionContext: context } }))) { await clearSnapshot(); setEditing(false); }
+    const content = draft;
+    let attemptSnapshot: EditSnapshot | undefined;
+    await run(async () => {
+      await lastWrite.current;
+      const saved = snapshot.current;
+      const context = saved?.content === content ? saved.detectionContext ?? captureDetectionContext() : captureDetectionContext();
+      if (saved?.content === content && saved.detectionContext) attemptSnapshot = saved;
+      else {
+        try { attemptSnapshot = await saveEditDraft(item.id, content, context); snapshot.current = attemptSnapshot; }
+        catch { setDraftStatus("修改尚未保存到本机，请勿关闭窗口"); }
+      }
+      await update.mutateAsync({ id: item.id, patch: { content, detectionContext: context } });
+      if (attemptSnapshot) await clearEditDraft(item.id, attemptSnapshot).catch(() => setDraftStatus("修改尚未保存到本机，请勿关闭窗口"));
+      setEditing(false);
+    }, false, () => attemptSnapshot);
   };
-  const cancelEdit = async () => { await clearSnapshot(); setEditing(false); setError(""); };
+  const cancelEdit = async () => {
+    if (lock.current) return;
+    lock.current = true; setBusy(true);
+    try {
+      await lastWrite.current;
+      const expected = snapshot.current;
+      if (expected) await clearEditDraft(item.id, expected).catch(() => setDraftStatus("修改尚未保存到本机，请勿关闭窗口"));
+      setEditing(false); setError("");
+    } finally { lock.current = false; setBusy(false); }
+  };
 
   const urls = itemUrls(item);
   const preview = itemPreview(item);
   const reducedMotion = useReducedMotion();
   const suggestion = itemDueSuggestion(item);
   const bucket = dueBucket(item.dueAt);
-  const showSuggestion = !trash && suggestion && !item.dueAt && !item.isTodo;
+  const showSuggestion = !trash && (!item.sensitive || revealed) && suggestion && !item.dueAt && !item.isTodo;
   const attachments = item.attachments ?? [];
   // 命中具体密钥 → 只遮罩密钥本身；手动标敏感但无命中 → 整条遮罩
   const secretSpans = item.sensitive ? findSecretSpans(item.content) : [];

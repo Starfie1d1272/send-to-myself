@@ -103,7 +103,7 @@ export function Composer() {
       )}
 
       {draftError && <p className="composer__error" role="alert">草稿未能保存到本机，请勿关闭窗口。</p>}
-      {error && <p className="composer__error" role="alert">{error} {(deleted || newRequired || draft.nativeHandoffPending) && <> 旧任务可能仍在发送，重新发送可能重复。 <button onClick={sendAsNew}>作为新内容重新发送</button></>} {draft.nativeHandoffPending && <button onClick={() => void checkReceipt()}>重新检查</button>}</p>}
+      {error && <p className="composer__error" role="alert">{error} {(deleted || newRequired || draft.nativeHandoffPending) && <> {deleted ? "原内容已永久删除；如需保留，可作为新内容发送。" : "旧任务可能仍在发送，重新发送可能重复。"} <button onClick={sendAsNew}>作为新内容重新发送</button></>} {draft.nativeHandoffPending && <button onClick={() => void checkReceipt()}>重新检查</button>}</p>}
       {webFallback && <button onClick={() => fileInput.current?.click()}>改用当前页面上传</button>}
       {files.length > 0 && <p>此批附件将在当前页面发送，请保持页面开启</p>}
       {notice && <p role="status">{notice} {notice === "已保存在本机，等待发送" && canOpenNativeTransfers() && <button onClick={() => void openNativeTransfers()}>查看传输任务</button>}</p>}
