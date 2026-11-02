@@ -2,6 +2,7 @@ export interface ComposerDraft {
   content: string;
   files: File[];
   dedupeKey?: string;
+  webSendAttempted?: boolean;
 }
 
 const DB = "send-to-myself-drafts";
@@ -28,7 +29,7 @@ function database(): Promise<IDBDatabase> {
 }
 
 interface StoredFile { blob: Blob; name: string; lastModified: number }
-interface StoredDraft { content: string; files: StoredFile[]; dedupeKey?: string }
+interface StoredDraft { content: string; files: StoredFile[]; dedupeKey?: string; webSendAttempted?: boolean }
 
 export async function loadDraft(): Promise<ComposerDraft> {
   await writes;
@@ -38,7 +39,7 @@ export async function loadDraft(): Promise<ComposerDraft> {
     request.onsuccess = () => {
       try {
       const saved = request.result as StoredDraft | undefined;
-      resolve(saved ? { content: saved.content, ...(saved.dedupeKey ? { dedupeKey: saved.dedupeKey } : {}), files: saved.files.map((file) =>
+      resolve(saved ? { content: saved.content, webSendAttempted: saved.webSendAttempted ?? !!saved.dedupeKey, ...(saved.dedupeKey ? { dedupeKey: saved.dedupeKey } : {}), files: saved.files.map((file) =>
         new File([file.blob], file.name, { type: file.blob.type, lastModified: file.lastModified })) }
         : { content: "", files: [] });
       } catch (error) { reject(error); }
@@ -57,6 +58,7 @@ function writeDraft(draft: ComposerDraft): Promise<void> {
   const snapshot: StoredDraft = {
     content: draft.content,
     dedupeKey: draft.dedupeKey,
+    webSendAttempted: draft.webSendAttempted,
     files: draft.files.map((file) => ({ blob: file, name: file.name, lastModified: file.lastModified })),
   };
   const write = writes.catch(() => {}).then(async () => {
@@ -79,4 +81,68 @@ export const clearDraft = () => writeDraft({ content: "", files: [] });
 export function newDedupeKey(): string {
   // getRandomValues works in LAN HTTP contexts where randomUUID is unavailable.
   return Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+export interface EditSnapshot { content: string; savedAt: number }
+export interface EditDraft extends EditSnapshot { itemId: string }
+function enqueue<T>(fn: () => Promise<T>): Promise<T> {
+  const result = writes.catch(() => {}).then(fn);
+  writes = result.then(() => {}, () => {});
+  return result;
+}
+function transaction<T>(operation: (store: IDBObjectStore, done: (value: T) => void, fail: (error: Error) => void) => void): Promise<T> {
+  return database().then(db => new Promise<T>((resolve, reject) => {
+    const tx = db.transaction(STORE, "readwrite");
+    let result: T;
+    operation(tx.objectStore(STORE), value => { result = value; }, reject);
+    tx.oncomplete = () => resolve(result);
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error ?? new Error("草稿存储失败"));
+  }));
+}
+export function clearDraftIfKey(key: string): Promise<void> {
+  return enqueue(() => transaction<void>((store, done) => {
+    const request = store.get(KEY);
+    request.onsuccess = () => { if ((request.result as StoredDraft | undefined)?.dedupeKey === key) store.delete(KEY); done(); };
+  }));
+}
+export async function loadEditDraft(id: string): Promise<EditDraft | undefined> {
+  await writes;
+  const db = await database();
+  return new Promise((resolve, reject) => {
+    const request = db.transaction(STORE).objectStore(STORE).get(`edit:${id}`);
+    request.onsuccess = () => resolve(request.result as EditDraft | undefined);
+    request.onerror = () => reject(request.error);
+  });
+}
+export function saveEditDraft(id: string, content: string): Promise<EditSnapshot> {
+  if (frozen) return Promise.reject(new Error("草稿写入已暂停"));
+  const snapshot = { content, savedAt: Date.now() };
+  return enqueue(() => transaction<EditSnapshot>((store, done, fail) => {
+    const key = `edit:${id}`;
+    const existing = store.get(key);
+    existing.onsuccess = () => {
+      if (existing.result) { store.put({ itemId: id, ...snapshot }, key); done(snapshot); return; }
+      const count = store.count(IDBKeyRange.bound("edit:", "edit:\uffff"));
+      count.onsuccess = () => {
+        if (count.result >= 20) { fail(new Error("draft_full")); return; }
+        store.put({ itemId: id, ...snapshot }, key); done(snapshot);
+      };
+    };
+  }));
+}
+export function clearEditDraft(id: string, expected?: EditSnapshot): Promise<void> {
+  return enqueue(() => transaction<void>((store, done) => {
+    const key = `edit:${id}`;
+    if (!expected) { store.delete(key); done(); return; }
+    const request = store.get(key);
+    request.onsuccess = () => {
+      const value = request.result as EditDraft | undefined;
+      if (value?.content === expected.content && value.savedAt === expected.savedAt) store.delete(key);
+      done();
+    };
+  }));
+}
+export function clearAllEditDrafts(): Promise<void> {
+  return enqueue(() => transaction<void>((store, done) => { store.delete(IDBKeyRange.bound("edit:", "edit:\uffff")); done(); }));
 }

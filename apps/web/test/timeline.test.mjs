@@ -55,14 +55,24 @@ test("query observer loads every page, resets on filter change and refreshes loa
 
 test("frontend text and attachment retries transmit their persistent dedupe keys", async (t) => {
   const old = globalThis.fetch;
-  t.after(() => { globalThis.fetch = old; });
+  const oldXhr = globalThis.XMLHttpRequest;
+  t.after(() => { globalThis.fetch = old; globalThis.XMLHttpRequest = oldXhr; });
   const requests = [];
-  globalThis.fetch = async (_url, init) => { requests.push(init); return Response.json({ id: "one" }); };
+  const item = { id: "one", content: "same draft", kind: "text", category: "none", isTodo: false, completed: false, pinned: false, sensitive: false, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z" };
+  globalThis.fetch = async (_url, init) => { requests.push(init.body); return Response.json(item); };
+  globalThis.XMLHttpRequest = class {
+    upload = {};
+    status = 201;
+    responseText = JSON.stringify(item);
+    open() {}
+    send(body) { requests.push(body); this.onload(); }
+    abort() { this.onabort(); }
+  };
   await api.create({ content: "same draft", dedupeKey: "draft-key" });
-  assert.equal(JSON.parse(requests[0].body).dedupeKey, "draft-key");
+  assert.equal(JSON.parse(requests[0]).dedupeKey, "draft-key");
   const file = new File(["bytes"], "image.png", { type: "image/png" });
   await api.upload("same draft", [file], "upload-key");
   await api.upload("same draft", [file], "upload-key");
-  assert.equal(requests[1].body.get("dedupeKey"), "upload-key");
-  assert.equal(requests[2].body.get("dedupeKey"), "upload-key");
+  assert.equal(requests[1].get("dedupeKey"), "upload-key");
+  assert.equal(requests[2].get("dedupeKey"), "upload-key");
 });

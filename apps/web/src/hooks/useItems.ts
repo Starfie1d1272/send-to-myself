@@ -1,6 +1,6 @@
 import { useMutation, useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import type { CreateItemInput, UpdateItemInput } from "@sendtomyself/shared";
-import { api, type ListParams } from "../lib/api";
+import { api, type ListParams, type UploadOptions } from "../lib/api";
 import { useAuthAccess } from "./useAuth";
 import { ApiError } from "../lib/api";
 import { itemPages } from "../lib/timeline";
@@ -13,11 +13,11 @@ export function useItems(params: ListParams) {
 export function useItemMutations() {
   const qc = useQueryClient();
   const invalidate = () => qc.invalidateQueries({ queryKey: ["items"] });
-  const onError = (err: Error) => { if (err instanceof ApiError && err.status === 401) void qc.invalidateQueries({ queryKey: ["auth", "me"] }); };
+  const onError = (err: Error) => { if (err instanceof ApiError && err.status === 401) void qc.invalidateQueries({ queryKey: ["auth", "me"] }); if (err instanceof ApiError && err.status === 409 && err.code === "purge_in_progress") void invalidate(); };
   return {
     create: useMutation({ mutationFn: (i: CreateItemInput) => api.create(i), onError, onSuccess: invalidate }),
     upload: useMutation({
-      mutationFn: (v: { content: string; files: File[]; dedupeKey?: string }) => api.upload(v.content, v.files, v.dedupeKey),
+      mutationFn: (v: { content: string; files: File[]; dedupeKey?: string; options?: UploadOptions }) => api.upload(v.content, v.files, v.dedupeKey, v.options),
       onError, onSuccess: invalidate,
     }),
     update: useMutation({

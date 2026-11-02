@@ -1,60 +1,29 @@
 import { useEffect, useRef, useState } from "react";
-import { loadDraft, saveDraft, draftGeneration, newDedupeKey, type ComposerDraft } from "../lib/draft";
-import { useItemMutations } from "../hooks/useItems";
+import { useComposer } from "../hooks/useComposer";
 import { formatSize } from "../lib/format";
 import { IconFile, IconImage, IconPaperclip, IconX } from "./icons";
 
-interface Pending {
-  file: File;
-  url?: string; // 图片预览的 objectURL
-}
-
 export function Composer() {
-  const { create, upload } = useItemMutations();
-  const [value, setValue] = useState("");
-  const [files, setFiles] = useState<Pending[]>([]);
-  const [ready, setReady] = useState(false);
-  const [draftError, setDraftError] = useState(false);
-  const [saveError, setSaveError] = useState("");
-  const draftRef = useRef<ComposerDraft>({ content: "", files: [] });
+  const { draft, change, send, canSend, overLimit, ready, pending, draftError, error, notice, progress, info, badFilename, deleted, sendAsNew, stop } = useComposer();
+  const value = draft.content;
+  const files = draft.files;
   const [dragging, setDragging] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
-
-  const pending = create.isPending || upload.isPending;
-
-  const previewUrls = useRef(new Set<string>());
-  const wrapFile = (file: File): Pending => {
-    const url = file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined;
-    if (url) previewUrls.current.add(url);
-    return { file, url };
-  };
+  const [previews, setPreviews] = useState<Map<File, string>>(new Map());
   useEffect(() => {
-    let active = true;
-    void loadDraft().then((draft) => {
-      if (!active) return;
-      draftRef.current = { ...draft, dedupeKey: draft.dedupeKey ?? newDedupeKey() };
-      setValue(draft.content);
-      setFiles(draft.files.map(wrapFile));
-    }).catch(() => { if (active) setDraftError(true); })
-      .finally(() => { if (active) setReady(true); });
-    return () => {
-      active = false;
-      for (const url of previewUrls.current) URL.revokeObjectURL(url);
-      previewUrls.current.clear();
-    };
-  }, []);
+    const urls = new Map<File, string>();
+    for (const file of files) {
+      if (file.type.startsWith("image/") && !urls.has(file)) urls.set(file, URL.createObjectURL(file));
+    }
+    setPreviews(urls);
+    return () => { for (const url of urls.values()) URL.revokeObjectURL(url); };
+  }, [files]);
   useEffect(() => {
     const focus = () => ref.current?.focus();
     window.addEventListener("send-to-myself:focus-composer", focus);
     return () => window.removeEventListener("send-to-myself:focus-composer", focus);
   }, []);
-
-  const persist = (content: string, pendingFiles: File[]) => {
-    draftRef.current = { content, files: pendingFiles, dedupeKey: newDedupeKey() };
-    void saveDraft(draftRef.current).then(() => setDraftError(false)).catch(() => setDraftError(true));
-  };
-
   const grow = () => {
     const el = ref.current;
     if (!el) return;
@@ -64,51 +33,8 @@ export function Composer() {
 
   useEffect(grow, [value]);
 
-  const addFiles = (list: FileList | File[]) => {
-    if (pending || !ready) return;
-    const next = [...files, ...Array.from(list).map(wrapFile)];
-    setFiles(next);
-    persist(value, next.map((entry) => entry.file));
-  };
-
-  const removeAt = (i: number) => {
-    const entry = files[i];
-    if (entry?.url) {
-      URL.revokeObjectURL(entry.url);
-      previewUrls.current.delete(entry.url);
-    }
-    const next = files.filter((_, idx) => idx !== i);
-    setFiles(next);
-    persist(value, next.map((entry) => entry.file));
-  };
-
-  const reset = () => {
-    for (const url of previewUrls.current) URL.revokeObjectURL(url);
-    previewUrls.current.clear();
-    setValue("");
-    setFiles([]);
-    persist("", []);
-    setSaveError("");
-    requestAnimationFrame(grow);
-  };
-
-  const send = () => {
-    const content = value.trim();
-    if (pending || !ready) return;
-    const dedupeKey = draftRef.current.dedupeKey;
-    const generation = draftGeneration();
-    const onSuccess = () => { if (generation === draftGeneration()) reset(); };
-    setSaveError("");
-    const onError = () => setSaveError("发送失败，内容已保留，请重试。");
-    if (files.length === 0) {
-      if (!content) return;
-      create.mutate({ content, dedupeKey }, { onSuccess, onError });
-    } else {
-      upload.mutate({ content, files: files.map((f) => f.file), dedupeKey }, { onSuccess, onError });
-    }
-  };
-
-  const canSend = (value.trim().length > 0 || files.length > 0) && !pending && ready;
+  const addFiles = (list: FileList | File[]) => change(value, [...files, ...Array.from(list)]);
+  const removeAt = (i: number) => change(value, files.filter((_, index) => index !== i));
 
   return (
     <div
@@ -134,8 +60,7 @@ export function Composer() {
         rows={1}
         disabled={pending || !ready}
         onChange={(e) => {
-          setValue(e.target.value);
-          persist(e.target.value, files.map((entry) => entry.file));
+          change(e.target.value, files);
           grow();
         }}
         onPaste={(e) => {
@@ -147,7 +72,7 @@ export function Composer() {
         onKeyDown={(e) => {
           if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && e.nativeEvent.keyCode !== 229) {
             e.preventDefault();
-            send();
+            void send();
           }
         }}
       />
@@ -156,16 +81,17 @@ export function Composer() {
         <div className="tray">
           {files.map((f, i) => (
             <div className="tray__item" key={i}>
-              {f.url ? (
-                <img src={f.url} alt="" className="tray__thumb" />
+              {previews.has(f) ? (
+                <img src={previews.get(f)} alt="" className="tray__thumb" />
               ) : (
                 <span className="tray__file">
                   <IconFile width={16} height={16} />
                 </span>
               )}
               <div className="tray__info">
-                <span className="tray__name">{f.file.name}</span>
-                <span className="tray__size">{formatSize(f.file.size)}</span>
+                <span className="tray__name">{f.name}</span>
+                <span className="tray__size">{formatSize(f.size)}</span>
+                {((info && f.size > info.maxUploadBytes) || badFilename === f.name) && <span role="alert">{info ? `超过单文件上限 ${formatSize(info.maxUploadBytes)}` : "超过单文件上限"}</span>}
               </div>
               <button className="tray__x" disabled={pending} onClick={() => removeAt(i)} aria-label="移除">
                 <IconX width={13} height={13} />
@@ -175,9 +101,12 @@ export function Composer() {
         </div>
       )}
 
-      {(draftError || saveError) && <p className="composer__error" role="alert">
-        {draftError ? "草稿未能保存到本机，请勿关闭窗口。" : saveError}
-      </p>}
+      {draftError && <p className="composer__error" role="alert">草稿未能保存到本机，请勿关闭窗口。</p>}
+      {error && <p className="composer__error" role="alert">{error} {deleted && <button onClick={sendAsNew}>作为新内容重新发送</button>}</p>}
+      {notice && <p role="status">{notice}</p>}
+      <p className="composer__hint">{info ? `单文件 ${formatSize(info.maxUploadBytes)}，总计 ${formatSize(info.maxUploadTotalBytes)}，最多 ${info.maxUploadFiles} 件` : "上传大小以 NAS 设置为准"}</p>
+      {overLimit && <p className="composer__error" role="alert">附件数量或总大小超过 NAS 上限，请移除部分附件。</p>}
+      {pending && files.length > 0 && <div role="status">{progress?.total && progress.loaded >= progress.total ? "上传完成，正在保存…" : progress?.total ? `上传中 ${Math.round(progress.loaded / progress.total * 100)}%` : "上传中…"} <button onClick={stop}>停止上传</button></div>}
       <div className="composer__bar">
         <div className="composer__left">
           <button
@@ -208,7 +137,7 @@ export function Composer() {
             }}
           />
         </div>
-        <button className="send" onClick={send} disabled={!canSend}>
+        <button className="send" onClick={() => void send()} disabled={!canSend}>
           {pending ? "发送中…" : "发送"}
         </button>
       </div>

@@ -26,7 +26,7 @@ export async function makeThumbnail(
 ): Promise<string | null> {
   try {
     const { default: sharp } = await import("sharp");
-    const out = await sharp(data, { failOn: "none", animated: false })
+    const out = await sharp(data, { failOn: "none", animated: false, limitInputPixels: 40_000_000 })
       .rotate() // 依 EXIF 摆正
       .resize(THUMB_MAX, THUMB_MAX, { fit: "inside", withoutEnlargement: true })
       .webp({ quality: 78 })

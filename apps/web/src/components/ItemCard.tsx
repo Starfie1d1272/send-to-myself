@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { motion } from "motion/react";
 import type { Item } from "@sendtomyself/shared";
 import {
@@ -15,7 +15,9 @@ import {
 import { extractUrlSpans } from "@sendtomyself/shared/detect";
 import { findSecretSpans } from "@sendtomyself/shared/detect/secret";
 import { copyText, copyImage } from "../lib/clipboard";
-import { attachmentRawUrl } from "../lib/api";
+import { ApiError, attachmentRawUrl } from "../lib/api";
+import { clearEditDraft, loadEditDraft, saveEditDraft, type EditSnapshot } from "../lib/draft";
+import { mutationErrorMessage } from "../lib/mutation-error";
 import { useItemMutations } from "../hooks/useItems";
 import { Attachments } from "./Attachments";
 import { LinkPreviewCard } from "./LinkPreviewCard";
@@ -61,8 +63,27 @@ export function ItemCard({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
 
-  const patch = (p: Parameters<typeof update.mutate>[0]["patch"]) =>
-    update.mutate({ id: item.id, patch: p });
+  const [error, setError] = useState("");
+  const [draftStatus, setDraftStatus] = useState("");
+  const [notice, setNotice] = useState("");
+  const [busy, setBusy] = useState(false);
+  const lock = useRef(false);
+  const snapshot = useRef<EditSnapshot | undefined>(undefined);
+  const lastWrite = useRef<Promise<void>>(Promise.resolve());
+  const retry = useRef<{ operation: () => Promise<unknown>; preview: boolean } | null>(null);
+  const run = async (operation: () => Promise<unknown>, preview = false) => {
+    if (lock.current) return false;
+    lock.current = true; setBusy(true); setError(""); setNotice(""); retry.current = { operation, preview };
+    try { await operation(); retry.current = null; setNotice("已保存"); return true; }
+    catch (err) {
+      setError(preview ? "预览抓取失败，原链接仍保留，请重试。" : mutationErrorMessage(err));
+      if (err instanceof ApiError && err.status === 404 && editing) {
+        await lastWrite.current; await clearEditDraft(item.id).catch(() => {});
+      }
+      return false;
+    } finally { lock.current = false; setBusy(false); }
+  };
+  const patch = (p: Parameters<typeof update.mutate>[0]["patch"]) => { void run(() => update.mutateAsync({ id: item.id, patch: p })); };
 
   const copy = async () => {
     setCopyError("");
@@ -82,15 +103,31 @@ export function ItemCard({
     }
   };
 
-  const startEdit = () => {
-    setDraft(item.content);
-    setEditing(true);
+  const startEdit = async () => {
+    if (lock.current || editing) return;
+    lock.current = true; setBusy(true);
+    setDraft(item.content); setEditing(true); setDraftStatus(""); snapshot.current = undefined;
+    try {
+      const saved = await loadEditDraft(item.id);
+      if (saved) { setDraft(saved.content); snapshot.current = saved; setDraftStatus("已恢复未保存的修改"); }
+    } catch { setDraftStatus("修改尚未保存到本机，请勿关闭窗口"); }
+    finally { lock.current = false; setBusy(false); }
   };
-  const saveEdit = () => {
-    const v = draft.trim();
-    if (v && v !== item.content) patch({ content: v }); // 后端会重跑识别 + 重抓预览
-    setEditing(false);
+  const changeDraft = (value: string) => {
+    setDraft(value); setError("");
+    lastWrite.current = saveEditDraft(item.id, value).then(saved => { snapshot.current = saved; setDraftStatus(""); }).catch(err => {
+      setDraftStatus(err instanceof Error && err.message === "draft_full" ? "本机编辑草稿已满，本次修改仅保留在当前页面；请保存到 NAS 后再关闭。" : "修改尚未保存到本机，请勿关闭窗口");
+    });
   };
+  const clearSnapshot = async () => {
+    await lastWrite.current;
+    if (snapshot.current) await clearEditDraft(item.id, snapshot.current).catch(() => setDraftStatus("修改尚未保存到本机，请勿关闭窗口"));
+  };
+  const saveEdit = async () => {
+    if (!draft.trim() && !item.attachments?.length) { setError("请输入文字"); return; }
+    if (await run(() => update.mutateAsync({ id: item.id, patch: { content: draft } }))) { await clearSnapshot(); setEditing(false); }
+  };
+  const cancelEdit = async () => { await clearSnapshot(); setEditing(false); setError(""); };
 
   const urls = itemUrls(item);
   const preview = itemPreview(item);
@@ -116,6 +153,7 @@ export function ItemCard({
       <div className="item__row">
         {item.isTodo && !trash && (
           <button
+            disabled={busy || editing}
             className={`check${item.completed ? " check--on" : ""}`}
             onClick={() => patch({ completed: !item.completed })}
             aria-label="完成"
@@ -132,20 +170,23 @@ export function ItemCard({
                 className="item__edit-input"
                 value={draft}
                 autoFocus
-                onChange={(e) => setDraft(e.target.value)}
+                maxLength={100000}
+                disabled={busy}
+                onChange={(e) => changeDraft(e.target.value)}
               />
               <div className="item__edit-actions">
                 <button
                   className="item__edit-save"
-                  onClick={saveEdit}
-                  disabled={update.isPending}
+                  onClick={() => void saveEdit()}
+                  disabled={busy}
                 >
-                  保存
+                  {busy ? "保存中…" : "保存"}
                 </button>
-                <button className="item__edit-cancel" onClick={() => setEditing(false)}>
+                <button className="item__edit-cancel" disabled={busy} onClick={() => void cancelEdit()}>
                   取消
                 </button>
               </div>
+              {draftStatus && <p role="status">{draftStatus}</p>}
             </div>
           ) : partialMask ? (
             <SensitiveText content={item.content} spans={secretSpans} />
@@ -184,8 +225,8 @@ export function ItemCard({
                 <button
                   className="link-chip link-chip--action"
                   title="重新抓取预览"
-                  disabled={refetchPreview.isPending}
-                  onClick={() => refetchPreview.mutate(item.id)}
+                  disabled={busy}
+                  onClick={() => void run(async () => { const result = await refetchPreview.mutateAsync(item.id); if (result.meta?.preview?.status === "error") throw new Error("preview failed"); }, true)}
                 >
                   {refetchPreview.isPending ? "抓取中…" : "抓取预览"}
                 </button>
@@ -196,6 +237,7 @@ export function ItemCard({
           {showSuggestion && (
             <button
               className="suggest"
+              disabled={busy || editing}
               onClick={() => patch({ isTodo: true, dueAt: suggestion!.dueAt })}
             >
               <IconClock width={14} height={14} />
@@ -218,10 +260,12 @@ export function ItemCard({
         </div>
       </div>
 
+      {notice && <p role="status">{notice}</p>}
+      {error && <p className="composer__error" role="alert">{error} {editing ? <><button disabled={busy} onClick={() => void saveEdit()}>重试保存</button><button onClick={() => void copyText(draft)}>复制未保存内容</button></> : <button disabled={busy} onClick={() => { if (retry.current) void run(retry.current.operation, retry.current.preview); }}>重试</button>}</p>}
       {copyError && <p className="composer__error" role="alert">{copyError}</p>}
-      <div className="actions">
+      <fieldset className="actions" disabled={busy || editing} style={{ border: 0, padding: 0, margin: 0 }}>
         {trash ? (
-          <button className="icon-btn" title="恢复" onClick={() => restore.mutate(item.id)}>
+          <button className="icon-btn" title="恢复" onClick={() => void run(() => restore.mutateAsync(item.id))}>
             <IconRestore />
           </button>
         ) : (
@@ -229,7 +273,7 @@ export function ItemCard({
             <button className="icon-btn" title={copied ? "已复制" : "复制"} onClick={copy}>
               {copied ? <IconCheck /> : <IconCopy />}
             </button>
-            <button className="icon-btn" title="编辑" onClick={startEdit}>
+            <button className="icon-btn" title="编辑" onClick={() => void startEdit()}>
               <IconEdit />
             </button>
             <button
@@ -340,12 +384,12 @@ export function ItemCard({
                 </div>
               )}
             </div>
-            <button className="icon-btn icon-btn--danger" title="删除" onClick={() => remove.mutate(item.id)}>
+            <button className="icon-btn icon-btn--danger" title="删除" onClick={() => void run(() => remove.mutateAsync(item.id))}>
               <IconTrash />
             </button>
           </>
         )}
-      </div>
+      </fieldset>
     </motion.li>
   );
 }

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { useQueryClient } from "@tanstack/react-query";
 import { AuthAccessContext, useAuth } from "../hooks/useAuth";
 import { api, ApiError, freezeBusiness } from "../lib/api";
-import { clearDraft, freezeDraft } from "../lib/draft";
+import { clearDraft, clearAllEditDrafts, freezeDraft } from "../lib/draft";
 import { getNativeBridge, hasNativeAuth } from "../lib/nativeBridge";
 import { LoginView } from "./LoginView";
 
@@ -37,6 +37,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
       await qc.cancelQueries();
       let failed = false;
       try { await clearDraft(); } catch { failed = true; }
+      try { await clearAllEditDrafts(); } catch { failed = true; }
       qc.clear();
       qc.setQueryData(["auth", "me"], { authEnabled: true, authenticated: false });
       setEntered(false);
