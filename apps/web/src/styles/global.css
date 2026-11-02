@@ -1263,7 +1263,7 @@ body { line-height: 1.6; }
 .detail-list__body strong { overflow-wrap: anywhere; }
 .detail-list__body span { color: var(--ink-soft); font-size: 13px; }
 .info-list { margin: 20px 0 0; }
-.info-list > div { display: grid; gap: 4px; padding: 12px 0; border-top: 1px solid var(--line); }
+.info-list > div { display: grid; gap: 3px; padding: 8px 0; }
 .info-list dt { color: var(--ink-soft); font-size: 13px; }
 .info-list dd { margin: 0; overflow-wrap: anywhere; }
 .client-list { margin-top: 20px; border-top: 1px solid var(--line); }

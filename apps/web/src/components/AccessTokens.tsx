@@ -23,10 +23,10 @@ export function AccessTokens({ onClose }: { onClose: () => void }) {
   } });
   return <Dialog onClose={onClose} labelledBy="device-title">
     <div className="device-dialog__header"><h2 id="device-title">接入令牌</h2><button onClick={onClose} aria-label="关闭接入令牌">关闭</button></div>
-    <p>为 Raycast 或 API 工具创建专用令牌。</p>
+    <p>管理客户端和工具的接入令牌。</p>
     <a href="https://github.com/Starfie1d1272/send-to-myself/blob/main/apps/raycast/README.md" target="_blank" rel="noreferrer">Raycast 安装说明</a>
     <form onSubmit={event => { event.preventDefault(); if (name.trim() && !create.isPending) create.mutate(); }}>
-      <label>工具名称<input value={name} placeholder="例如：书房 Mac 的 Raycast" maxLength={40} onChange={event => setName(event.target.value)} autoFocus /></label>
+      <label>接入名称<input value={name} placeholder="例如：书房 Mac 的 Raycast" maxLength={40} onChange={event => setName(event.target.value)} autoFocus /></label>
       <button className="send" type="submit" disabled={!name.trim() || create.isPending || !!token}>{create.isPending ? "创建中…" : "创建接入令牌"}</button>
     </form>
     {token && <div className="device-dialog__token"><p>令牌仅显示这一次，请复制到 Raycast 的“接入令牌”设置。拥有此令牌即可访问全部内容。</p>
