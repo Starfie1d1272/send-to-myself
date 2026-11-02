@@ -61,7 +61,7 @@ export const itemSuggestionsSchema = z.object({
 }).passthrough();
 export type ItemSuggestions = z.infer<typeof itemSuggestionsSchema>;
 export const itemMetaSchema = z.object({
-  suggestions: itemSuggestionsSchema.optional(), preview: linkPreviewSchema.optional(),
+  suggestions: itemSuggestionsSchema.optional(), preview: linkPreviewSchema.partial({ url: true }).passthrough().optional(),
 }).passthrough();
 export type ItemMeta = z.infer<typeof itemMetaSchema>;
 
@@ -86,7 +86,7 @@ export const itemSchema = z.object({
   pinned: z.boolean(),
   /** 疑似密钥/手动标记：UI 默认遮罩正文，但仍参与搜索（SPEC §11）。 */
   sensitive: z.boolean(),
-  sensitiveOverride: z.boolean().nullable(),
+  sensitiveOverride: z.boolean().nullable().default(null),
   /** 软删除/回收站；为空=正常。 */
   deletedAt: isoDateTime.optional(),
 
