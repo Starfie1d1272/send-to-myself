@@ -131,11 +131,12 @@ export function ItemCard({
   const saveEdit = async () => {
     if (!draft.trim() && !item.attachments?.length) { setError("请输入文字"); return; }
     const content = draft;
+    const startedContext = captureDetectionContext();
     let attemptSnapshot: EditSnapshot | undefined;
     await run(async () => {
       await lastWrite.current;
       const saved = snapshot.current;
-      const context = saved?.content === content ? saved.detectionContext ?? captureDetectionContext() : captureDetectionContext();
+      const context = saved?.content === content ? saved.detectionContext ?? startedContext : startedContext;
       if (saved?.content === content && saved.detectionContext) attemptSnapshot = saved;
       else {
         try { attemptSnapshot = await saveEditDraft(item.id, content, context); snapshot.current = attemptSnapshot; }
