@@ -114,6 +114,12 @@ export function ItemCard({
     }
   };
 
+  const copySpan = async (value: string) => {
+    setCopyError("");
+    if (await copyText(value)) setNotice("片段已复制");
+    else setCopyError("复制失败，请重试。");
+  };
+
   const startEdit = async () => {
     if (lock.current || editing) return;
     lock.current = true; setBusy(true);
@@ -235,8 +241,8 @@ export function ItemCard({
               </div>
               {draftStatus && <p role="status">{draftStatus}</p>}
             </div>
-          ) : partialMask && !revealed ? (
-            <SensitiveText content={item.content} spans={secretSpans} onReveal={() => setRevealed(true)} />
+          ) : partialMask ? (
+            <SensitiveText content={item.content} spans={secretSpans} revealed={revealed} onReveal={() => setRevealed(true)} onCopy={value => void copySpan(value)} renderText={text => revealed ? <LinkifiedText text={text} /> : text} />
           ) : item.sensitive && !revealed ? (
             <button className="redacted" onClick={() => setRevealed(true)}>
               <span className="redacted__bars" aria-hidden>

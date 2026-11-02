@@ -22,6 +22,12 @@
       "mode": "no-view"
     },
     {
+      "name": "send-clipboard-new",
+      "title": "作为新内容发送剪贴板",
+      "description": "以新发送身份发送剪贴板，保留已有未确认请求",
+      "mode": "no-view"
+    },
+    {
       "name": "quick-note",
       "title": "随手记录",
       "description": "记录文字、链接并上传文件",
