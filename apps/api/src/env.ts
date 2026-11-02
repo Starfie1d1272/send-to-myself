@@ -11,17 +11,36 @@ const previewNumber = (name: string, fallback: number, min: number) => {
   return fallback;
 };
 
+const maxUploadBytes = (() => {
+  const raw = process.env.MAX_UPLOAD_BYTES;
+  const value = Number(raw);
+  if (raw === undefined) return 50 * 1024 * 1024;
+  if (raw.trim() && Number.isSafeInteger(value) && value > 0 && Number.isSafeInteger(value * 2 + 1024 * 1024)) return value;
+  console.warn("Invalid MAX_UPLOAD_BYTES; using default");
+  return 50 * 1024 * 1024;
+})();
+const trashRetentionDays = (() => {
+  const raw = process.env.TRASH_RETENTION_DAYS;
+  if (raw === undefined) return 30;
+  const value = Number(raw);
+  if (raw.trim() && Number.isSafeInteger(value) && value >= 0) return value;
+  console.warn("Invalid TRASH_RETENTION_DAYS; disabling expiry");
+  return 0;
+})();
+
 /** 运行时配置（SPEC §12.1, §8, §13）。 */
 export const env = {
   port: num(process.env.PORT, 8787),
   dbPath: process.env.DB_PATH ?? resolve("data/app.db"),
   /** 附件存储根；实际位置 = storageRoot + storageKey。 */
   storageRoot: process.env.STORAGE_ROOT ?? resolve("data/uploads"),
-  trashRetentionDays: num(process.env.TRASH_RETENTION_DAYS, 30),
+  trashRetentionDays,
 
   // —— 附件（SPEC §8）——
   /** 单文件大小上限（字节），默认 50MB。 */
-  maxUploadBytes: num(process.env.MAX_UPLOAD_BYTES, 50 * 1024 * 1024),
+  maxUploadBytes,
+  maxUploadTotalBytes: maxUploadBytes * 2,
+  maxUploadFiles: 20,
 
   // —— 认证（SPEC §12.3）——
   /**

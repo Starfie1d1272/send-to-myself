@@ -1,20 +1,32 @@
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { api } from "./api";
 
-/**
- * 订阅服务端 SSE（SPEC §12.5）。任一 item.* 事件触发回调（通常用于刷新时间线）。
- * 传输细节封装在此，与 UI 解耦。
- */
-export function subscribeRealtime(onChange: () => void): () => void {
+export type RealtimeStatus = "connecting" | "connected" | "reconnecting";
+export function subscribeRealtime(onChange: () => void, onStatus?: (status: RealtimeStatus) => void): () => void {
   const es = new EventSource("/api/realtime");
-  const handler = () => onChange();
-  // SSE 不重放断线期间的事件；每次建立连接都重查时间线，补齐漏掉的变化。
-  es.addEventListener("open", handler);
-  es.addEventListener("item.created", handler);
-  es.addEventListener("item.updated", handler);
-  es.addEventListener("item.deleted", handler);
+  es.addEventListener("open", () => { onStatus?.("connected"); onChange(); });
+  es.addEventListener("error", () => onStatus?.("reconnecting"));
+  for (const event of ["item.created", "item.updated", "item.deleted"]) es.addEventListener(event, onChange);
   return () => es.close();
 }
-
-export function useRealtime(onChange: () => void) {
-  useEffect(() => subscribeRealtime(onChange), [onChange]);
+export function useRealtime(onChange: () => void, enabled: boolean) {
+  const [status, setStatus] = useState<RealtimeStatus>("connecting");
+  const [generation, setGeneration] = useState(0);
+  const [retryError, setRetryError] = useState("");
+  const qc = useQueryClient();
+  useEffect(() => {
+    if (!enabled) return;
+    setStatus("connecting");
+    return subscribeRealtime(onChange, setStatus);
+  }, [onChange, enabled, generation]);
+  const retry = useCallback(async () => {
+    setRetryError("");
+    try {
+      const state = await api.me();
+      qc.setQueryData(["auth", "me"], state);
+      if (state.authenticated) setGeneration(n => n + 1);
+    } catch { setRetryError("暂时无法连接 NAS，请检查网络或地址"); }
+  }, [qc]);
+  return { status, retry, retryError };
 }

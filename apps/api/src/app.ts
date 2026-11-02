@@ -1,12 +1,12 @@
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
-import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { env } from "./env.js";
 import { authEnabled } from "./lib/auth.js";
 import { requireAuth } from "./middleware/require-auth.js";
 import { attachmentsRoute } from "./routes/attachments.js";
 import { authRoute } from "./routes/auth.js";
+import { infoRoute } from "./routes/info.js";
 import { itemsRoute } from "./routes/items.js";
 import { previewRoute } from "./routes/preview.js";
 import { realtimeRoute } from "./routes/realtime.js";
@@ -15,20 +15,19 @@ export function createApp() {
   const app = new Hono();
 
   app.use("*", logger());
-  // 同源部署（反代/Docker）默认无需跨域；带 credentials 以携带 session cookie。
-  app.use("/api/*", cors({ origin: (o) => o, credentials: true }));
-
   app.get("/health", (c) => c.json({ ok: true }));
 
   // 认证（不需登录即可访问）
   app.route("/api/auth", authRoute);
 
   // 受保护资源
+  app.use("/api/info", requireAuth);
   app.use("/api/items/*", requireAuth);
   app.use("/api/attachments/*", requireAuth);
   app.use("/api/realtime/*", requireAuth);
   app.use("/api/preview/*", requireAuth);
 
+  app.route("/api/info", infoRoute);
   app.route("/api/items", itemsRoute);
   app.route("/api/attachments", attachmentsRoute);
   app.route("/api/realtime", realtimeRoute);

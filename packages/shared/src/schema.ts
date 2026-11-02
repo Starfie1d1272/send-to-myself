@@ -161,3 +161,14 @@ export type TimelineFilter = z.infer<typeof timelineFilter>;
 
 export const itemPageSchema = z.object({ items: z.array(itemSchema), nextCursor: z.string().nullable() });
 export type ItemPage = z.infer<typeof itemPageSchema>;
+
+export const serverInfoSchema = z.object({
+  service: z.literal("send-to-myself"),
+  coreVersion: z.string(),
+  buildRevision: z.string().nullable(),
+  maxUploadBytes: z.number().int().positive(),
+  maxUploadTotalBytes: z.number().int().positive(),
+  maxUploadFiles: z.number().int().positive(),
+  trashRetentionDays: z.number().int().nonnegative(),
+});
+export type ServerInfo = z.infer<typeof serverInfoSchema>;

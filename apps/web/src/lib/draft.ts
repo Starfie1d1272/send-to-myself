@@ -9,6 +9,10 @@ const STORE = "drafts";
 const KEY = "composer";
 let connection: Promise<IDBDatabase> | undefined;
 let writes: Promise<void> = Promise.resolve();
+let frozen = false;
+let generation = 0;
+export function freezeDraft(value: boolean) { if (value && !frozen) generation++; frozen = value; }
+export function draftGeneration() { return generation; }
 
 function database(): Promise<IDBDatabase> {
   if (!connection) {
@@ -45,6 +49,11 @@ export async function loadDraft(): Promise<ComposerDraft> {
 
 /** Preserve ordering: a slow attachment write must not resurrect a sent draft. */
 export function saveDraft(draft: ComposerDraft): Promise<void> {
+  if (frozen) return Promise.resolve();
+  return writeDraft(draft);
+}
+
+function writeDraft(draft: ComposerDraft): Promise<void> {
   const snapshot: StoredDraft = {
     content: draft.content,
     dedupeKey: draft.dedupeKey,
@@ -65,7 +74,7 @@ export function saveDraft(draft: ComposerDraft): Promise<void> {
   return write;
 }
 
-export const clearDraft = () => saveDraft({ content: "", files: [] });
+export const clearDraft = () => writeDraft({ content: "", files: [] });
 
 export function newDedupeKey(): string {
   // getRandomValues works in LAN HTTP contexts where randomUUID is unavailable.

@@ -1,3 +1,5 @@
+import type { Context } from "hono";
+import { getCookie } from "hono/cookie";
 import { randomBytes } from "node:crypto";
 import argon2 from "argon2";
 import { desc, eq, lt } from "drizzle-orm";
@@ -40,12 +42,12 @@ export function createSession(): { token: string; expiresAt: number } {
   return { token, expiresAt };
 }
 
-export function sessionValid(token: string | undefined): boolean {
+export function sessionValid(token: string | undefined, readOnly = false): boolean {
   if (!token) return false;
   const row = db.select().from(sessions).where(eq(sessions.token, token)).get();
   if (!row) return false;
   if (row.expiresAt <= nowSec()) {
-    db.delete(sessions).where(eq(sessions.token, token)).run();
+    if (!readOnly) db.delete(sessions).where(eq(sessions.token, token)).run();
     return false;
   }
   return true;
@@ -71,15 +73,15 @@ export function createDeviceToken(name: string): { token: string; createdAt: num
 }
 
 /** 校验 Bearer 设备令牌；命中则顺带刷新 lastUsedAt。 */
-export function deviceTokenValid(token: string | undefined): boolean {
+export function deviceTokenValid(token: string | undefined, readOnly = false): boolean {
   if (!token) return false;
   const row = db.select().from(deviceTokens).where(eq(deviceTokens.token, token)).get();
   if (!row) return false;
   if (row.expiresAt != null && row.expiresAt <= nowSec()) {
-    db.delete(deviceTokens).where(eq(deviceTokens.token, token)).run();
+    if (!readOnly) db.delete(deviceTokens).where(eq(deviceTokens.token, token)).run();
     return false;
   }
-  db.update(deviceTokens).set({ lastUsedAt: nowSec() }).where(eq(deviceTokens.token, token)).run();
+  if (!readOnly) db.update(deviceTokens).set({ lastUsedAt: nowSec() }).where(eq(deviceTokens.token, token)).run();
   return true;
 }
 
@@ -129,4 +131,18 @@ export function recordFail(ip: string): void {
 
 export function recordSuccess(ip: string): void {
   attempts.delete(ip);
+}
+
+export type Credential = { kind: "disabled" } | { kind: "session" | "device"; token: string };
+export function credentialValid(credential: Credential, readOnly = false): boolean {
+  if (credential.kind === "disabled") return !authEnabled;
+  return credential.kind === "session" ? sessionValid(credential.token, readOnly) : deviceTokenValid(credential.token, readOnly);
+}
+export function resolveCredential(c: Context): Credential | null {
+  if (!authEnabled) return { kind: "disabled" };
+  const session = getCookie(c, SESSION_COOKIE);
+  if (session && sessionValid(session)) return { kind: "session", token: session };
+  const token = /^Bearer\s+(.+)$/i.exec(c.req.header("authorization") ?? "")?.[1];
+  if (token && deviceTokenValid(token)) return { kind: "device", token };
+  return null;
 }
