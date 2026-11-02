@@ -4,7 +4,7 @@
 
 需要已有支持 Docker Compose 的 NAS 和可访问的镜像仓库。本服务是单用户、单收件箱。普通安装不需要克隆源码、编译或安装 Node。局域网 HTTP 不加密；远程访问应配置 HTTPS 和实际可达的网络路径。
 
-本指南默认使用模板中的正式核心 **1.0.2**。该版本的界面和维护行为与当前主线不同；候选版本需使用其发布包中的固定镜像和配套说明，见下方 [RC 验收路线](#rc-验收路线候选发布后执行)。当前没有可下载的新核心 RC。
+本指南默认使用模板中的正式核心 **1.0.2**。该版本的界面和维护行为与当前主线不同；候选版本需使用其发布包中的固定镜像和配套说明，见下方 [RC 验收路线](#rc-验收路线候选发布后执行)。核心候选 [1.1.0-rc.1](https://github.com/Starfie1d1272/send-to-myself/releases/tag/v1.1.0-rc.1) 已发布，仅供验收。
 
 ## 1. 创建数据目录
 
@@ -150,6 +150,6 @@ scripts/restore.sh --file /实际项目目录/compose.yml --file /实际项目�
 
 ## RC 验收路线（候选发布后执行）
 
-候选发布尚未执行。发布后从对应核心 prerelease 下载 NAS 运维 ZIP，核验其外部 SHA256 及解压后的 `SHA256SUMS`，对照 `VERSION.json` 的版本、源码 SHA、镜像 tag 和 digest；仅在它们与实际推送镜像一致时继续。包内 Compose 的镜像由打包器锁定为该候选版本，按包内 README 设置独立数据目录和口令。不要把 RC 当作 1.0.2 或替换稳定推荐模板。升级已有实例前，按上面的步骤先备份和在隔离路径验证恢复。
+从[核心 1.1.0-rc.1 prerelease](https://github.com/Starfie1d1272/send-to-myself/releases/tag/v1.1.0-rc.1) 下载 NAS 运维 ZIP，核验其外部 SHA256 及解压后的 `SHA256SUMS`，对照 `VERSION.json` 的版本、源码 SHA、镜像 tag 和 digest；仅在它们与实际推送镜像一致时继续。包内 Compose 的镜像由打包器锁定为该候选版本，按包内 README 设置独立数据目录和口令。不要把 RC 当作 1.0.2 或替换稳定推荐模板。升级已有实例前，按上面的步骤先备份和在隔离路径验证恢复。
 
-Mac 使用同批桌面 prerelease 的 Apple Silicon DMG，连接实际可达的候选 NAS 地址；Intel Mac 使用浏览器。打开网页或桌面后检查连接、文字/链接/PNG/PDF 双向收发和保存、断网后草稿与恢复、设置和复制，再核对旧记录和备份恢复。记录核心镜像 digest、源码 SHA、桌面包及 macOS 版本、操作结果；未执行的项保留未验证。Raycast 使用对应提交 CI 构件本地导入，非商店发布；鸿蒙公开 HAP 需自行签名，不能把 Mac 验收当鸿蒙真机验收。具体验收清单和构件状态见 [交付表](RELEASES.md)。
+Mac 使用[同批桌面 prerelease](https://github.com/Starfie1d1272/send-to-myself/releases/tag/desktop-v1.1.0-rc.1) 的 Apple Silicon DMG，连接实际可达的候选 NAS 地址；Intel Mac 使用浏览器。打开网页或桌面后检查连接、文字/链接/PNG/PDF 双向收发和保存、断网后草稿与恢复、设置和复制，再核对旧记录和备份恢复。记录核心镜像 digest、源码 SHA、桌面包及 macOS 版本、操作结果；未执行的项保留未验证。Raycast 非商店发布；最终 CI 构件下载返回 403，可从核心 RC tag 的源码取得 `apps/raycast` 本地导入，或在有权限的环境取得 CI 构件；鸿蒙公开 HAP 需自行签名，不能把 Mac 验收当鸿蒙真机验收。具体验收清单和构件状态见 [交付表](RELEASES.md)。

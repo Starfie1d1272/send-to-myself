@@ -17,7 +17,7 @@
 | HarmonyOS | [1.1.1 RC1 开发预览](https://github.com/Starfie1d1272/send-to-myself/releases/tag/harmony-v1.1.1-rc.1) | 未签名 HAP，需自行签名；完整后台传输尚未真机验收，配套 Web 要求见发布说明 |
 | Android / iPhone / Intel Mac | 浏览器 | 无对应原生安装包 |
 
-当前主线包含公开版本之后的开发实现，不能把源码合并、CI 构建或作者本地预览当作已发布安装包。[交付表](docs/RELEASES.md)记录来源、验证与限制；核心 1.1.0、桌面 1.1.0、鸿蒙 1.2.0 是工作包目标，尚非当前下载。
+当前主线包含公开版本之后的开发实现，不能把源码合并、CI 构建或作者本地预览当作已发布安装包。[交付表](docs/RELEASES.md)记录来源、验证与限制；核心 [1.1.0-rc.1](https://github.com/Starfie1d1272/send-to-myself/releases/tag/v1.1.0-rc.1) 已提供候选供验收，正式核心仍为 1.0.2；[桌面 1.1.0-rc.1](https://github.com/Starfie1d1272/send-to-myself/releases/tag/desktop-v1.1.0-rc.1) 为配套候选，鸿蒙 1.2.0 仍是源码版本。
 
 ## 在 NAS 安装
 
