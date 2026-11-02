@@ -96,7 +96,7 @@ export function createItem(input: CreateItemInput): Item {
   db.insert(items).values(row).run();
   const stored = db.select().from(items).where(eq(items.id, row.id!)).get()!;
   const dto = rowToItem(stored);
-  bus.publish({ type: "item.created", payload: dto });
+  bus.publish({ type: "item.created", payload: { id: dto.id } });
   if (computed.fetchUrls) schedulePreview(dto, computed.fetchUrls);
   return dto;
 }
@@ -138,7 +138,7 @@ export async function createItemWithFiles(
     await attachmentSvc.discardPrepared(prepared);
     return dto;
   }
-  bus.publish({ type: "item.created", payload: dto });
+  bus.publish({ type: "item.created", payload: { id: dto.id } });
   if (computed.fetchUrls) schedulePreview(dto, computed.fetchUrls);
   return dto;
 }
@@ -151,7 +151,7 @@ export async function refetchPreview(id: string): Promise<Item | null> {
   const first = urls[0];
   if (!first) return rowToItem(row, attachmentSvc.listByItem(id));
   const updated = await fetchPreviewInto(id, first, row.content);
-  if (updated) bus.publish({ type: "item.updated", payload: updated });
+  if (updated) bus.publish({ type: "item.updated", payload: { id: updated.id } });
   return updated;
 }
 
@@ -168,7 +168,7 @@ function schedulePreview(item: Item, urls: string[], attempt = 0): void {
     if (!current || current.deletedAt !== null || current.content !== item.content || detectUrls(current.content)[0] !== first) return;
     return fetchPreviewInto(item.id, first, item.content).then((updated) => {
       if (!updated) return;
-      bus.publish({ type: "item.updated", payload: updated });
+      bus.publish({ type: "item.updated", payload: { id: updated.id } });
       const status = updated.meta?.preview?.status;
       if (status === "error" && attempt < 1) {
         setTimeout(() => schedulePreview(item, urls, attempt + 1), 4000);
@@ -279,7 +279,7 @@ export function updateItem(id: string, patch: UpdateItemInput): Item | null {
   const dto = rowToItem(row, atts);
   if (urls) schedulePreview(dto, urls);
 
-  bus.publish({ type: "item.updated", payload: dto });
+  bus.publish({ type: "item.updated", payload: { id: dto.id } });
   return dto;
 }
 
@@ -299,6 +299,6 @@ export function restoreItem(id: string): Item | null {
   db.update(items).set({ deletedAt: null, updatedAt: nowSec() }).where(eq(items.id, id)).run();
   const row = db.select().from(items).where(eq(items.id, id)).get()!;
   const dto = rowToItem(row, attachmentSvc.listByItem(id));
-  bus.publish({ type: "item.updated", payload: dto });
+  bus.publish({ type: "item.updated", payload: { id: dto.id } });
   return dto;
 }

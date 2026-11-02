@@ -1,28 +1,21 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { clearDraft } from "../lib/draft";
+import { createContext, useContext } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
 
 export function useAuth() {
-  return useQuery({
-    queryKey: ["auth", "me"],
-    queryFn: () => api.me(),
-    staleTime: 30_000,
-    retry: false,
-  });
+  return useQuery({ queryKey: ["auth", "me"], queryFn: api.me, staleTime: 30_000, retry: false });
 }
-
-export function useAuthActions() {
-  const qc = useQueryClient();
-  const refresh = () => qc.invalidateQueries({ queryKey: ["auth", "me"] });
-  return {
-    login: useMutation({ mutationFn: (pw: string) => api.login(pw), onSuccess: refresh }),
-    logout: useMutation({
-      mutationFn: () => api.logout(),
-      onSuccess: async () => {
-        await clearDraft().catch(() => {});
-        qc.clear();
-        void refresh();
-      },
-    }),
-  };
+export interface AuthAccess {
+  authenticated: boolean;
+  reauthRequired: boolean;
+  exiting: boolean;
+  logout: () => void;
+  logoutPending: boolean;
+  logoutError: string;
+}
+export const AuthAccessContext = createContext<AuthAccess | null>(null);
+export function useAuthAccess(): AuthAccess {
+  const access = useContext(AuthAccessContext);
+  if (!access) throw new Error("AuthGate missing");
+  return access;
 }

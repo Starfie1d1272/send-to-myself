@@ -1,4 +1,4 @@
-import type { CreateItemInput, Item, UpdateItemInput, ItemPage, TimelineFilter } from "@sendtomyself/shared";
+import type { CreateItemInput, Item, UpdateItemInput, ItemPage, TimelineFilter, ServerInfo } from "@sendtomyself/shared";
 
 export type ListResult = ItemPage;
 export type ListParams = TimelineFilter;
@@ -11,6 +11,18 @@ export class ApiError extends Error {
 
 /** 所有请求都带 cookie（session）。 */
 const opts = (init?: RequestInit): RequestInit => ({ credentials: "include", ...init });
+
+let businessController = new AbortController();
+let businessFrozen = false;
+export function freezeBusiness(frozen: boolean) {
+  businessFrozen = frozen;
+  if (frozen) businessController.abort();
+  else if (businessController.signal.aborted) businessController = new AbortController();
+}
+const businessOpts = (init?: RequestInit): RequestInit => {
+  if (businessFrozen) throw new Error("Business requests are paused");
+  return opts({ ...init, signal: businessController.signal });
+};
 
 async function handle(r: Response) {
   if (!r.ok) {
@@ -26,6 +38,7 @@ export interface AuthState {
 }
 
 export const api = {
+  info(): Promise<ServerInfo> { return fetch("/api/info", businessOpts()).then(handle); },
   // —— 认证 ——
   me(): Promise<AuthState> {
     return fetch("/api/auth/me", opts()).then(handle);
@@ -45,13 +58,13 @@ export const api = {
   },
 
   devices(): Promise<{ devices: Array<{ name: string; tail: string; createdAt: number; lastUsedAt: number | null }> }> {
-    return fetch("/api/auth/devices", opts()).then(handle);
+    return fetch("/api/auth/devices", businessOpts()).then(handle);
   },
   createDevice(name: string): Promise<{ token: string; name: string; createdAt: number }> {
-    return fetch("/api/auth/devices", opts({ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name }) })).then(handle);
+    return fetch("/api/auth/devices", businessOpts({ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name }) })).then(handle);
   },
   revokeDevice(tail: string): Promise<null> {
-    return fetch(`/api/auth/devices/${encodeURIComponent(tail)}`, opts({ method: "DELETE" })).then(handle);
+    return fetch(`/api/auth/devices/${encodeURIComponent(tail)}`, businessOpts({ method: "DELETE" })).then(handle);
   },
 
   // —— 时间线 ——
@@ -60,12 +73,12 @@ export const api = {
     for (const [k, v] of Object.entries(p)) {
       if (v !== undefined && v !== "") q.set(k, String(v));
     }
-    return fetch(`/api/items?${q.toString()}`, opts()).then(handle);
+    return fetch(`/api/items?${q.toString()}`, businessOpts()).then(handle);
   },
   create(input: CreateItemInput): Promise<Item> {
     return fetch(
       "/api/items",
-      opts({
+      businessOpts({
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(input),
@@ -78,12 +91,12 @@ export const api = {
     fd.set("content", content);
     if (dedupeKey) fd.set("dedupeKey", dedupeKey);
     for (const f of files) fd.append("files", f);
-    return fetch("/api/items/upload", opts({ method: "POST", body: fd })).then(handle);
+    return fetch("/api/items/upload", businessOpts({ method: "POST", body: fd })).then(handle);
   },
   update(id: string, patch: UpdateItemInput): Promise<Item> {
     return fetch(
       `/api/items/${id}`,
-      opts({
+      businessOpts({
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(patch),
@@ -91,13 +104,13 @@ export const api = {
     ).then(handle);
   },
   remove(id: string): Promise<null> {
-    return fetch(`/api/items/${id}`, opts({ method: "DELETE" })).then(handle);
+    return fetch(`/api/items/${id}`, businessOpts({ method: "DELETE" })).then(handle);
   },
   restore(id: string): Promise<Item> {
-    return fetch(`/api/items/${id}/restore`, opts({ method: "POST" })).then(handle);
+    return fetch(`/api/items/${id}/restore`, businessOpts({ method: "POST" })).then(handle);
   },
   refetchPreview(id: string): Promise<Item> {
-    return fetch(`/api/items/${id}/refetch-preview`, opts({ method: "POST" })).then(handle);
+    return fetch(`/api/items/${id}/refetch-preview`, businessOpts({ method: "POST" })).then(handle);
   },
 };
 

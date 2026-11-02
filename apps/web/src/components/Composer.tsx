@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { loadDraft, saveDraft, newDedupeKey, type ComposerDraft } from "../lib/draft";
+import { loadDraft, saveDraft, draftGeneration, newDedupeKey, type ComposerDraft } from "../lib/draft";
 import { useItemMutations } from "../hooks/useItems";
 import { formatSize } from "../lib/format";
 import { IconFile, IconImage, IconPaperclip, IconX } from "./icons";
@@ -96,13 +96,15 @@ export function Composer() {
     const content = value.trim();
     if (pending || !ready) return;
     const dedupeKey = draftRef.current.dedupeKey;
+    const generation = draftGeneration();
+    const onSuccess = () => { if (generation === draftGeneration()) reset(); };
     setSaveError("");
     const onError = () => setSaveError("发送失败，内容已保留，请重试。");
     if (files.length === 0) {
       if (!content) return;
-      create.mutate({ content, dedupeKey }, { onSuccess: reset, onError });
+      create.mutate({ content, dedupeKey }, { onSuccess, onError });
     } else {
-      upload.mutate({ content, files: files.map((f) => f.file), dedupeKey }, { onSuccess: reset, onError });
+      upload.mutate({ content, files: files.map((f) => f.file), dedupeKey }, { onSuccess, onError });
     }
   };
 

@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { getConnInfo } from "@hono/node-server/conninfo";
 import type { Context } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
@@ -9,7 +10,7 @@ import {
   createDeviceToken,
   createSession,
   destroySession,
-  deviceTokenValid,
+  resolveCredential,
   isLocked,
   listDeviceTokens,
   recordFail,
@@ -20,18 +21,11 @@ import {
   verifyPassword,
 } from "../lib/auth.js";
 
-/** 从 Authorization: Bearer 取设备令牌（原生壳认证）。 */
-function bearerToken(c: Context): string | undefined {
-  return /^Bearer\s+(.+)$/i.exec(c.req.header("authorization") ?? "")?.[1];
-}
-
 const loginInput = z.object({ password: z.string().min(1) });
 const deviceInput = z.object({ name: z.string().min(1).max(40) });
 
 function clientIp(c: Context): string {
-  const xff = c.req.header("x-forwarded-for");
-  if (xff) return xff.split(",")[0]?.trim() ?? "local";
-  return c.req.header("x-real-ip") ?? "local";
+  try { return getConnInfo(c).remote.address ?? "unknown"; } catch { return "unknown"; }
 }
 
 function setSessionCookie(c: Context, token: string, maxAgeSec: number): void {
@@ -48,11 +42,7 @@ export const authRoute = new Hono();
 
 /** 是否需要登录 + 当前是否已登录。 */
 authRoute.get("/me", (c) => {
-  // 同时认 session cookie 与 Bearer 设备令牌，否则原生壳无法确认登录态。
-  const authed =
-    !authEnabled ||
-    sessionValid(getCookie(c, SESSION_COOKIE)) ||
-    deviceTokenValid(bearerToken(c));
+  const authed = !!resolveCredential(c);
   return c.json({ authEnabled, authenticated: authed });
 });
 

@@ -3,17 +3,21 @@ import { useQueryClient } from "@tanstack/react-query";
 import { timelineParams } from "../lib/timeline";
 import { useItems } from "../hooks/useItems";
 import { useRealtime } from "../lib/realtime";
-import { DeviceAccess } from "../components/DeviceAccess";
+import { AccessTokens } from "../components/AccessTokens";
+import { ConnectDevices } from "../components/ConnectDevices";
+import { ServerInfo } from "../components/ServerInfo";
+import { AppMenu } from "../components/AppMenu";
+import { getNativeBridge } from "../lib/nativeBridge";
 import { Composer } from "../components/Composer";
 import { FilterBar, type FilterKey } from "../components/FilterBar";
 import { Timeline } from "../components/Timeline";
-import { IconLogout } from "../components/icons";
-import { useAuth, useAuthActions } from "../hooks/useAuth";
+import { useAuth, useAuthAccess } from "../hooks/useAuth";
 
 export function TimelinePage() {
   const [toolsError, setToolsError] = useState("");
-  const native = (window as Window & { stmNative?: { openTools?: () => Promise<string> } }).stmNative;
-  const [devicesOpen, setDevicesOpen] = useState(false);
+  const native = getNativeBridge();
+  const access = useAuthAccess();
+  const [dialog, setDialog] = useState<"connect" | "tokens" | "info" | null>(null);
   const [filter, setFilter] = useState<FilterKey>("all");
   const [query, setQuery] = useState("");
   const params = timelineParams(filter, query);
@@ -23,10 +27,10 @@ export function TimelinePage() {
   const refresh = useCallback(() => {
     void qc.invalidateQueries({ queryKey: ["items"] });
   }, [qc]);
-  useRealtime(refresh);
+  const realtime = useRealtime(refresh, access.authenticated && !access.reauthRequired && !access.exiting);
 
   const { data: auth } = useAuth();
-  const { logout } = useAuthActions();
+
 
   const items = data?.pages.flatMap((page) => page.items) ?? [];
 
@@ -44,28 +48,18 @@ export function TimelinePage() {
           </div>
           <div className="masthead__right">
             <span className="masthead__date">{dateStr}</span>
-            <button className="masthead__devices" onClick={() => setDevicesOpen(true)}>设备接入</button>
-            {typeof native?.openTools === "function" && (
-              <button className="icon-btn" aria-label="文件与传输" title="文件与传输"
-                onClick={() => { setToolsError(""); void native.openTools!().catch(() => setToolsError("暂时无法打开传输菜单，请重试")); }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                  <circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" />
-                </svg>
-              </button>
-            )}
-            {auth?.authEnabled && (
-              <button
-                className="icon-btn"
-                title="退出登录"
-                onClick={() => logout.mutate()}
-              >
-                <IconLogout width={17} height={17} />
-              </button>
-            )}
+            <AppMenu onOpenConnect={() => setDialog("connect")} onOpenTokens={() => setDialog("tokens")}
+              onOpenServerInfo={() => setDialog("info")} onOpenTrash={() => setFilter("trash")}
+              onOpenTransfers={typeof native?.openTools === "function" ? () => { setToolsError(""); void native.openTools!().catch(() => setToolsError("暂时无法打开传输菜单，请重试")); } : undefined}
+              onLogout={auth?.authEnabled ? access.logout : undefined} logoutPending={access.logoutPending} />
           </div>
         </header>
 
-        {devicesOpen && <DeviceAccess onClose={() => setDevicesOpen(false)} />}
+        {!access.reauthRequired && !access.exiting && dialog === "connect" && <ConnectDevices onClose={() => setDialog(null)} />}
+        {!access.reauthRequired && !access.exiting && dialog === "tokens" && <AccessTokens onClose={() => setDialog(null)} />}
+        {!access.reauthRequired && !access.exiting && dialog === "info" && <ServerInfo status={realtime.status} onClose={() => setDialog(null)} />}
+        {access.logoutError && <p role="alert">{access.logoutError}</p>}
+        {realtime.status !== "connected" && <p role="status">{realtime.status === "connecting" ? "正在连接" : "实时连接中断，正在重连"} {realtime.status === "reconnecting" && <button onClick={() => void realtime.retry()}>重试</button>} {realtime.retryError}</p>}
         {toolsError && <p role="alert">{toolsError}</p>}
         <Composer />
         <FilterBar active={filter} onChange={setFilter} query={query} onQuery={setQuery} />

@@ -5,8 +5,8 @@
  */
 
 export type RealtimeEvent =
-  | { type: "item.created"; payload: unknown }
-  | { type: "item.updated"; payload: unknown }
+  | { type: "item.created"; payload: { id: string } }
+  | { type: "item.updated"; payload: { id: string } }
   | { type: "item.deleted"; payload: { id: string } };
 
 type Handler = (e: RealtimeEvent) => void;
