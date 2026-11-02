@@ -1254,3 +1254,21 @@ body { line-height: 1.6; }
 
 .app-menu__trigger { width: 44px; height: 44px; }
 .att__image-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+
+/* Preserve the selected chip contrast while pointing or tapping. */
+.chip--on:hover, .chip--on:focus-visible, .chip--on:active { background: var(--ink); border-color: var(--ink); color: var(--card-hi); }
+.detail-list { list-style: none; padding: 0; margin: 20px 0 0; border-top: 1px solid var(--line); }
+.device-dialog .detail-list li { gap: 12px; align-items: flex-start; margin: 0; padding: 14px 0; border-bottom: 1px solid var(--line); }
+.detail-list__body { display: grid; gap: 4px; min-width: 0; }
+.detail-list__body strong { overflow-wrap: anywhere; }
+.detail-list__body span { color: var(--ink-soft); font-size: 13px; }
+.info-list { margin: 20px 0 0; }
+.info-list > div { display: grid; gap: 4px; padding: 12px 0; border-top: 1px solid var(--line); }
+.info-list dt { color: var(--ink-soft); font-size: 13px; }
+.info-list dd { margin: 0; overflow-wrap: anywhere; }
+.client-list { margin-top: 20px; border-top: 1px solid var(--line); }
+.client-list > div { padding: 12px 0; border-bottom: 1px solid var(--line); }
+.client-list a { float: right; margin-left: 12px; }
+.device-dialog .client-list p { margin: 5px 0 0; color: var(--ink-soft); font-size: 13px; }
+
+.device-dialog .detail-list li > button { flex: none; white-space: nowrap; }

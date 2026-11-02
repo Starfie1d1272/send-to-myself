@@ -1,4 +1,4 @@
-import { PAPER, CARD, CARD_HI, INK, INK_SOFT, ACCENT, ERROR, CARD_RADIUS } from '../common/Theme';
+import { PAPER, CARD, CARD_HI, INK, INK_SOFT, ERROR, CARD_RADIUS } from '../common/Theme';
 import { common } from '@kit.AbilityKit';
 import { readConnection } from '../common/ConnectionSession';
 import { promptAction } from '@kit.ArkUI';
@@ -98,25 +98,27 @@ struct TransfersPage {
         Button('刷新').backgroundColor(CARD_HI).fontColor(INK).enabled(!this.loading).onClick(() => { this.error = ''; this.refresh(); })
       }.width('100%').padding(12)
       if (this.error) { Text(this.error).fontColor(ERROR).padding(12).width('100%') }
-      Button('重新登录当前连接').backgroundColor(ACCENT).fontColor(CARD_HI).enabled(!this.busyKey).onClick(() => {
+      Row({ space: 8 }) {
+      Button('重新登录').backgroundColor(CARD_HI).fontColor(INK).fontSize(14).enabled(!this.busyKey).onClick(() => {
         this.getUIContext().getRouter().back();
         setTimeout(() => { requestHostReauthentication().catch(() => {
           promptAction.showToast({ message: '无法打开重新登录，请在首页重试' });
         }); }, 0);
       })
-      Button('连接设置').backgroundColor(CARD_HI).fontColor(INK).enabled(!this.busyKey).onClick(() => {
+      Button('连接设置').backgroundColor(CARD_HI).fontColor(INK).fontSize(14).enabled(!this.busyKey).onClick(() => {
         this.getUIContext().getRouter().back();
         setTimeout(() => { requestHostConnectionSettings().catch(() => {
           promptAction.showToast({ message: '无法打开连接设置，请在首页重试' });
         }); }, 0);
       })
+      }.width('100%').padding({ left: 16, right: 16, bottom: 8 })
       Scroll() {
         Column({ space: 12 }) {
-          Text('待发送 · ' + this.queue.length.toString()).fontColor(INK).fontSize(18).width('100%')
+          Text('待发送 · ' + this.queue.length.toString()).fontColor(INK).fontSize(18).fontWeight(FontWeight.Medium).width('100%')
           if (this.queue.length === 0) { Text('没有待发送内容').fontColor(INK_SOFT).padding(16) }
           ForEach(this.queue, (item: QueueRow) => {
             Column({ space: 10 }) {
-              Text(item.content || '附件').fontColor(INK).fontSize(16).width('100%')
+              Text(item.content || '附件').fontColor(INK).fontSize(16).fontWeight(FontWeight.Medium).width('100%')
                 .maxLines(this.expandedKey === item.key ? 10000 : 3).textOverflow({ overflow: TextOverflow.Ellipsis })
               if (item.files) { Text(item.files).fontColor(INK).fontSize(14).width('100%') }
               Text(item.status).fontColor(INK).fontSize(13).fontColor(INK_SOFT).width('100%')
@@ -133,15 +135,16 @@ struct TransfersPage {
                   Button(item.paused ? '继续' : '重试').backgroundColor(CARD_HI).fontColor(INK).margin(4).enabled(!this.busyKey)
                     .onClick(() => { this.perform(item.key, () => retryQueueItem(this.context, item.key)); })
                 }
-                Button('删除').margin(4).backgroundColor(ERROR).fontColor(CARD_HI).enabled(!this.busyKey).onClick(() => { this.confirmRemove(item.key, false); })
+                Button('删除').margin(4).backgroundColor(CARD_HI).fontColor(ERROR).enabled(!this.busyKey).onClick(() => { this.confirmRemove(item.key, false); })
               }
             }.padding(16).width('100%').backgroundColor(CARD).borderRadius(CARD_RADIUS)
           }, (item: QueueRow) => item.key)
-          Text('下载到本机 · ' + this.downloads.length.toString()).fontColor(INK).fontSize(18).width('100%').margin({ top: 12 })
+          Text('下载到本机 · ' + this.downloads.length.toString()).fontColor(INK).fontSize(18).fontWeight(FontWeight.Medium).width('100%').margin({ top: 12 })
           Text('传输可在后台继续。下载完成后可分享或保存，移除可释放本机空间。').fontColor(INK).fontSize(13).fontColor(INK_SOFT).width('100%')
+          if (this.downloads.length === 0) { Text('暂无本机下载').fontColor(INK_SOFT).fontSize(14).width('100%').padding(16) }
           ForEach(this.downloads, (item: DownloadRow) => {
             Column({ space: 10 }) {
-              Text(item.filename).fontColor(INK).fontSize(16).width('100%')
+              Text(item.filename).fontColor(INK).fontSize(16).fontWeight(FontWeight.Medium).width('100%')
               Text(item.status).fontColor(INK).fontSize(13).fontColor(INK_SOFT).width('100%')
               Flex({ wrap: FlexWrap.Wrap }) {
                 if (item.ready) {

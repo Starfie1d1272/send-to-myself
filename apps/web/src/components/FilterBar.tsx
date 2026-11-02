@@ -8,8 +8,8 @@ export function FilterBar({ state, onChange }: { state: TimelineViewState; onCha
   const filtered = state.contentType !== "all" || state.category !== "all" || state.sensitiveOnly;
   return <div className="filterbar">
     <div className="chips chips--filter">
-      {([['all','全部'],['todo','待办'],['favorites','收藏']] as const).map(([key,label]) => <button key={key} className={`chip${state.view === key ? ' chip--on' : ''}`} onClick={() => set(state.view === 'trash' ? { view: key, query: '', contentType: 'all', category: 'all', sensitiveOnly: false } : { view: key })}>{label}</button>)}
-      {state.view === 'trash' && <span>回收站</span>}
+      {([['all','全部'],['todo','待办'],['favorites','收藏']] as const).map(([key,label]) => <button key={key} className={`chip${state.view === key ? ' chip--on' : ''}`} aria-pressed={state.view === key} onClick={() => set(state.view === 'trash' ? { view: key, query: '', contentType: 'all', category: 'all', sensitiveOnly: false } : { view: key })}>{label}</button>)}
+      {state.view === 'trash' && <button className="chip chip--on" aria-pressed="true">回收站</button>}
     </div>
     {state.view === 'todo' && <div className="chips">{([['open','未完成'],['next7days','未来7天'],['completed','已完成']] as const).map(([key,label]) => <button key={key} className={`chip${state.todoScope === key ? ' chip--on' : ''}`} onClick={() => set({todoScope:key})}>{label}</button>)}</div>}
     <div className="filterbar__search"><label className="search"><IconSearch width={16} height={16}/><input placeholder="搜索正文、链接、文件名…" value={state.query} onChange={e => set({query:e.target.value})}/></label>
