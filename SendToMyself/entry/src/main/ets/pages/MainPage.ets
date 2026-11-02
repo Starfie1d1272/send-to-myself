@@ -1,5 +1,6 @@
 import { webview } from '@kit.ArkWeb';
-import { readConnection, requireConnection, clearTokenIfCurrent, normalizeOrigin, AuthenticatedConnection, ConnectionSession } from '../common/ConnectionSession';
+import { url } from '@kit.ArkTS';
+import { readConnection, requireConnection, clearTokenIfCurrent, normalizeOrigin, AuthenticatedConnection, ConnectionSession, assertCurrentConnection, authenticatedSnapshot } from '../common/ConnectionSession';
 import { checkTokenValid, loginAndMintToken, logoutCurrentConnection } from '../common/AuthService';
 import { startNetMonitor, stopNetMonitor } from '../common/NetMonitor';
 import { processQueue, queueStatus } from '../common/QueueService';
@@ -45,20 +46,20 @@ struct MainPage {
   private pageRevision: number = Date.now();
   private useFreshEntry: boolean = false;
   private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
-  private nativeBridge: NativeBridge = new NativeBridge(this.context, this.controller, async (id: string, action: string) => {
-    await this.getUIContext().getRouter().pushUrl({ url: 'pages/TransfersPage', params: { downloadId: id, action: action } });
+  private nativeBridge: NativeBridge = new NativeBridge(this.context, this.controller, async (id: string, action: string, source: ConnectionSession) => {
+    await this.getUIContext().getRouter().pushUrl({ url: 'pages/TransfersPage', params: { downloadId: id, action: action, sourceOrigin: source.origin, sourceRevision: source.revision } });
   }, () => {
     this.getUIContext().getRouter().pushUrl({ url: 'pages/TransfersPage' });
-  }, () => this.beginReauthenticate(), () => this.logoutConnection(), async () => {
+  }, (source: ConnectionSession) => this.beginReauthenticate(source), (source: ConnectionSession) => this.logoutConnection(source), async () => {
     await this.getUIContext().getRouter().pushUrl({ url: 'pages/UploadPage' });
   });
 
-  private async beginReauthenticate(): Promise<string> {
+  private async beginReauthenticate(source?: ConnectionSession): Promise<string> {
     if (this.busy) throw new Error('AUTH_BUSY');
     this.busy = true;
     try {
       const current = await readConnection(this.context);
-      if (!current || current.origin !== this.activeOrigin) throw new Error('CONNECTION_CHANGED');
+      if (!current || current.origin !== this.activeOrigin || (source && (source.origin !== current.origin || source.revision !== current.revision))) throw new Error('CONNECTION_CHANGED');
       this.authOrigin = current.origin; this.authRevision = current.revision;
       this.password = ''; this.errorMsg = ''; this.authOverlay = true;
       return await new Promise<string>((resolve, reject) => { this.authResolve = resolve; this.authReject = reject; });
@@ -81,7 +82,7 @@ struct MainPage {
       const current = await readConnection(this.context);
       if (!current || current.origin !== origin || current.revision !== revision) throw new Error('CONNECTION_CHANGED');
       let snapshot: AuthenticatedConnection | undefined;
-      if (current.deviceToken) snapshot = await requireConnection(this.context);
+      if (current.deviceToken) snapshot = authenticatedSnapshot(current);
       const result = await loginAndMintToken(this.context, origin, password, '鸿蒙手机', snapshot, revision);
       if (!result.success || !result.connection || !result.webSetCookie) throw new Error(result.errorMessage === 'Network error' ? 'NETWORK_UNAVAILABLE' : 'AUTH_FAILED');
       const after = await readConnection(this.context);
@@ -96,14 +97,14 @@ struct MainPage {
       if (reject) { const code = (error as Error).message; reject(new Error(['CONNECTION_CHANGED', 'NETWORK_UNAVAILABLE', 'LOCAL_STORAGE_FAILED'].includes(code) ? code : 'AUTH_FAILED')); }
     }
   }
-  private async logoutConnection(): Promise<string> {
+  private async logoutConnection(source?: ConnectionSession): Promise<string> {
     if (this.busy) throw new Error('AUTH_BUSY');
     this.busy = true;
     try {
       const result = await logoutCurrentConnection(this.context, this.activeOrigin, (origin: string) => {
         this.hasToken = false; this.signedOut = true;
         this.controller.runJavaScript('window.dispatchEvent(new CustomEvent("send-to-myself:host-logout",{detail:' + JSON.stringify({ serverOrigin: origin }) + '}))').catch(() => {});
-      });
+      }, source?.revision);
       this.logoutNotice = '已退出当前连接，待发送内容和本机文件已保留。服务端设备令牌未自动撤销。';
       if (result.transferStop === 'unconfirmed') this.logoutNotice += ' 部分在途传输尚未确认停止，请在传输任务中查看。';
       if (!result.cookieCleared) this.logoutNotice += ' 网页会话清理未完成，请重试清理。';
@@ -281,11 +282,13 @@ struct MainPage {
               .onContextMenuShow((event) => {
                 if (!event || event.param.getMediaType() !== ContextMenuMediaType.Image) return false;
                 const source = event.param.getSourceUrl();
+                const pageOrigin = this.activeOrigin;
                 const prefix = this.activeOrigin.replace(/\/$/, '') + '/api/attachments/';
                 if (!source.startsWith(prefix)) return false;
                 const originalImage = /\/raw(\?.*)?$/.test(source);
                 const match = source.substring(prefix.length).match(/^([a-zA-Z0-9_-]{1,128})\/(?:raw|thumb)(?:\?.*)?$/);
                 if (!match) return false;
+                const sourceConnection = readConnection(this.context).catch((): ConnectionSession | null => null);
                 const actions: SheetInfo[] = [];
                 if (originalImage) {
                   actions.push({ title: '复制图片', action: () => {
@@ -295,8 +298,13 @@ struct MainPage {
                 }
                 actions.push({ title: '保存原图', action: () => {
                   event.result.closeContextMenu();
-                  requestAttachmentAction(this.context, match[1], 'save').then((id: string) => {
-                    this.getUIContext().getRouter().pushUrl({ url: 'pages/TransfersPage', params: { downloadId: id, action: 'save' } });
+                  sourceConnection.then(async (connection: ConnectionSession | null) => {
+                    if (!connection || connection.origin !== pageOrigin || this.activeOrigin !== pageOrigin ||
+                      new url.URL(this.controller.getUrl()).origin !== pageOrigin || AppStorage.get<boolean>('appForeground') === false) throw new Error('CONNECTION_CHANGED');
+                    const id = await requestAttachmentAction(this.context, match[1], 'save', connection);
+                    await assertCurrentConnection(this.context, connection);
+                    if (this.activeOrigin !== pageOrigin || new url.URL(this.controller.getUrl()).origin !== pageOrigin || AppStorage.get<boolean>('appForeground') === false) throw new Error('CONNECTION_CHANGED');
+                    await this.getUIContext().getRouter().pushUrl({ url: 'pages/TransfersPage', params: { downloadId: id, action: 'save', sourceOrigin: connection.origin, sourceRevision: connection.revision } });
                   }).catch(() => { promptAction.showToast({ message: '无法准备附件，请检查连接或升级核心' }); });
                 } });
                 this.getUIContext().showActionSheet({
@@ -369,22 +377,23 @@ struct MainPage {
         Column({ space: 12 }) {
           Text('重新登录当前连接').fontSize(20).fontColor(C_INK)
           TextInput({ placeholder: '登录口令' }).type(InputType.Password).backgroundColor(CARD_HI).fontColor(C_INK).placeholderColor(C_INK_SOFT).enabled(!this.authSubmitting).onChange((value: string) => { this.password = value; })
-          Button('重新登录').enabled(!this.authSubmitting).onClick(() => { this.submitReauthenticate(); })
-          Button('取消').enabled(!this.authSubmitting).onClick(() => { this.cancelReauthenticate(); })
+          Button('重新登录').backgroundColor(C_ACCENT).fontColor(CARD_HI).enabled(!this.authSubmitting).onClick(() => { this.submitReauthenticate(); })
+          Button('取消').backgroundColor(CARD_HI).fontColor(C_INK).enabled(!this.authSubmitting).onClick(() => { this.cancelReauthenticate(); })
         }.padding(24).backgroundColor(C_CARD).width('90%')
       }
       if (this.signedOut) {
         Column({ space: 12 }) {
           Text(this.logoutNotice || '正在退出当前连接…').fontColor(C_INK)
-          Button('返回连接').onClick(() => { this.signedOut = false; this.phase = 'login'; })
+          Button('传输任务').backgroundColor(C_ACCENT).fontColor(CARD_HI).onClick(() => { this.getUIContext().getRouter().pushUrl({ url: 'pages/TransfersPage' }); })
+          Button('返回连接').backgroundColor(CARD_HI).fontColor(C_INK).onClick(() => { this.signedOut = false; this.phase = 'login'; })
         }.padding(24).backgroundColor(C_CARD).width('100%').height('100%').justifyContent(FlexAlign.Center)
       }
       if (this.pendingCount > 0 && this.phase === 'web' && !this.signedOut) {
         Column() {
           Text(this.queueError || '待发送内容已保存在本机')
-            .fontSize(12).fontColor(C_RED)
+            .fontSize(12).fontColor(this.queueError ? C_RED : C_INK_SOFT)
           Button(this.queueBusy ? '补发中…' : '待发送 ' + this.pendingCount.toString() + ' 条 · 查看')
-            .enabled(!this.queueBusy)
+            .backgroundColor(CARD_HI).fontColor(C_INK).enabled(!this.queueBusy)
             .onClick(() => { this.getUIContext().getRouter().pushUrl({ url: 'pages/TransfersPage' }); })
         }
         .padding(12).backgroundColor(C_CARD).borderRadius(10)
@@ -489,9 +498,11 @@ struct MainPage {
             this.doLogin();
           })
 
+        Button('传输任务').backgroundColor(CARD_HI).fontColor(C_INK).width('100%').margin({ top: 12 }).onClick(() => { this.getUIContext().getRouter().pushUrl({ url: 'pages/TransfersPage' }); })
+
         if (this.hasToken) {
           if (this.webCookieBlocked) {
-            Button('恢复网页会话').enabled(!this.busy).onClick(() => {
+            Button('恢复网页会话').backgroundColor(CARD_HI).fontColor(C_INK).enabled(!this.busy).onClick(() => {
               this.beginReauthenticate().then((value: string) => {
                 if (value.includes('authenticated')) { this.webCookieBlocked = false; this.phase = 'web'; }
               }).catch(() => { this.errorMsg = '网页会话恢复失败，请重试'; });

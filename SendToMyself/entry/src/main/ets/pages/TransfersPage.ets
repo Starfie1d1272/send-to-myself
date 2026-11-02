@@ -1,12 +1,13 @@
-import { PAPER, CARD, CARD_HI, INK, INK_SOFT, ERROR, CARD_RADIUS } from '../common/Theme';
+import { PAPER, CARD, CARD_HI, INK, INK_SOFT, ACCENT, ERROR, CARD_RADIUS } from '../common/Theme';
 import { common } from '@kit.AbilityKit';
+import { readConnection } from '../common/ConnectionSession';
 import { promptAction } from '@kit.ArkUI';
 import { requestHostReauthentication } from '../common/HostReauthentication';
 import { QueueRow, listQueue, processQueue, reconcileQueue, retryQueueItem, removeQueueItem, pauseQueueItem } from '../common/QueueService';
 import { DownloadRow, listDownloads, refreshDownloads, retryDownload, removeDownload,
   shareDownload, saveDownload } from '../common/NativeDownloads';
 
-export interface TransferPageParams { downloadId?: string; action?: string }
+export interface TransferPageParams { downloadId?: string; action?: string; sourceOrigin?: string; sourceRevision?: string }
 
 @Entry
 @Component
@@ -42,23 +43,33 @@ struct TransfersPage {
     if (this.loading || !this.visible || AppStorage.get<boolean>('appForeground') === false) return;
     this.loading = true;
     try {
-      await reconcileQueue(this.context);
-      await refreshDownloads(this.context);
-      const rows = await listQueue(this.context);
-      const downloads = await listDownloads(this.context);
+      // Render stored records before any system task reconciliation can block on the OS.
+      try { this.queue = await listQueue(this.context, false); } catch (_error) { this.error = '无法读取待发送内容'; }
+      try { this.downloads = await listDownloads(this.context, false); } catch (_error) { this.error = '无法读取本机下载'; }
+      await this.presentAutoOpen();
+      try { await reconcileQueue(this.context); } catch (_error) { this.error = '部分待发送状态无法确认，内容已保留'; }
+      try { await refreshDownloads(this.context); } catch (_error) { this.error = '部分传输状态无法确认，本机内容已保留'; }
+      try { this.queue = await listQueue(this.context); } catch (_error) { this.error = '无法读取待发送内容'; }
+      try { this.downloads = await listDownloads(this.context); } catch (_error) { this.error = '无法读取本机下载'; }
       if (!this.visible) return;
-      this.queue = rows;
-      this.downloads = downloads;
-      if (this.autoOpen.downloadId && downloads.some((item: DownloadRow) => item.id === this.autoOpen.downloadId && item.ready)) {
-        const id = this.autoOpen.downloadId;
-        const action = this.autoOpen.action;
-        this.autoOpen = {};
-        if (AppStorage.get<boolean>('appForeground') !== false) {
-          await this.perform(id, () => action === 'save' ? saveDownload(this.context, id) : shareDownload(this.context, id));
-        }
-      }
+      await this.presentAutoOpen();
     } catch (_error) { if (this.visible) this.error = '暂时无法读取传输记录，请稍后刷新'; }
     finally { this.loading = false; }
+  }
+  private async presentAutoOpen(): Promise<void> {
+    if (!this.visible || !this.autoOpen.downloadId || AppStorage.get<boolean>('appForeground') === false ||
+      !this.downloads.some((item: DownloadRow) => item.id === this.autoOpen.downloadId && item.ready)) return;
+    const id = this.autoOpen.downloadId;
+    const action = this.autoOpen.action;
+    const sourceOrigin = this.autoOpen.sourceOrigin;
+    const sourceRevision = this.autoOpen.sourceRevision;
+    this.autoOpen = {};
+    await this.perform(id, async () => {
+      const source = await readConnection(this.context);
+      if (!source || !sourceOrigin || !sourceRevision || source.origin !== sourceOrigin || source.revision !== sourceRevision) throw new Error('连接已改变，请重新操作');
+      if (action === 'save') await saveDownload(this.context, id, source);
+      else if (action === 'share') await shareDownload(this.context, id, source);
+    });
   }
   private async perform(key: string, action: () => Promise<void>): Promise<void> {
     if (this.busyKey) return;
@@ -82,12 +93,12 @@ struct TransfersPage {
   build() {
     Column() {
       Row() {
-        Button('返回').onClick(() => { this.getUIContext().getRouter().back(); })
+        Button('返回').backgroundColor(CARD_HI).fontColor(INK).onClick(() => { this.getUIContext().getRouter().back(); })
         Text('传输任务').fontColor(INK).fontSize(20).fontWeight(FontWeight.Medium).layoutWeight(1).margin({ left: 12 })
-        Button('刷新').enabled(!this.loading).onClick(() => { this.error = ''; this.refresh(); })
+        Button('刷新').backgroundColor(CARD_HI).fontColor(INK).enabled(!this.loading).onClick(() => { this.error = ''; this.refresh(); })
       }.width('100%').padding(12)
       if (this.error) { Text(this.error).fontColor(ERROR).padding(12).width('100%') }
-      Button('重新登录当前连接').enabled(!this.busyKey).onClick(() => {
+      Button('重新登录当前连接').backgroundColor(ACCENT).fontColor(CARD_HI).enabled(!this.busyKey).onClick(() => {
         this.getUIContext().getRouter().back();
         setTimeout(() => { requestHostReauthentication().catch(() => {
           promptAction.showToast({ message: '无法打开重新登录，请在首页重试' });
@@ -107,13 +118,13 @@ struct TransfersPage {
                 Text(new Date(item.createdAt).toLocaleString() + '\n' + item.serverUrl).fontColor(INK).fontSize(12).width('100%')
               }
               Flex({ wrap: FlexWrap.Wrap }) {
-                Button(this.expandedKey === item.key ? '收起' : '详情').margin(4)
+                Button(this.expandedKey === item.key ? '收起' : '详情').backgroundColor(CARD_HI).fontColor(INK).margin(4)
                   .onClick(() => { this.expandedKey = this.expandedKey === item.key ? '' : item.key; })
-                if (item.active) {
-                  Button('暂停').margin(4).enabled(!this.busyKey)
+                if (item.statusKnown && item.active) {
+                  Button('暂停').backgroundColor(CARD_HI).fontColor(INK).margin(4).enabled(!this.busyKey)
                     .onClick(() => { this.perform(item.key, () => pauseQueueItem(this.context, item.key)); })
-                } else if (!item.terminalDeleted) {
-                  Button(item.paused ? '继续' : '重试').margin(4).enabled(!this.busyKey)
+                } else if (item.statusKnown && !item.terminalDeleted) {
+                  Button(item.paused ? '继续' : '重试').backgroundColor(CARD_HI).fontColor(INK).margin(4).enabled(!this.busyKey)
                     .onClick(() => { this.perform(item.key, () => retryQueueItem(this.context, item.key)); })
                 }
                 Button('删除').margin(4).backgroundColor(ERROR).fontColor(CARD_HI).enabled(!this.busyKey).onClick(() => { this.confirmRemove(item.key, false); })
@@ -128,15 +139,15 @@ struct TransfersPage {
               Text(item.status).fontColor(INK).fontSize(13).fontColor(INK_SOFT).width('100%')
               Flex({ wrap: FlexWrap.Wrap }) {
                 if (item.ready) {
-                  Button('分享').margin(4).enabled(!this.busyKey)
+                  Button('分享').backgroundColor(CARD_HI).fontColor(INK).margin(4).enabled(!this.busyKey)
                     .onClick(() => { this.perform(item.id, () => shareDownload(this.context, item.id)); })
-                  Button('保存到文件夹').margin(4).enabled(!this.busyKey)
+                  Button('保存到文件夹').backgroundColor(CARD_HI).fontColor(INK).margin(4).enabled(!this.busyKey)
                     .onClick(() => { this.perform(item.id, () => saveDownload(this.context, item.id)); })
-                } else if (!item.active) {
-                  Button('重试').margin(4).enabled(!this.busyKey)
+                } else if (item.statusKnown && !item.active) {
+                  Button('重试').backgroundColor(CARD_HI).fontColor(INK).margin(4).enabled(!this.busyKey)
                     .onClick(() => { this.perform(item.id, () => retryDownload(this.context, item.id)); })
                 }
-                Button('移除').margin(4).enabled(!this.busyKey).onClick(() => { this.confirmRemove(item.id, true); })
+                Button('移除').backgroundColor(CARD_HI).fontColor(INK).margin(4).enabled(!this.busyKey).onClick(() => { this.confirmRemove(item.id, true); })
               }
             }.padding(16).width('100%').backgroundColor(CARD).borderRadius(CARD_RADIUS)
           }, (item: DownloadRow) => item.id)
