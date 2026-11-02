@@ -1,6 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
+  "local": true,
   "description": "Capability for the main window",
   "windows": [
     "main"
@@ -8,7 +9,8 @@
   "permissions": [
     "core:default",
     "opener:default",
-    "allow-get-server-url",
-    "allow-set-server-url"
+    "allow-get-settings",
+    "allow-connect-server",
+    "allow-set-shortcut"
   ]
 }
