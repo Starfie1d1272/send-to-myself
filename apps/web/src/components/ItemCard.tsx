@@ -18,7 +18,7 @@ import { extractUrlSpans } from "@sendtomyself/shared/detect";
 import { findSecretSpans } from "@sendtomyself/shared/detect/secret";
 import { copyText } from "../lib/clipboard";
 import { ApiError } from "../lib/api";
-import { clearEditDraft, loadEditDraft, prepareEditDraft, saveEditDraft, type EditSnapshot } from "../lib/draft";
+import { clearEditDraft, draftGeneration, draftIsWritable, loadEditDraft, prepareEditDraft, saveEditDraft, type EditSnapshot } from "../lib/draft";
 import { mutationErrorMessage } from "../lib/mutation-error";
 import { useItemMutations } from "../hooks/useItems";
 import { Attachments } from "./Attachments";
@@ -32,7 +32,7 @@ import {
 } from "./icons";
 
 class EditDraftConflict extends Error {}
-class EditDraftPreparationError extends Error {}
+class EditDraftFrozen extends Error {}
 
 function LinkifiedText({ text }: { text: string }) {
   let offset = 0;
@@ -79,14 +79,15 @@ export function ItemCard({
   const [busy, setBusy] = useState(false);
   const lock = useRef(false);
   const snapshot = useRef<EditSnapshot | undefined>(undefined);
+  const memoryAttempt = useRef<{ content: string; detectionContext: ReturnType<typeof captureDetectionContext> } | undefined>(undefined);
   const lastWrite = useRef<Promise<void>>(Promise.resolve());
   const retry = useRef<{ operation: () => Promise<unknown>; preview: boolean } | null>(null);
-  const run = async (operation: () => Promise<unknown>, preview = false, missingSnapshot?: () => EditSnapshot | undefined) => {
+  const run = async (operation: () => Promise<unknown>, preview = false, missingSnapshot?: () => EditSnapshot | undefined, successMessage?: () => string) => {
     if (lock.current) return false;
     lock.current = true; setBusy(true); setError(""); setNotice(""); retry.current = { operation, preview };
-    try { await operation(); retry.current = null; setNotice("已保存"); return true; }
+    try { await operation(); retry.current = null; setNotice(successMessage?.() ?? "已保存"); return true; }
     catch (err) {
-      setError(err instanceof EditDraftConflict ? "另一窗口已修改草稿，本次未提交。请复制当前内容后重新打开编辑，或在另一窗口处理。" : err instanceof EditDraftPreparationError ? "无法确认本机草稿，本次未提交。请复制当前内容后重试。" : preview ? "预览抓取失败，原链接仍保留，请重试。" : err instanceof ApiError && err.code === "cleanup_failed" ? "永久删除未完成，请检查 NAS 存储后重试" : mutationErrorMessage(err));
+      setError(err instanceof EditDraftFrozen ? "当前会话正在退出，本次未提交。" : err instanceof EditDraftConflict ? "另一窗口已修改草稿，本次未提交。请复制当前内容后重新打开编辑，或在另一窗口处理。" : preview ? "预览抓取失败，原链接仍保留，请重试。" : err instanceof ApiError && err.code === "cleanup_failed" ? "永久删除未完成，请检查 NAS 存储后重试" : mutationErrorMessage(err));
       if (err instanceof ApiError && err.status === 404 && editing) {
         const expected = missingSnapshot?.();
         if (expected) await clearEditDraft(item.id, expected).catch(() => {});
@@ -116,7 +117,7 @@ export function ItemCard({
   const startEdit = async () => {
     if (lock.current || editing) return;
     lock.current = true; setBusy(true);
-    setDraft(item.content); setEditing(true); setDraftStatus(""); snapshot.current = undefined;
+    setDraft(item.content); setEditing(true); setDraftStatus(""); snapshot.current = undefined; memoryAttempt.current = undefined;
     try {
       const saved = await loadEditDraft(item.id);
       if (saved) { setDraft(saved.content); snapshot.current = saved; setDraftStatus("已恢复未保存的修改"); }
@@ -126,6 +127,7 @@ export function ItemCard({
   useEffect(() => { if (editing && !busy && (!item.sensitive || revealed)) editRef.current?.focus(); }, [editing, busy, item.sensitive, revealed]);
   const changeDraft = (value: string) => {
     if (lock.current) return;
+    memoryAttempt.current = undefined;
     setDraft(value); setError("");
     lastWrite.current = saveEditDraft(item.id, value).then(saved => { snapshot.current = saved; setDraftStatus(""); }).catch(err => {
       setDraftStatus(err instanceof Error && err.message === "draft_full" ? "本机编辑草稿已满，本次修改仅保留在当前页面；请保存到 NAS 后再关闭。" : "修改尚未保存到本机，请勿关闭窗口");
@@ -135,19 +137,30 @@ export function ItemCard({
     if (!draft.trim() && !item.attachments?.length) { setError("请输入文字"); return; }
     const content = draft;
     const startedContext = captureDetectionContext();
+    const generation = draftGeneration();
+    const ensureWritable = () => { if (!draftIsWritable() || draftGeneration() !== generation) throw new EditDraftFrozen(); };
     let attemptSnapshot: EditSnapshot | undefined;
+    let storageUnavailable = false;
     await run(async () => {
       await lastWrite.current;
+      ensureWritable();
       const saved = snapshot.current;
-      const context = saved?.content === content ? saved.detectionContext ?? startedContext : startedContext;
+      const context = memoryAttempt.current?.content === content ? memoryAttempt.current.detectionContext
+        : saved?.content === content ? saved.detectionContext ?? startedContext : startedContext;
       try { attemptSnapshot = await prepareEditDraft(item.id, saved?.content === content ? saved : undefined, content, context); }
-      catch { throw new EditDraftPreparationError(); }
-      if (!attemptSnapshot) throw new EditDraftConflict();
-      snapshot.current = attemptSnapshot;
+      catch (error) {
+        ensureWritable();
+        storageUnavailable = true;
+        memoryAttempt.current = { content, detectionContext: context };
+        setDraftStatus(error instanceof Error && error.message === "draft_full" ? "本机编辑草稿已满，本次修改仅保留在当前页面；请保存到 NAS 后再关闭。" : "修改尚未保存到本机，请勿关闭窗口。");
+      }
+      ensureWritable();
+      if (!storageUnavailable && !attemptSnapshot) throw new EditDraftConflict();
+      if (attemptSnapshot) { snapshot.current = attemptSnapshot; memoryAttempt.current = undefined; }
       await update.mutateAsync({ id: item.id, patch: { content, detectionContext: context } });
-      if (attemptSnapshot) await clearEditDraft(item.id, attemptSnapshot).catch(() => setDraftStatus("修改尚未保存到本机，请勿关闭窗口"));
+      if (attemptSnapshot) await clearEditDraft(item.id, attemptSnapshot).catch(() => { storageUnavailable = true; });
       setEditing(false);
-    }, false, () => attemptSnapshot);
+    }, false, () => attemptSnapshot, () => storageUnavailable ? "已保存到 NAS；本机草稿未能确认或清理。" : "已保存");
   };
   const cancelEdit = async () => {
     if (lock.current) return;
