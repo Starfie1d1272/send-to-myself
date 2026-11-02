@@ -244,6 +244,10 @@ struct MainPage {
       this.hasToken = true;
       try { await this.injectCookieToWeb(result.webSetCookie, current.origin); this.webCookieBlocked = false; }
       catch (_error) { this.webCookieBlocked = true; this.errorMsg = '网页会话未建立，请检查Cookie配置并重试'; return; }
+      const afterCookie = await readConnection(this.context);
+      if (!afterCookie || afterCookie.origin !== current.origin || afterCookie.revision !== current.revision || !afterCookie.deviceToken) {
+        this.hasToken = false; this.errorMsg = '连接已改变，请重试'; return;
+      }
       this.useFreshEntry = true;
       this.password = '';
       this.phase = 'web';
