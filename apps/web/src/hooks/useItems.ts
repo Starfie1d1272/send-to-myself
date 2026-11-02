@@ -15,8 +15,9 @@ export function useItemMutations() {
   const invalidate = () => qc.invalidateQueries({ queryKey: ["items"] });
   const onError = (err: Error) => { if (err instanceof ApiError && err.status === 401) void qc.invalidateQueries({ queryKey: ["auth", "me"] }); if (err instanceof ApiError && ((err.status === 409 && (err.code === "purge_in_progress" || err.code === "not_in_trash")) || (err.status === 503 && err.code === "cleanup_failed"))) void invalidate(); };
   return {
-    create: useMutation({ mutationFn: (i: CreateItemInput) => api.create(i), onError, onSuccess: invalidate }),
+    create: useMutation({ networkMode: "always", mutationFn: (i: CreateItemInput) => api.create(i), onError, onSuccess: invalidate }),
     upload: useMutation({
+      networkMode: "always",
       mutationFn: (v: { content: string; files: File[]; dedupeKey?: string; options?: UploadOptions }) => api.upload(v.content, v.files, v.dedupeKey, v.options),
       onError, onSuccess: invalidate,
     }),
