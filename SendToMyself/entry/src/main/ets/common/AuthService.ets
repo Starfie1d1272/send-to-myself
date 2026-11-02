@@ -69,10 +69,10 @@ export interface NativeLogoutResult {
   status: string; serverOrigin: string; cookieCleared: boolean; transferStop: string; remoteSessionLogout: string;
 }
 export async function logoutCurrentConnection(context: common.Context, activeOrigin: string,
-  onSignedOut: (origin: string) => void): Promise<NativeLogoutResult> {
+  onSignedOut: (origin: string) => void, expectedRevision?: string): Promise<NativeLogoutResult> {
   try {
       const current = await readConnection(context);
-      if (!current || current.origin !== activeOrigin) throw new Error('CONNECTION_CHANGED');
+      if (!current || current.origin !== activeOrigin || (expectedRevision && current.revision !== expectedRevision)) throw new Error('CONNECTION_CHANGED');
       let cookie = '';
       try {
         const raw = webview.WebCookieManager.fetchCookieSync(current.origin, false);

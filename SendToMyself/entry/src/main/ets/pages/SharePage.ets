@@ -1,4 +1,4 @@
-import { PAPER, INK_SOFT, ERROR, SUCCESS } from '../common/Theme';
+import { PAPER, CARD_HI, INK, INK_SOFT, ACCENT, ERROR, SUCCESS } from '../common/Theme';
 import { common, UIExtensionContentSession } from '@kit.AbilityKit';
 
 @Entry
@@ -80,8 +80,8 @@ struct SharePage {
         .fontWeight(FontWeight.Medium)
         .fontColor(this.statusColor)
       if ((this.result || this.error) && this.result !== 'success') {
-        Button('打开应用处理').enabled(!this.opening).onClick(() => { this.openApp(); })
-        Button('关闭').onClick(() => { if (this.session) this.session.terminateSelf(); })
+        Button('打开应用处理').backgroundColor(ACCENT).fontColor(CARD_HI).enabled(!this.opening).onClick(() => { this.openApp(); })
+        Button('关闭').backgroundColor(CARD_HI).fontColor(INK).onClick(() => { if (this.session) this.session.terminateSelf(); })
       }
     }
     .width('100%')

@@ -75,6 +75,15 @@ export async function clearTokenIfCurrent(context: common.Context, origin: strin
     return record;
   });
 }
+// Check identity without holding the connection lock over I/O or user interaction.
+export async function assertCurrentConnection(context: common.Context, expected: ConnectionSession): Promise<void> {
+  const current = await readConnection(context);
+  if (!current || current.origin !== expected.origin || current.revision !== expected.revision) throw new Error('CONNECTION_CHANGED');
+}
+export function authenticatedSnapshot(connection: ConnectionSession): AuthenticatedConnection {
+  if (!connection.deviceToken) throw new Error('请先重新登录，待发送内容已保留');
+  return { version: 1, origin: connection.origin, deviceToken: connection.deviceToken, revision: connection.revision };
+}
 export async function requireConnection(context: common.Context): Promise<AuthenticatedConnection> {
   const current = await readConnection(context);
   if (!current || !current.deviceToken) throw new Error('请先重新登录，待发送内容已保留');

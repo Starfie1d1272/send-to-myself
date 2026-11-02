@@ -3,7 +3,7 @@ import { common } from '@kit.AbilityKit';
 import { fileIo, picker } from '@kit.CoreFileKit';
 import { copySharedFileAsync, SharedFileData } from '../common/ShareFiles';
 import { currentHandoff, UploadHandoff } from '../common/UploadHandoff';
-import { readConnection, requireConnection } from '../common/ConnectionSession';
+import { assertCurrentConnection, authenticatedSnapshot } from '../common/ConnectionSession';
 import { getJson } from '../common/HttpClient';
 
 interface Limits { maxUploadBytes: number; maxUploadTotalBytes: number; maxUploadFiles: number }
@@ -44,16 +44,16 @@ struct UploadPage {
     const handoff = this.handoff; if (!handoff || this.busy || !handoff.files.length) return;
     this.busy = true;
     try {
-      const current = await readConnection(this.context);
+      await assertCurrentConnection(this.context, handoff.connection);
       if (!handoff.canPrepare()) { if (this.visible) this.getUIContext().getRouter().back(); return; }
-      if (!current || current.origin !== handoff.origin) { handoff.finish('not_queued', 'route_failed'); this.getUIContext().getRouter().back(); return; }
       let limits: Limits | undefined;
       try {
-        const connection = await requireConnection(this.context);
+        const connection = authenticatedSnapshot(handoff.connection);
         const response = await Promise.race([getJson(this.context, connection, '/api/info'), new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 4000))]);
         if (response.responseCode === 200) limits = JSON.parse(response.result as string) as Limits;
       } catch (_error) {}
       if (!handoff.canPrepare()) { if (this.visible) this.getUIContext().getRouter().back(); return; }
+      await assertCurrentConnection(this.context, handoff.connection);
       if (limits) {
         const sizes = handoff.files.map((file: SharedFileData) => fileIo.statSync(file.path).size);
         if (sizes.length > limits.maxUploadFiles || sizes.some((size: number) => size > limits!.maxUploadBytes) || sizes.reduce((a: number, b: number) => a + b, 0) > limits.maxUploadTotalBytes) { this.status = '附件超过服务器限制，请调整'; return; }
@@ -71,12 +71,12 @@ struct UploadPage {
         Text('需要修改文字时返回首页').fontColor(INK_SOFT)
         ForEach(this.files, (file: SharedFileData, index: number) => {
           Row() { Text(file.filename + ' · ' + fileIo.statSync(file.path).size.toString() + ' B').fontColor(INK).layoutWeight(1)
-            Button('移除').enabled(!this.busy).onClick(() => { const handoff = this.handoff; if (!handoff) return; handoff.removePreparedFile(index); this.files = [...handoff.files]; }) }
+            Button('移除').backgroundColor(CARD_HI).fontColor(INK).enabled(!this.busy).onClick(() => { const handoff = this.handoff; if (!handoff) return; handoff.removePreparedFile(index); this.files = [...handoff.files]; }) }
         }, (file: SharedFileData) => file.path)
         Text(this.status).fontColor(INK_SOFT)
-        Button('继续添加').enabled(!this.busy && this.files.length < 20).onClick(() => this.select())
+        Button('继续添加').backgroundColor(CARD_HI).fontColor(INK).enabled(!this.busy && this.files.length < 20).onClick(() => this.select())
         Button('发送').backgroundColor(ACCENT).fontColor(CARD_HI).enabled(!this.busy && this.files.length > 0).onClick(() => this.send())
-        Button(this.busy ? '取消准备' : '返回').enabled(!this.handoff?.writing).onClick(() => { if (this.busy) { this.cancelled = true; this.handoff?.cancel(); } else { this.handoff?.cancel(); this.getUIContext().getRouter().back(); } })
+        Button(this.busy ? '取消准备' : '返回').backgroundColor(CARD_HI).fontColor(INK).enabled(!this.handoff?.writing).onClick(() => { if (this.busy) { this.cancelled = true; this.handoff?.cancel(); } else { this.handoff?.cancel(); this.getUIContext().getRouter().back(); } })
       }.padding(SPACE).width('100%')
     }.width('100%').height('100%').backgroundColor(PAPER)
   }
