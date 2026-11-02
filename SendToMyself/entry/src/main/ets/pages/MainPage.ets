@@ -198,11 +198,15 @@ struct MainPage {
   }
 
   onForegroundChange(): void {
-    if (this.appForeground && this.phase === 'web') this.controller.runJavaScript('window.dispatchEvent(new Event("send-to-myself:transfer-updated"))').catch(() => {});
+    if (this.appForeground && this.phase === 'web') this.notifyTransferUpdate();
   }
   onPageShow(): void {
     this.retryQueue();
-    this.controller.runJavaScript('window.dispatchEvent(new Event("send-to-myself:transfer-updated"))').catch(() => {});
+    this.notifyTransferUpdate();
+  }
+  private notifyTransferUpdate(): void {
+    try { this.controller.runJavaScript('window.dispatchEvent(new Event("send-to-myself:transfer-updated"))').catch(() => {}); }
+    catch (_error) { /* Web may not be attached when the page becomes visible. */ }
   }
 
   async loadQueueStatus(): Promise<void> {

@@ -98,7 +98,7 @@ export function isNetworkError(err: Error): boolean { return err instanceof Http
 export function isAuthError(err: Error): boolean { return err instanceof HttpError && err.isAuthError; }
 export interface SessionCookie { cookieHeader: string; webSetCookie: string }
 export function extractSessionCookie(response: http.HttpResponse): SessionCookie | null {
-  const headers = response.header;
+  const headers = response.header as Record<string, string | string[]>;
   const names = Object.keys(headers);
   for (let i = 0; i < names.length; i++) {
     if (names[i].toLowerCase() !== 'set-cookie') continue;
