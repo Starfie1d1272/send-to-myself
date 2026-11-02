@@ -33,6 +33,7 @@ export interface QueueRow {
   active: boolean;
   paused: boolean;
   terminalDeleted: boolean;
+  statusKnown: boolean;
 }
 export interface QueueStatus { count: number; error: string }
 let processing: Promise<void> | undefined = undefined;
@@ -277,17 +278,19 @@ export async function pauseQueueItem(context: common.Context, key: string): Prom
     await (await request.agent.getTask(context, item.agentId)).pause();
   }, false);
 }
-export async function listQueue(context: common.Context): Promise<QueueRow[]> {
+export async function listQueue(context: common.Context, includeSystem: boolean = true): Promise<QueueRow[]> {
   const items = await readQueue(context);
   const rows: QueueRow[] = [];
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
-    let status = item.lastError || '等待发送';
+    let status = item.lastError || (item.agentId ? '系统任务状态尚未确认，内容已保留' : '等待发送');
+    let statusKnown = !item.agentId;
     let active = false;
     let paused = false;
-    if (item.agentId) {
+    if (item.agentId && includeSystem) {
       try {
         const info = await taskInfo(item.agentId);
+        statusKnown = true;
         if (info) {
           status = progressText(info);
           const state = info.progress.state;
@@ -295,12 +298,12 @@ export async function listQueue(context: common.Context): Promise<QueueRow[]> {
             state === request.agent.State.RETRYING || state === request.agent.State.INITIALIZED;
           paused = state === request.agent.State.PAUSED;
         }
-      } catch (_error) { status = '暂时无法读取传输状态'; }
+      } catch (_error) { statusKnown = true; status = '暂时无法读取传输状态'; }
     }
     if (item.cancelRequested) { status = '正在取消，内容将从本机移除'; active = false; }
     rows.push({ key: item.dedupeKey, content: item.content ?? '',
       files: filesOf(item).map((file: SharedFileData) => file.filename).join('\n'),
-      serverUrl: item.serverUrl ?? '', createdAt: item.createdAt, status: status, active: active, paused: paused, terminalDeleted: item.terminalDeleted === true });
+      serverUrl: item.serverUrl ?? '', createdAt: item.createdAt, status: status, active: active, paused: paused, terminalDeleted: item.terminalDeleted === true, statusKnown: statusKnown });
   }
   return rows;
 }

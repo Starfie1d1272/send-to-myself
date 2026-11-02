@@ -30,6 +30,7 @@ export interface DownloadRow {
   status: string;
   ready: boolean;
   active: boolean;
+  statusKnown: boolean;
 }
 const presenting: Set<string> = new Set<string>();
 const controllers: Map<string, systemShare.ShareController> = new Map<string, systemShare.ShareController>();
@@ -189,24 +190,26 @@ export async function refreshDownloads(context: common.Context): Promise<void> {
     } catch (error) { if (!(error instanceof TransferBusyError)) throw error as Error; }
   }
 }
-export async function listDownloads(context: common.Context): Promise<DownloadRow[]> {
+export async function listDownloads(context: common.Context, includeSystem: boolean = true): Promise<DownloadRow[]> {
   const items = await all(context);
   const rows: DownloadRow[] = [];
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
-    let status = item.ready ? '已下载到本机，可分享或保存' : item.error || '等待下载';
+    let status = item.ready ? '已下载到本机，可分享或保存' : item.error || (item.taskId ? '系统任务状态尚未确认' : '等待下载');
+    let statusKnown = item.ready || !item.taskId || !!item.error;
     let active = false;
-    if (item.taskId && !item.ready && !item.error) {
+    if (item.taskId && !item.ready && !item.error && includeSystem) {
       try {
         const info = await taskInfo(item.taskId);
+        statusKnown = true;
         if (info) {
           status = progressText(info);
           active = [request.agent.State.RUNNING, request.agent.State.WAITING,
             request.agent.State.RETRYING, request.agent.State.INITIALIZED].includes(info.progress.state);
         }
-      } catch (_error) { status = '暂时无法读取下载状态'; }
+      } catch (_error) { statusKnown = true; status = '暂时无法读取下载状态'; }
     }
-    rows.push({ id: item.id, filename: item.filename, status: status, ready: item.ready, active: active });
+    rows.push({ id: item.id, filename: item.filename, status: status, ready: item.ready, active: active, statusKnown: statusKnown });
   }
   return rows;
 }

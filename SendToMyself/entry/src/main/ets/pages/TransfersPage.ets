@@ -44,31 +44,32 @@ struct TransfersPage {
     this.loading = true;
     try {
       // Render stored records before any system task reconciliation can block on the OS.
-      try { this.queue = await listQueue(this.context); } catch (_error) { this.error = '无法读取待发送内容'; }
-      try { this.downloads = await listDownloads(this.context); } catch (_error) { this.error = '无法读取本机下载'; }
+      try { this.queue = await listQueue(this.context, false); } catch (_error) { this.error = '无法读取待发送内容'; }
+      try { this.downloads = await listDownloads(this.context, false); } catch (_error) { this.error = '无法读取本机下载'; }
+      await this.presentAutoOpen();
       try { await reconcileQueue(this.context); } catch (_error) { this.error = '部分待发送状态无法确认，内容已保留'; }
       try { await refreshDownloads(this.context); } catch (_error) { this.error = '部分传输状态无法确认，本机内容已保留'; }
       try { this.queue = await listQueue(this.context); } catch (_error) { this.error = '无法读取待发送内容'; }
       try { this.downloads = await listDownloads(this.context); } catch (_error) { this.error = '无法读取本机下载'; }
       if (!this.visible) return;
-      const downloads = this.downloads;
-      if (this.autoOpen.downloadId && downloads.some((item: DownloadRow) => item.id === this.autoOpen.downloadId && item.ready)) {
-        const id = this.autoOpen.downloadId;
-        const action = this.autoOpen.action;
-        const sourceOrigin = this.autoOpen.sourceOrigin;
-        const sourceRevision = this.autoOpen.sourceRevision;
-        this.autoOpen = {};
-        if (AppStorage.get<boolean>('appForeground') !== false) {
-          await this.perform(id, async () => {
-            const source = await readConnection(this.context);
-            if (!source || !sourceOrigin || !sourceRevision || source.origin !== sourceOrigin || source.revision !== sourceRevision) throw new Error('连接已改变，请重新操作');
-            if (action === 'save') await saveDownload(this.context, id, source);
-            else if (action === 'share') await shareDownload(this.context, id, source);
-          });
-        }
-      }
+      await this.presentAutoOpen();
     } catch (_error) { if (this.visible) this.error = '暂时无法读取传输记录，请稍后刷新'; }
     finally { this.loading = false; }
+  }
+  private async presentAutoOpen(): Promise<void> {
+    if (!this.visible || !this.autoOpen.downloadId || AppStorage.get<boolean>('appForeground') === false ||
+      !this.downloads.some((item: DownloadRow) => item.id === this.autoOpen.downloadId && item.ready)) return;
+    const id = this.autoOpen.downloadId;
+    const action = this.autoOpen.action;
+    const sourceOrigin = this.autoOpen.sourceOrigin;
+    const sourceRevision = this.autoOpen.sourceRevision;
+    this.autoOpen = {};
+    await this.perform(id, async () => {
+      const source = await readConnection(this.context);
+      if (!source || !sourceOrigin || !sourceRevision || source.origin !== sourceOrigin || source.revision !== sourceRevision) throw new Error('连接已改变，请重新操作');
+      if (action === 'save') await saveDownload(this.context, id, source);
+      else if (action === 'share') await shareDownload(this.context, id, source);
+    });
   }
   private async perform(key: string, action: () => Promise<void>): Promise<void> {
     if (this.busyKey) return;
@@ -119,10 +120,10 @@ struct TransfersPage {
               Flex({ wrap: FlexWrap.Wrap }) {
                 Button(this.expandedKey === item.key ? '收起' : '详情').backgroundColor(CARD_HI).fontColor(INK).margin(4)
                   .onClick(() => { this.expandedKey = this.expandedKey === item.key ? '' : item.key; })
-                if (item.active) {
+                if (item.statusKnown && item.active) {
                   Button('暂停').backgroundColor(CARD_HI).fontColor(INK).margin(4).enabled(!this.busyKey)
                     .onClick(() => { this.perform(item.key, () => pauseQueueItem(this.context, item.key)); })
-                } else if (!item.terminalDeleted) {
+                } else if (item.statusKnown && !item.terminalDeleted) {
                   Button(item.paused ? '继续' : '重试').backgroundColor(CARD_HI).fontColor(INK).margin(4).enabled(!this.busyKey)
                     .onClick(() => { this.perform(item.key, () => retryQueueItem(this.context, item.key)); })
                 }
@@ -142,7 +143,7 @@ struct TransfersPage {
                     .onClick(() => { this.perform(item.id, () => shareDownload(this.context, item.id)); })
                   Button('保存到文件夹').backgroundColor(CARD_HI).fontColor(INK).margin(4).enabled(!this.busyKey)
                     .onClick(() => { this.perform(item.id, () => saveDownload(this.context, item.id)); })
-                } else if (!item.active) {
+                } else if (item.statusKnown && !item.active) {
                   Button('重试').backgroundColor(CARD_HI).fontColor(INK).margin(4).enabled(!this.busyKey)
                     .onClick(() => { this.perform(item.id, () => retryDownload(this.context, item.id)); })
                 }
