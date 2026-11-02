@@ -66,8 +66,9 @@ export async function openHandoff(context: common.Context, content: string, key:
   const accepted = await getUploadReceipt(context, key, origin);
   await assertCurrentConnection(context, connection);
   if (accepted) return JSON.stringify({ status: 'queued', dedupeKey: key, serverOrigin: origin });
-  if (active) {
-    if (active.key === key && active.origin === origin && active.connection.revision === connection.revision) return active.promise;
+  const pending = currentHandoff();
+  if (pending) {
+    if (pending.key === key && pending.origin === origin && pending.connection.revision === connection.revision) return pending.promise;
     throw new Error('BUSY');
   }
   const handoff = new UploadHandoff(content, key, connection, detectionContext); active = handoff;
