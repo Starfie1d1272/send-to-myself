@@ -58,43 +58,9 @@
 
 ## 🚀 快速开始
 
-**浏览器打开就能用** —— 先部署服务端。
+在支持 Docker Compose 的 NAS 上，先创建专用数据目录，再把[唯一基础模板](deploy/docker-compose.yml)粘贴到新建项目，填写强口令和该目录的真实绝对路径。启动后用浏览器访问 `http://NAS_IP:8787` 并登录；若修改了宿主端口，地址也使用新端口。第二台设备连接同一可达地址，发送文字、图片和 PDF 并取回验证。
 
-<details>
-<summary>🐳 镜像部署（NAS 可视化，点几下就行）</summary>
-
-复制下面内容到群晖 Container Manager / Portainer / QNAP 的「新建 Stack」：
-
-```yaml
-services:
-  app:
-    image: ghcr.io/starfie1d1272/send-to-myself:latest
-    restart: unless-stopped
-    environment:
-      AUTH_PASSWORD: "改成你自己的强口令"
-    ports:
-      - "8787:8787"
-    volumes:
-      - ./data:/data
-```
-
-部署后访问 `http://你的NAS_IP:8787`。完整说明（域名 + HTTPS）→ **[部署指南](docs/DEPLOY.md)**。
-
-</details>
-
-<details>
-<summary>🖥️ 有终端的话</summary>
-
-```bash
-git clone https://github.com/Starfie1d1272/send-to-myself.git
-cd send-to-myself
-cp .env.example .env  # 编辑设 AUTH_PASSWORD
-docker compose up -d
-```
-
-</details>
-
-部署后浏览器打开，用口令登录即用。原生客户端填同一个地址。
+完整步骤、已有部署迁移和 HTTPS 见 **[部署指南](docs/DEPLOY.md)**。原生客户端填写实际验证可达的地址。
 
 PWA 当前支持安装与页面外壳缓存；尚无 Web Share Target 分享接收入口或离线发送队列。桌面壳也尚无系统分享接收入口。
 
@@ -126,7 +92,7 @@ pnpm install
 pnpm dev                  # api(:8787) + web(:5173) 同时启动
 ```
 
-开发态不设 `AUTH_PASSWORD` 则认证关闭。
+开发态不设 `AUTH_PASSWORD` 则认证关闭。根目录 `docker-compose.yml` 仅用于源码构建：默认只监听本机，要求前置 HTTPS 反向代理；本机 HTTP 直连需设置 `SECURE_COOKIE=false`。普通 NAS 安装使用上面的基础模板。
 
 开发和 CI 使用 Node 24.21.0（见 `.node-version`）及 pnpm 12.9.1（见 `packageManager`）。
 
@@ -150,7 +116,7 @@ cd apps/desktop && pnpm tauri dev
 
 ## 认证与安全
 
-单用户 argon2id 口令 + session cookie + 登录限速锁定；原生壳用长效 Bearer 设备令牌。全程 HTTPS，落盘默认依赖 NAS 卷加密。**不防服务器被完全攻破**（那需要端到端加密，V1 不做）。详见 [SPEC §12.4](docs/SPEC.md)。
+单用户 argon2id 口令 + session cookie + 登录限速锁定；原生壳用长效 Bearer 设备令牌。局域网 HTTP 不加密，远程访问应使用 HTTPS；落盘默认依赖 NAS 卷加密。**不防服务器被完全攻破**（那需要端到端加密，V1 不做）。详见 [SPEC §12.4](docs/SPEC.md)。
 
 ## License
 

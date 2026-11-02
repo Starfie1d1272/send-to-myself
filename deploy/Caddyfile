@@ -1,5 +1,5 @@
-# 把 stm.example.com 改成你自己的域名。证书由 Caddy 自动申请并续期。
-# 配合 docker-compose.caddy.yml 使用（同一网络，故用服务名 app:8787）。
+# 将此文件放在基础 Compose 文件所在项目目录的 Caddyfile，替换为自己的域名。
+# 与基础文件及 Caddy 叠加文件共同使用；同一 Compose 网络中代理到 app:8787。
 stm.example.com {
     reverse_proxy app:8787
 }

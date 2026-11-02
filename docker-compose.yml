@@ -1,4 +1,4 @@
-# SendToMyself —— 自托管单容器（SPEC §12.1）。
+# 源码开发/本机构建用途；普通 NAS 安装请使用 deploy/docker-compose.yml。
 # 用法：复制 .env.example 为 .env 并设置 AUTH_PASSWORD，然后 `docker compose up -d`。
 # 反向代理（Caddy / Nginx）在前面终止 HTTPS 并转发到本服务的 8787。
 

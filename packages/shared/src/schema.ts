@@ -33,8 +33,6 @@ export const attachmentSchema = z.object({
   filename: z.string().min(1),
   mimeType: z.string().min(1),
   size: z.number().int().nonnegative(),
-  /** 相对存储键，如 "2026/06/abc123.pdf"；实际位置 = STORAGE_ROOT + storageKey。 */
-  storageKey: z.string().min(1),
   /** 是否有服务端缩略图（仅图片）。客户端据此决定走 /thumb 还是 /raw。 */
   hasThumb: z.boolean().optional(),
   createdAt: isoDateTime,
@@ -55,6 +53,17 @@ export const linkPreviewSchema = z.object({
   fetchedAt: isoDateTime.optional(),
 });
 export type LinkPreview = z.infer<typeof linkPreviewSchema>;
+
+export const itemSuggestionsSchema = z.object({
+  todo: z.boolean().optional(), urls: z.array(z.string()).optional(),
+  due: z.object({ dueAt: z.string(), matchedText: z.string() }).nullable().optional(),
+  secretHint: z.string().nullable().optional(),
+}).passthrough();
+export type ItemSuggestions = z.infer<typeof itemSuggestionsSchema>;
+export const itemMetaSchema = z.object({
+  suggestions: itemSuggestionsSchema.optional(), preview: linkPreviewSchema.partial({ url: true }).passthrough().optional(),
+}).passthrough();
+export type ItemMeta = z.infer<typeof itemMetaSchema>;
 
 // —— Item ——
 
@@ -77,11 +86,12 @@ export const itemSchema = z.object({
   pinned: z.boolean(),
   /** 疑似密钥/手动标记：UI 默认遮罩正文，但仍参与搜索（SPEC §11）。 */
   sensitive: z.boolean(),
+  sensitiveOverride: z.boolean().nullable().default(null),
   /** 软删除/回收站；为空=正常。 */
   deletedAt: isoDateTime.optional(),
 
   /** 链接预览、自动识别结果等易变字段（Memos payload 模式）。 */
-  meta: z.record(z.string(), z.unknown()).optional(),
+  meta: itemMetaSchema.optional(),
 
   /** 同条记录的附件（随时间线一并下发，便于直接渲染）。 */
   attachments: z.array(attachmentSchema).optional(),
@@ -117,7 +127,7 @@ export const updateItemInput = z
     completed: z.boolean(),
     dueAt: isoDateTime.nullable(),
     pinned: z.boolean(),
-    sensitive: z.boolean(),
+    sensitive: z.boolean().nullable(),
   })
   .partial();
 export type UpdateItemInput = z.infer<typeof updateItemInput>;
@@ -133,6 +143,10 @@ export const timelineFilter = z
     pinned: z.boolean().optional(),
     /** Match links even when attachments determine the display kind. */
     hasLinks: z.boolean().optional(),
+    hasImages: z.boolean().optional(),
+    hasFiles: z.boolean().optional(),
+    sensitive: z.boolean().optional(),
+    deleted: z.boolean().optional(),
     /** Exclusive upper deadline bound, computed in the client timezone. */
     dueBefore: isoDateTime.optional(),
     /** 关键词搜索（正文/标题/URL/文件名）。 */
@@ -144,12 +158,6 @@ export const timelineFilter = z
   .partial({ limit: true });
 export type TimelineFilter = z.infer<typeof timelineFilter>;
 
-/** DDL 到期分桶（仅展示，不做完整日历，SPEC §4）。 */
-export const dueBucket = z.enum([
-  "overdue",
-  "today",
-  "tomorrow",
-  "this_week",
-  "later",
-]);
-export type DueBucket = z.infer<typeof dueBucket>;
+
+export const itemPageSchema = z.object({ items: z.array(itemSchema), nextCursor: z.string().nullable() });
+export type ItemPage = z.infer<typeof itemPageSchema>;

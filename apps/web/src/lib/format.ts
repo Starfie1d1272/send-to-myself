@@ -94,15 +94,13 @@ export function quickDue(kind: "today" | "tomorrow" | "sunday"): string {
 
 /** 取 Item 上识别到的链接（meta.suggestions.urls）。 */
 export function itemUrls(item: Item): string[] {
-  const s = item.meta?.suggestions as { urls?: string[] } | undefined;
+  const s = item.meta?.suggestions;
   return s?.urls ?? [];
 }
 
 /** 取 Item 上的 DDL 识别建议。 */
 export function itemDueSuggestion(item: Item): { dueAt: string; matchedText: string } | null {
-  const s = item.meta?.suggestions as
-    | { due?: { dueAt: string; matchedText: string } | null }
-    | undefined;
+  const s = item.meta?.suggestions;
   return s?.due ?? null;
 }
 
@@ -116,10 +114,10 @@ export function hostnameOf(url: string): string {
 
 /** 取链接预览（meta.preview），仅当抓取成功且有标题/封面时返回。 */
 export function itemPreview(item: Item): LinkPreview | null {
-  const p = item.meta?.preview as LinkPreview | undefined;
-  if (!p || p.status !== "ok") return null;
+  const p = item.meta?.preview;
+  if (!p || !p.url || p.status !== "ok") return null;
   if (!p.title && !p.image) return null;
-  return p;
+  return { ...p, url: p.url };
 }
 
 /** 字节 → 人类可读。 */

@@ -20,8 +20,9 @@ export function rowToItem(r: ItemRow, attachments?: AttachmentRow[]): Item {
     completedAt: secToIso(r.completedAt),
     pinned: r.pinned,
     sensitive: r.sensitive,
+    sensitiveOverride: r.sensitiveOverride,
     deletedAt: secToIso(r.deletedAt),
-    meta: r.meta ? (JSON.parse(r.meta) as Record<string, unknown>) : undefined,
+    meta: r.meta ? (JSON.parse(r.meta) as Item["meta"]) : undefined,
     attachments: attachments?.length ? attachments.map(rowToAttachment) : undefined,
     createdAt: new Date(r.createdAt * 1000).toISOString(),
     updatedAt: new Date(r.updatedAt * 1000).toISOString(),
@@ -35,7 +36,6 @@ export function rowToAttachment(r: AttachmentRow): Attachment {
     filename: r.filename,
     mimeType: r.mimeType,
     size: r.size,
-    storageKey: r.storageKey,
     hasThumb: r.thumbKey != null,
     createdAt: new Date(r.createdAt * 1000).toISOString(),
   };
