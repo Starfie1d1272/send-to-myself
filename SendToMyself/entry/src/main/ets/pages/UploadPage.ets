@@ -13,6 +13,7 @@ struct UploadPage {
   @State busy: boolean = false;
   @State status: string = '';
   @State cancelled: boolean = false;
+  @State expanded: boolean = false;
   private handoff?: UploadHandoff;
   private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
   aboutToAppear(): void { this.handoff = currentHandoff(); if (this.handoff) this.select(); else this.getUIContext().getRouter().back(); }
@@ -51,6 +52,7 @@ struct UploadPage {
         const sizes = handoff.files.map((file: SharedFileData) => fileIo.statSync(file.path).size);
         if (sizes.length > limits.maxUploadFiles || sizes.some((size: number) => size > limits!.maxUploadBytes) || sizes.reduce((a: number, b: number) => a + b, 0) > limits.maxUploadTotalBytes) { this.status = '附件超过服务器限制，请调整'; return; }
       }
+      if (this.cancelled) { handoff.finish('cancelled'); this.getUIContext().getRouter().back(); return; }
       await handoff.submit(this.context); this.getUIContext().getRouter().back();
     } catch (_error) { if (handoff.writing) handoff.finish('unknown'); else handoff.finish('not_queued', 'prepare_failed'); this.getUIContext().getRouter().back(); }
     finally { this.busy = false; }
@@ -58,7 +60,7 @@ struct UploadPage {
   build() {
     Column({ space: 16 }) {
       Text('发送附件').fontSize(22)
-      Text(this.handoff?.content || '（无文字）').maxLines(8)
+      Text(this.handoff?.content || '（无文字）').maxLines(this.expanded ? 10000 : 8).onClick(() => { this.expanded = !this.expanded; })
       Text('需要修改文字时返回首页')
       ForEach(this.files, (file: SharedFileData, index: number) => {
         Row() { Text(file.filename + ' · ' + fileIo.statSync(file.path).size.toString() + ' B').layoutWeight(1)
