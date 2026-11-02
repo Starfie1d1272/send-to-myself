@@ -18,7 +18,7 @@ import { extractUrlSpans } from "@sendtomyself/shared/detect";
 import { findSecretSpans } from "@sendtomyself/shared/detect/secret";
 import { copyText } from "../lib/clipboard";
 import { ApiError } from "../lib/api";
-import { clearEditDraft, loadEditDraft, saveEditDraft, type EditSnapshot } from "../lib/draft";
+import { clearEditDraft, loadEditDraft, prepareEditDraft, saveEditDraft, type EditSnapshot } from "../lib/draft";
 import { mutationErrorMessage } from "../lib/mutation-error";
 import { useItemMutations } from "../hooks/useItems";
 import { Attachments } from "./Attachments";
@@ -30,6 +30,9 @@ import {
   IconEye,
   IconRestore,
 } from "./icons";
+
+class EditDraftConflict extends Error {}
+class EditDraftPreparationError extends Error {}
 
 function LinkifiedText({ text }: { text: string }) {
   let offset = 0;
@@ -83,7 +86,7 @@ export function ItemCard({
     lock.current = true; setBusy(true); setError(""); setNotice(""); retry.current = { operation, preview };
     try { await operation(); retry.current = null; setNotice("已保存"); return true; }
     catch (err) {
-      setError(preview ? "预览抓取失败，原链接仍保留，请重试。" : err instanceof ApiError && err.code === "cleanup_failed" ? "永久删除未完成，请检查 NAS 存储后重试" : mutationErrorMessage(err));
+      setError(err instanceof EditDraftConflict ? "另一窗口已修改草稿，本次未提交。请复制当前内容后重新打开编辑，或在另一窗口处理。" : err instanceof EditDraftPreparationError ? "无法确认本机草稿，本次未提交。请复制当前内容后重试。" : preview ? "预览抓取失败，原链接仍保留，请重试。" : err instanceof ApiError && err.code === "cleanup_failed" ? "永久删除未完成，请检查 NAS 存储后重试" : mutationErrorMessage(err));
       if (err instanceof ApiError && err.status === 404 && editing) {
         const expected = missingSnapshot?.();
         if (expected) await clearEditDraft(item.id, expected).catch(() => {});
@@ -137,11 +140,10 @@ export function ItemCard({
       await lastWrite.current;
       const saved = snapshot.current;
       const context = saved?.content === content ? saved.detectionContext ?? startedContext : startedContext;
-      if (saved?.content === content && saved.detectionContext) attemptSnapshot = saved;
-      else {
-        try { attemptSnapshot = await saveEditDraft(item.id, content, context); snapshot.current = attemptSnapshot; }
-        catch { setDraftStatus("修改尚未保存到本机，请勿关闭窗口"); }
-      }
+      try { attemptSnapshot = await prepareEditDraft(item.id, saved?.content === content ? saved : undefined, content, context); }
+      catch { throw new EditDraftPreparationError(); }
+      if (!attemptSnapshot) throw new EditDraftConflict();
+      snapshot.current = attemptSnapshot;
       await update.mutateAsync({ id: item.id, patch: { content, detectionContext: context } });
       if (attemptSnapshot) await clearEditDraft(item.id, attemptSnapshot).catch(() => setDraftStatus("修改尚未保存到本机，请勿关闭窗口"));
       setEditing(false);
