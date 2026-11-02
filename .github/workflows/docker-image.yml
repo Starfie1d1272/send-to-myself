@@ -1,12 +1,5 @@
 name: Docker Image
 
-# 构建并发布多架构（amd64 + arm64，覆盖多数 NAS）镜像到 GitHub Container Registry。
-# - 手动触发：发布 :latest，供 NAS 可视化部署直接拉取。
-# - 推送 v* tag（核心产品版本，如 v1.0.0）：额外打版本号镜像 tag。
-#   （核心与平台壳版本独立，见 docs/VERSIONING.md）
-#
-# 镜像发布到 GHCR Packages，不会出现在 GitHub Releases 页面。
-# 桌面安装包走 GitHub Releases（见 desktop-build.yml）。
 on:
   workflow_dispatch:
   push:
@@ -17,35 +10,81 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      packages: write # 推送到 GHCR 需要
+      contents: write
+      packages: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-
+      - name: Select image tags
+        id: version
+        shell: bash
+        env:
+          REPOSITORY: ${{ github.repository }}
+          REF_NAME: ${{ github.ref_name }}
+          EVENT_NAME: ${{ github.event_name }}
+          SHA: ${{ github.sha }}
+        run: |
+          image="ghcr.io/${REPOSITORY,,}"
+          version=$(node -p "require('./apps/api/package.json').version")
+          if [[ "$EVENT_NAME" == push ]]; then
+            [[ "$REF_NAME" == "v$version" ]] || { echo 'Tag and API version differ' >&2; exit 1; }
+            [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || exit 1
+            tags="$image:$version"
+            if [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then tags+=$'\n'"$image:latest"; fi
+          else
+            tags="$image:sha-${SHA:0:12}"
+          fi
+          { echo 'tags<<EOF'; echo "$tags"; echo EOF; echo "image=$image:$version"; echo "version=$version"; } >> "$GITHUB_OUTPUT"
+      - name: Prepare core release notes
+        if: github.event_name == 'push'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          SHA: ${{ github.sha }}
+        run: |
+          node scripts/extract-changelog.mjs core "$VERSION" > core-release-notes.md
+          printf '\nBuild SHA: %s.\n' "$SHA" >> core-release-notes.md
       - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1
-
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
-
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - id: meta
-        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302
-        with:
-          images: ghcr.io/${{ github.repository }}
-          tags: |
-            type=raw,value=latest
-            type=semver,pattern={{version}}
-
-      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
+      - id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ steps.version.outputs.tags }}
+          build-args: |
+            BUILD_REVISION=${{ github.sha }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Package NAS maintenance files
+        if: github.event_name == 'push'
+        env:
+          IMAGE: ${{ steps.version.outputs.image }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          SHA: ${{ github.sha }}
+        run: node scripts/package-nas.mjs "$IMAGE" "$DIGEST" "$SHA" dist
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: github.event_name == 'push'
+        with:
+          name: nas-${{ github.ref_name }}-${{ github.sha }}
+          path: |
+            dist/*.zip
+            dist/*.zip.sha256
+          if-no-files-found: error
+      - name: Attach maintenance package to core Release
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64
+        with:
+          body_path: core-release-notes.md
+          prerelease: ${{ contains(steps.version.outputs.version, '-') }}
+          files: |
+            dist/*.zip
+            dist/*.zip.sha256
+          fail_on_unmatched_files: true

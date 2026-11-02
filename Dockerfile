@@ -10,19 +10,25 @@ RUN corepack enable && apt-get update \
 WORKDIR /app
 
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml tsconfig.base.json ./
-COPY packages ./packages
-COPY apps ./apps
+COPY packages/shared ./packages/shared
+COPY apps/api ./apps/api
+COPY apps/web ./apps/web
 
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile --filter @sendtomyself/api... --filter @sendtomyself/web...
+ARG BUILD_REVISION
+ENV BUILD_REVISION=$BUILD_REVISION
 RUN pnpm --filter @sendtomyself/web build
+RUN pnpm --filter @sendtomyself/api deploy --prod --legacy /out/api
 
 # ---------- runtime ----------
 FROM node:24.21.0-bookworm-slim AS runtime
 WORKDIR /app/apps/api
-ENV NODE_ENV=production
+ARG BUILD_REVISION
+ENV NODE_ENV=production BUILD_REVISION=$BUILD_REVISION
 
-# 复制已装好（含已编译原生模块）的整个工作区与前端构建产物
-COPY --from=build /app /app
+# 仅复制 API 生产闭包及同一提交构建的 Web
+COPY --from=build /out/api /app/apps/api
+COPY --from=build /app/apps/web/dist /app/apps/web/dist
 
 # 数据与附件落盘到挂载卷；前端由 API 直接托管
 ENV DB_PATH=/data/app.db \
