@@ -13,6 +13,7 @@ const DB = "send-to-myself-drafts";
 const STORE = "drafts";
 const KEY = "composer";
 const EPOCH = "session-epoch";
+const LOGOUT_MARKER = "send-to-myself-session-logout";
 const ATTEMPT_POINTER = "send-to-myself-pending-attempt";
 const attemptKey = (key: string) => `attempt:${key}`;
 function attemptPointer(): string | undefined {
@@ -33,9 +34,22 @@ let connection: Promise<IDBDatabase> | undefined;
 let writes: Promise<void> = Promise.resolve();
 let frozen = false;
 let generation = 0;
+function readLogoutMarker(): { available: boolean; value: string | null } {
+  try { return { available: true, value: localStorage.getItem(LOGOUT_MARKER) }; }
+  catch { return { available: false, value: null }; }
+}
+let sessionMarker = readLogoutMarker();
+function checkLogoutMarker(): boolean {
+  const current = readLogoutMarker();
+  if (sessionMarker.available && current.available && sessionMarker.value !== current.value) {
+    freezeDraft(true);
+    if (typeof window !== "undefined") window.dispatchEvent(new Event("send-to-myself:session-stale"));
+  }
+  return !frozen;
+}
 export function freezeDraft(value: boolean) { if (value && !frozen) generation++; frozen = value; }
 export function draftGeneration() { return generation; }
-export function draftIsWritable() { return !frozen; }
+export function draftIsWritable() { return checkLogoutMarker(); }
 
 function database(): Promise<IDBDatabase> {
   if (!connection) {
@@ -166,7 +180,7 @@ export interface EditDraft extends EditSnapshot { itemId: string }
 function enqueue<T>(fn: () => Promise<T>): Promise<T> {
   const scheduledGeneration = generation;
   const result = writes.catch(() => {}).then(() => {
-    if (frozen || generation !== scheduledGeneration) throw new Error("草稿写入已暂停");
+    if (!checkLogoutMarker() || generation !== scheduledGeneration) throw new Error("草稿写入已暂停");
     return fn();
   });
   writes = result.then(() => {}, () => {});
@@ -174,6 +188,7 @@ function enqueue<T>(fn: () => Promise<T>): Promise<T> {
 }
 function transaction<T>(operation: (store: IDBObjectStore, done: (value: T) => void, fail: (error: Error) => void) => void): Promise<T> {
   const localGeneration = generation;
+  if (!checkLogoutMarker()) return Promise.reject(new Error("草稿写入已暂停"));
   return database().then(db => new Promise<T>((resolve, reject) => {
     const tx = db.transaction(STORE, "readwrite");
     const store = tx.objectStore(STORE);
@@ -187,7 +202,7 @@ function transaction<T>(operation: (store: IDBObjectStore, done: (value: T) => v
         freezeDraft(true);
         if (typeof window !== "undefined") window.dispatchEvent(new Event("send-to-myself:session-stale"));
       }
-      if (frozen || generation !== localGeneration || sessionEpoch !== epoch) {
+      if (!checkLogoutMarker() || generation !== localGeneration || sessionEpoch !== epoch) {
         failure = new Error("草稿写入已暂停"); tx.abort(); return;
       }
       try { operation(store, value => { result = value; }, error => { failure = error; }); }
@@ -198,7 +213,9 @@ function transaction<T>(operation: (store: IDBObjectStore, done: (value: T) => v
     tx.onabort = () => reject(failure ?? tx.error ?? new Error("草稿存储失败"));
   }));
 }
-export async function resumeDraftSession(): Promise<void> {
+export async function resumeDraftSession(acceptLogout = false): Promise<void> {
+  if (acceptLogout) sessionMarker = readLogoutMarker();
+  else if (!checkLogoutMarker()) throw new Error("草稿写入已暂停");
   sessionEpoch = undefined;
   const db = await database();
   await new Promise<void>((resolve, reject) => {

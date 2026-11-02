@@ -1,6 +1,6 @@
 import type { Attachment } from "@sendtomyself/shared";
 import { getNativeBridge } from "./nativeBridge";
-import { attachmentRawUrl } from "./api";
+import { attachmentRawUrl, recheckAuthOnUnauthorized } from "./api";
 
 export type ShareResult = "shared" | "cancelled" | "unsupported" | "queued";
 
@@ -22,6 +22,7 @@ export async function shareAttachment(attachment: Attachment): Promise<ShareResu
   if (!navigator.share || !navigator.canShare) return "unsupported";
   try {
     const response = await fetch(attachmentRawUrl(attachment.id), { credentials: "include" });
+    recheckAuthOnUnauthorized(response.status);
     if (!response.ok) throw new Error("附件读取失败");
     const file = new File([await response.blob()], attachment.filename, { type: attachment.mimeType });
     if (!navigator.canShare({ files: [file] })) return "unsupported";
