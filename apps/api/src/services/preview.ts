@@ -3,15 +3,9 @@ import { detectUrls } from "@sendtomyself/shared/detect";
 import type { Item, LinkPreview } from "@sendtomyself/shared";
 import { db } from "../db/client.js";
 import { items } from "../db/schema.js";
-import { env } from "../env.js";
 import { rowToItem } from "../lib/mapper.js";
-import { assertSafeUrl, SsrfError } from "../lib/ssrf.js";
+import { readPreviewResource } from "../lib/preview-http.js";
 import { listByItem } from "./attachments.js";
-
-// 用真实浏览器 UA：部分站点（B站/公众号等）对非浏览器 UA 返回精简页或拦截。
-const UA =
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
-const ACCEPT_LANG = "zh-CN,zh;q=0.9,en;q=0.8";
 
 /** 抓取并解析链接预览；失败不抛，返回带 status 的结果（SPEC §7 抓取失败仍保存）。 */
 export async function fetchPreview(rawUrl: string): Promise<LinkPreview> {
@@ -22,8 +16,8 @@ export async function fetchPreview(rawUrl: string): Promise<LinkPreview> {
     fetchedAt: new Date().toISOString(),
   };
   try {
-    const { html, finalUrl } = await safeFetchHtml(rawUrl);
-    const meta = parseHtml(html, finalUrl);
+    const { data, finalUrl } = await readPreviewResource(rawUrl, "html");
+    const meta = parseHtml(data.toString("utf8"), finalUrl);
     return {
       ...base,
       ...meta,
@@ -47,154 +41,14 @@ export async function fetchPreviewInto(itemId: string, rawUrl: string, expectedC
   return rowToItem(updated, listByItem(itemId));
 }
 
-/** 手动跟随重定向，每跳都过 SSRF 校验；限大小、超时、跳数、Content-Type 白名单。 */
-async function safeFetchHtml(startUrl: string): Promise<{ html: string; finalUrl: string }> {
-  let current = startUrl;
-  for (let hop = 0; hop <= env.previewMaxRedirects; hop++) {
-    await assertSafeUrl(current); // 每跳重新校验解析地址
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), env.previewTimeoutMs);
-    try {
-      const res = await fetch(current, {
-        method: "GET",
-        redirect: "manual",
-        signal: ctrl.signal,
-        headers: {
-          "user-agent": UA,
-          accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-          "accept-language": ACCEPT_LANG,
-        },
-      });
-
-      // 重定向：取 location 继续（下一轮再校验）
-      if (res.status >= 300 && res.status < 400) {
-        const loc = res.headers.get("location");
-        if (!loc) throw new SsrfError("redirect without location");
-        current = new URL(loc, current).toString();
-        continue;
-      }
-      if (!res.ok) throw new Error(`http ${res.status}`);
-
-      const ct = res.headers.get("content-type") ?? "";
-      if (!/text\/html|application\/xhtml\+xml/i.test(ct)) {
-        throw new Error("unsupported content-type");
-      }
-      const html = await readCapped(res, env.previewMaxBytes);
-      return { html, finalUrl: res.url || current };
-    } finally {
-      clearTimeout(timer);
-    }
-  }
-  throw new SsrfError("too many redirects");
-}
-
-// —— 图片代理（解决图床防盗链 / 混合内容，SPEC §7）——
-
-/**
- * 图床 Referer 策略：多数图床拦的是「外站 Referer」而非「要求特定 Referer」，
- * 故默认**不带** Referer（留空最通用，避免泄漏本站来源被当外链拦）。
- * 仅对个别校验来源站的图床显式映射到其站点首页。
- */
-const IMG_REFERER: Array<[string, string]> = [
-  ["hdslb.com", "https://www.bilibili.com/"], // B 站图床
-  ["qpic.cn", "https://mp.weixin.qq.com/"], // 公众号图床
-];
-
-function imageReferer(host: string): string | undefined {
-  for (const [suffix, ref] of IMG_REFERER) {
-    if (host === suffix || host.endsWith("." + suffix)) return ref;
-  }
-  return undefined;
-}
-
-/**
- * 服务端取图：带浏览器 UA + 正确 Referer 绕过图床防盗链，手动跟随重定向并逐跳 SSRF 校验，
- * 限大小/超时。返回二进制 + content-type；任何失败返回 null（前端显示裂图占位）。
- */
-export async function fetchImage(
-  rawUrl: string,
-): Promise<{ data: Buffer; contentType: string } | null> {
+/** Fetch a complete image through the controlled preview transport. */
+export async function fetchImage(rawUrl: string): Promise<{ data: Buffer; contentType: string } | null> {
   try {
-    let current = rawUrl;
-    for (let hop = 0; hop <= env.previewMaxRedirects; hop++) {
-      await assertSafeUrl(current);
-      const host = new URL(current).hostname;
-      const ref = imageReferer(host);
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), env.previewTimeoutMs);
-      try {
-        const res = await fetch(current, {
-          method: "GET",
-          redirect: "manual",
-          signal: ctrl.signal,
-          headers: {
-            "user-agent": UA,
-            accept: "image/avif,image/webp,image/*,*/*;q=0.8",
-            "accept-language": ACCEPT_LANG,
-            ...(ref ? { referer: ref } : {}), // 默认不带 Referer，最通用
-          },
-        });
-        if (res.status >= 300 && res.status < 400) {
-          const loc = res.headers.get("location");
-          if (!loc) return null;
-          current = new URL(loc, current).toString();
-          continue;
-        }
-        if (!res.ok) return null;
-        const ct = res.headers.get("content-type") ?? "";
-        if (!/^image\//i.test(ct)) return null;
-        const data = await readCappedBytes(res, env.previewMaxBytes);
-        return data ? { data, contentType: ct } : null;
-      } finally {
-        clearTimeout(timer);
-      }
-    }
-    return null;
+    const { data, contentType } = await readPreviewResource(rawUrl, "image");
+    return { data, contentType };
   } catch {
     return null;
   }
-}
-
-/** 读取二进制响应体，超过上限直接放弃（防大图耗内存）。 */
-async function readCappedBytes(res: Response, maxBytes: number): Promise<Buffer | null> {
-  const reader = res.body?.getReader();
-  if (!reader) return null;
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    if (value) {
-      chunks.push(value);
-      total += value.length;
-      if (total > maxBytes) {
-        await reader.cancel();
-        return null;
-      }
-    }
-  }
-  return Buffer.concat(chunks);
-}
-
-/** 读取响应体，超过上限即截断停止（防大响应耗内存）。 */
-async function readCapped(res: Response, maxBytes: number): Promise<string> {
-  const reader = res.body?.getReader();
-  if (!reader) return "";
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    if (value) {
-      chunks.push(value);
-      total += value.length;
-      if (total >= maxBytes) {
-        await reader.cancel();
-        break;
-      }
-    }
-  }
-  return Buffer.concat(chunks).toString("utf8");
 }
 
 // —— HTML 解析（轻量正则，无额外依赖）——
