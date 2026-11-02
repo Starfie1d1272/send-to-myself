@@ -4,7 +4,7 @@ import { type GapKind, groupByDay, sameCluster } from "../lib/format";
 import type { TimelineViewState } from "../lib/timeline";
 import { ItemCard } from "./ItemCard";
 
-export function Timeline({ items, state, onChange, loading, pending }: { items: Item[]; state: TimelineViewState; onChange: (s: TimelineViewState) => void; loading?: boolean; pending?: boolean }) {
+export function Timeline({ items, now, state, onChange, loading, pending }: { items: Item[]; now: Date; state: TimelineViewState; onChange: (s: TimelineViewState) => void; loading?: boolean; pending?: boolean }) {
   const trash = state.view === "trash";
   if (loading) return <div className="state state--load">载入中…</div>;
   if (items.length === 0 && !pending) {
@@ -28,7 +28,7 @@ export function Timeline({ items, state, onChange, loading, pending }: { items: 
               {g.items.map((it, i) => {
                 const gap: GapKind =
                   i === 0 ? "first" : sameCluster(g.items[i - 1]!, it) ? "cont" : "normal";
-                return <ItemCard key={it.id} item={it} trash={trash} gap={gap} revealEpoch={JSON.stringify(state)} />;
+                return <ItemCard key={it.id} item={it} now={now} trash={trash} gap={gap} revealEpoch={JSON.stringify(state)} />;
               })}
             </AnimatePresence>
           </ul>

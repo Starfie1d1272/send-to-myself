@@ -12,7 +12,7 @@ export class InboxClient {
   readonly server: string;
   constructor(server: string, private token: string, private transport: typeof fetch = fetch) {
     this.server = normalizeServer(server);
-    if (!token.trim()) throw new Error("请先在扩展设置中填写设备令牌。");
+    if (!token.trim()) throw new Error("请先在扩展设置中填写接入令牌。");
   }
   private async request(path: string, init: RequestInit = {}): Promise<Response> {
     let response: Response;
@@ -28,9 +28,9 @@ export class InboxClient {
     if (!response.ok) {
       if (response.status === 409) {
         const body = await response.json().catch(() => null) as { error?: string } | null;
-        if (body?.error === "already_deleted") throw new AlreadyDeletedError("这笔发送已在 NAS 被永久删除；可作为新内容再次发送。");
+        if (body?.error === "already_deleted") throw new AlreadyDeletedError("这笔发送已在 NAS 被永久删除；可选择“再发一份”。");
       }
-      throw new Error(response.status === 401 ? "设备令牌无效或已吊销，请更新扩展设置。" :
+      throw new Error(response.status === 401 ? "接入令牌无效或已吊销，请更新扩展设置。" :
         response.status === 413 ? "附件超过服务器上传限制，请减少文件后重试。" :
         `请求失败（${response.status}），请重试。`);
     }
