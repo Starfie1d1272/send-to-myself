@@ -25,6 +25,7 @@ export const items = sqliteTable(
     // 其它状态
     pinned: integer("pinned", { mode: "boolean" }).notNull().default(false),
     sensitive: integer("sensitive", { mode: "boolean" }).notNull().default(false),
+    sensitiveOverride: integer("sensitive_override", { mode: "boolean" }),
     deletedAt: integer("deleted_at"), // 软删除；为空=正常
 
     // 客户端幂等键：原生壳离线队列补发时去重，避免同一条发送多次。

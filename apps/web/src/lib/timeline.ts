@@ -12,7 +12,8 @@ export function timelineParams(filter: FilterKey, query: string, now = new Date(
     }
     case "link": return { ...base, hasLinks: true };
     case "idea": case "read_later": return { ...base, category: filter };
-    case "image": case "file": return { ...base, kind: filter };
+    case "image": return { ...base, hasImages: true };
+    case "file": return { ...base, hasFiles: true };
     case "secret": return { ...base, sensitive: true };
     case "pinned": return { ...base, pinned: true };
     case "completed": return { ...base, completed: true };

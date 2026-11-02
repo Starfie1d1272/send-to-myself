@@ -1,11 +1,11 @@
 import { and, desc, eq, exists, isNotNull, isNull, like, lt, or, sql } from "drizzle-orm";
-import { detect } from "@sendtomyself/shared/detect";
+import { detect, detectSecret, detectUrls } from "@sendtomyself/shared/detect";
 import type {
   CreateItemInput,
   Item,
-  ItemCategory,
   ItemKind,
-  LinkPreview,
+  TimelineFilter,
+  ItemPage,
   UpdateItemInput,
 } from "@sendtomyself/shared";
 import { db } from "../db/client.js";
@@ -20,28 +20,13 @@ import { fetchPreviewInto } from "./preview.js";
 
 const nowSec = () => Math.floor(Date.now() / 1000);
 
-export interface ListFilter {
-  kind?: ItemKind;
-  category?: ItemCategory;
-  isTodo?: boolean;
-  completed?: boolean;
-  pinned?: boolean;
-  sensitive?: boolean;
-  hasLinks?: boolean;
-  dueBefore?: string;
-  q?: string;
-  cursor?: string; // 不透明的 (createdAt, id) 游标；兼容旧 ISO 游标
-  limit?: number;
-  deleted?: boolean; // true=回收站视图
-}
+export type ListFilter = TimelineFilter;
+export type ListResult = ItemPage;
 
-export interface ListResult {
-  items: Item[];
-  nextCursor: string | null;
-}
+export class ItemError extends Error {}
 
 /** 依内容与附件推断展示类型（SPEC §2）。 */
-function inferKind(contentKind: ItemKind, files: IncomingFile[]): ItemKind {
+function inferKind(contentKind: ItemKind, files: Array<{ mimeType: string }>): ItemKind {
   if (files.some((f) => f.mimeType.startsWith("image/"))) return "image";
   if (files.length > 0) return "file";
   return contentKind;
@@ -76,6 +61,7 @@ function buildRow(
     deletedAt: null,
     dedupeKey: dedupeKey ?? null,
     meta: JSON.stringify({
+      ...(det.urls[0] ? { preview: { url: det.urls[0], status: "pending" } } : {}),
       suggestions: {
         todo: det.todo,
         urls: det.urls,
@@ -95,6 +81,7 @@ function buildRow(
 export function createItem(input: CreateItemInput): Item {
   const dup = findByDedupeKey(input.dedupeKey);
   if (dup) return dup; // 离线补发重试，已存在则原样返回，不重复创建
+  if (!input.content.trim()) throw new ItemError("empty");
   const det = detect(input.content);
   const row = buildRow(input.content, det.kind, det, input.dedupeKey);
   db.insert(items).values(row).run();
@@ -113,6 +100,7 @@ export async function createItemWithFiles(
 ): Promise<Item> {
   const dup = findByDedupeKey(dedupeKey);
   if (dup) return dup; // 离线补发重试，已存在则原样返回
+  if (!content.trim() && !files.length) throw new ItemError("empty");
   const det = detect(content);
   const kind = inferKind(det.kind, files);
   const row = buildRow(content, kind, det, dedupeKey);
@@ -154,7 +142,7 @@ export async function refetchPreview(id: string): Promise<Item | null> {
   const urls = detect(row.content).urls;
   const first = urls[0];
   if (!first) return rowToItem(row, attachmentSvc.listByItem(id));
-  const updated = await fetchPreviewInto(id, first);
+  const updated = await fetchPreviewInto(id, first, row.content);
   if (updated) bus.publish({ type: "item.updated", payload: updated });
   return updated;
 }
@@ -167,14 +155,18 @@ function schedulePreview(item: Item, urls: string[], attempt = 0): void {
   const first = urls[0];
   if (!first) return;
   queueMicrotask(() => {
-    void fetchPreviewInto(item.id, first).then((updated) => {
+    void Promise.resolve().then(() => {
+    const current = db.select().from(items).where(eq(items.id, item.id)).get();
+    if (!current || current.deletedAt !== null || current.content !== item.content || detectUrls(current.content)[0] !== first) return;
+    return fetchPreviewInto(item.id, first, item.content).then((updated) => {
       if (!updated) return;
       bus.publish({ type: "item.updated", payload: updated });
-      const status = (updated.meta?.preview as LinkPreview | undefined)?.status;
+      const status = updated.meta?.preview?.status;
       if (status === "error" && attempt < 1) {
         setTimeout(() => schedulePreview(item, urls, attempt + 1), 4000);
       }
     });
+    }).catch(() => console.error("Preview update failed"));
   });
 }
 
@@ -193,22 +185,23 @@ export function listItems(f: ListFilter): ListResult {
     const count = sql<number>`coalesce(json_array_length(${items.meta}, '$.suggestions.urls'), 0)`;
     cond.push(f.hasLinks ? sql`${count} > 0` : sql`${count} = 0`);
   }
+  for (const [value, image] of [[f.hasImages, true], [f.hasFiles, false]] as const) {
+    if (value === undefined) continue;
+    const present = exists(db.select({ x: attachments.itemId }).from(attachments).where(and(
+      eq(attachments.itemId, items.id), image ? like(attachments.mimeType, "image/%") : sql`${attachments.mimeType} NOT LIKE 'image/%'`,
+    )));
+    cond.push(value ? present : sql`NOT ${present}`);
+  }
   if (f.dueBefore) cond.push(lt(items.dueAt, isoToSec(f.dueBefore)));
   if (f.q) {
-    // 搜索覆盖：正文 + meta（链接标题/描述/URL/域名）+ 附件文件名（SPEC §11）
-    const kw = `%${f.q}%`;
-    cond.push(
-      or(
-        like(items.content, kw),
-        like(items.meta, kw),
-        exists(
-          db
-            .select({ x: attachments.itemId })
-            .from(attachments)
-            .where(and(eq(attachments.itemId, items.id), like(attachments.filename, kw))),
-        ),
-      )!,
-    );
+    const kw = `%${f.q.replace(/[\\%_]/g, "\\$&")}%`;
+    const match = (value: ReturnType<typeof sql>) => sql`${value} LIKE ${kw} ESCAPE ${'\\'}`;
+    cond.push(or(
+      match(sql`${items.content}`),
+      ...["title", "description", "url", "domain"].map((field) => match(sql`json_extract(${items.meta}, ${`$.preview.${field}`})`)),
+      sql`EXISTS (SELECT 1 FROM json_each(${items.meta}, '$.suggestions.urls') WHERE value LIKE ${kw} ESCAPE ${'\\'})`,
+      exists(db.select({ x: attachments.itemId }).from(attachments).where(and(eq(attachments.itemId, items.id), match(sql`${attachments.filename}`)))),
+    )!);
   }
   if (f.cursor) {
     const cursor = decodeCursor(f.cursor);
@@ -246,29 +239,45 @@ export function updateItem(id: string, patch: UpdateItemInput): Item | null {
   const existing = db.select().from(items).where(eq(items.id, id)).get();
   if (!existing) return null;
 
+  const atts = attachmentSvc.listByItem(id);
+  const content = patch.content ?? existing.content;
+  if (!content.trim() && !atts.length) throw new ItemError("empty");
+  if (patch.isTodo === false && (patch.completed === true || patch.dueAt != null)) throw new ItemError("invalid_todo_state");
   const set: Partial<ItemInsert> = { updatedAt: nowSec() };
-  if (patch.content !== undefined) set.content = patch.content;
+  if (patch.content !== undefined) set.content = content;
   if (patch.category !== undefined) set.category = patch.category;
-  if (patch.isTodo !== undefined) set.isTodo = patch.isTodo;
   if (patch.pinned !== undefined) set.pinned = patch.pinned;
-  if (patch.sensitive !== undefined) set.sensitive = patch.sensitive;
-  if (patch.dueAt !== undefined) {
-    set.dueAt = patch.dueAt === null ? null : isoToSec(patch.dueAt);
-  }
-  if (patch.completed !== undefined) {
-    set.completed = patch.completed;
-    set.completedAt = patch.completed ? nowSec() : null;
-  }
-
+  let isTodo = patch.isTodo ?? existing.isTodo;
+  let completed = patch.completed ?? existing.completed;
+  let completedAt = patch.completed === undefined ? existing.completedAt : patch.completed ? (existing.completed ? existing.completedAt : nowSec()) : null;
+  let dueAt = patch.dueAt === undefined ? existing.dueAt : patch.dueAt === null ? null : isoToSec(patch.dueAt);
+  if (patch.isTodo === false) { isTodo = false; completed = false; completedAt = null; dueAt = null; }
+  else if (patch.completed === true || patch.dueAt != null) isTodo = true;
+  if (!isTodo) { completed = false; completedAt = null; dueAt = null; }
+  set.isTodo = isTodo; set.completed = completed; set.completedAt = completedAt; set.dueAt = dueAt;
+  const override = patch.sensitive === undefined ? existing.sensitiveOverride : patch.sensitive;
+  set.sensitiveOverride = override;
+  let urls: string[] | undefined;
+  if (content !== existing.content) {
+    const det = detect(content);
+    urls = det.urls;
+    const meta = existing.meta ? JSON.parse(existing.meta) : {};
+    const oldFirst = detectUrls(existing.content)[0];
+    meta.suggestions = { todo: det.todo, urls: det.urls, due: det.due, secretHint: det.secret.hint ?? null };
+    if (oldFirst !== urls[0]) {
+      delete meta.preview;
+      if (urls[0]) meta.preview = { url: urls[0], status: "pending" };
+    }
+    set.meta = JSON.stringify(meta);
+    set.kind = inferKind(det.kind, atts);
+    set.sensitive = override ?? det.secret.sensitive;
+    if (oldFirst === urls[0]) urls = undefined;
+  } else if (patch.sensitive !== undefined) set.sensitive = override ?? detectSecret(content).sensitive;
   db.update(items).set(set).where(eq(items.id, id)).run();
   const row = db.select().from(items).where(eq(items.id, id)).get()!;
-  const dto = rowToItem(row, attachmentSvc.listByItem(id));
+  const dto = rowToItem(row, atts);
+  if (urls) schedulePreview(dto, urls);
 
-  // 编辑正文后重跑识别并重抓链接预览（SPEC §7 编辑语义）。
-  if (patch.content !== undefined) {
-    const det = detect(patch.content);
-    schedulePreview(dto, det.urls);
-  }
   bus.publish({ type: "item.updated", payload: dto });
   return dto;
 }

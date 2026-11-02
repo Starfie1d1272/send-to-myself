@@ -65,13 +65,3 @@ export function listByItems(itemIds: string[]): Map<string, AttachmentRow[]> {
 export function getAttachment(id: string): AttachmentRow | null {
   return db.select().from(attachments).where(eq(attachments.id, id)).get() ?? null;
 }
-
-/** 删除附件：清文件 + 缩略图 + 行。 */
-export async function deleteAttachment(id: string): Promise<boolean> {
-  const row = getAttachment(id);
-  if (!row) return false;
-  await remove(row.storageKey);
-  if (row.thumbKey) await remove(row.thumbKey);
-  db.delete(attachments).where(eq(attachments.id, id)).run();
-  return true;
-}
