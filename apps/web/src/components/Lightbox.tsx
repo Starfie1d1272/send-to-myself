@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { createPortal } from "react-dom";
+import { Dialog } from "./ui/Dialog";
 import { IconX } from "./icons";
 
 /** 壳内全屏看图弹层：替代 target="_blank"（单 WebView 壳里打不开新标签）。
@@ -14,27 +14,27 @@ export function Lightbox({
   onClose: () => void;
 }) {
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", onKey);
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
-      document.removeEventListener("keydown", onKey);
       document.body.style.overflow = prev;
     };
-  }, [onClose]);
+  }, []);
 
-  return createPortal(
-    <div className="lightbox" onClick={onClose}>
+  return (
+    <Dialog className="lightbox" label="图片预览" onClose={onClose} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }} onKeyDown={(e) => {
+      if (e.key !== "Tab") return;
+      const close = e.currentTarget.querySelector<HTMLButtonElement>(".lightbox__close");
+      const scroll = e.currentTarget.querySelector<HTMLDivElement>(".lightbox__scroll");
+      if (e.shiftKey && document.activeElement === close) { e.preventDefault(); scroll?.focus(); }
+      else if (!e.shiftKey && document.activeElement === scroll) { e.preventDefault(); close?.focus(); }
+    }}>
       <button className="lightbox__close" onClick={onClose} aria-label="关闭">
         <IconX width={22} height={22} />
       </button>
-      <div className="lightbox__scroll" onClick={(e) => e.stopPropagation()}>
+      <div className="lightbox__scroll" tabIndex={0} onClick={(e) => e.stopPropagation()}>
         <img src={src} alt={alt ?? ""} className="lightbox__img" />
       </div>
-    </div>,
-    document.body,
+    </Dialog>
   );
 }
