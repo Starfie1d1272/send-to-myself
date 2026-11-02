@@ -191,6 +191,17 @@ export function ItemCard({
   // 命中具体密钥 → 只遮罩密钥本身；手动标敏感但无命中 → 整条遮罩
   const secretSpans = item.sensitive ? findSecretSpans(item.content) : [];
   const partialMask = item.sensitive && secretSpans.length > 0;
+  const contentUrls = partialMask ? extractUrlSpans(item.content) : [];
+  const overlappingUrls = contentUrls.filter(url => secretSpans.some(secret => url.start < secret.end && secret.start < url.end));
+  const renderSensitiveText = (text: string, start: number) => {
+    if (!revealed) return text;
+    let offset = 0;
+    const links = contentUrls.filter(url => url.start >= start && url.end <= start + text.length).map(url => {
+      const before = text.slice(offset, url.start - start); offset = url.end - start;
+      return <span key={url.start}>{before}<a href={url.url} target="_blank" rel="noreferrer" className="inline-link">{url.url}</a></span>;
+    });
+    return <>{links}{text.slice(offset)}</>;
+  };
 
   return (
     <motion.li
@@ -242,7 +253,7 @@ export function ItemCard({
               {draftStatus && <p role="status">{draftStatus}</p>}
             </div>
           ) : partialMask ? (
-            <SensitiveText content={item.content} spans={secretSpans} revealed={revealed} onReveal={() => setRevealed(true)} onCopy={value => void copySpan(value)} renderText={text => revealed ? <LinkifiedText text={text} /> : text} />
+            <><SensitiveText content={item.content} spans={secretSpans} revealed={revealed} onReveal={() => setRevealed(true)} onCopy={value => void copySpan(value)} renderText={renderSensitiveText} />{revealed && overlappingUrls.map(url => <p key={url.start}><a href={url.url} target="_blank" rel="noreferrer" className="inline-link">打开完整链接</a></p>)}</>
           ) : item.sensitive && !revealed ? (
             <button className="redacted" onClick={() => setRevealed(true)}>
               <span className="redacted__bars" aria-hidden>

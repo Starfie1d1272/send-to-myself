@@ -23,8 +23,8 @@
     },
     {
       "name": "send-clipboard-new",
-      "title": "作为新内容发送剪贴板",
-      "description": "以新发送身份发送剪贴板，保留已有未确认请求",
+      "title": "再发一份剪贴板",
+      "description": "再发一份剪贴板，保留已有未确认请求",
       "mode": "no-view"
     },
     {

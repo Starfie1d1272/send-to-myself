@@ -35,9 +35,9 @@ export default function Command() {
       toast.message = error instanceof Error ? error.message : "请重试";
     } finally { setSending(false); }
   }
-  return <Form isLoading={!ready || sending} actions={<ActionPanel><Action.SubmitForm title="发送或重试未确认" onSubmit={() => submit("retry")} /><Action.SubmitForm title="作为新内容发送" onSubmit={() => submit("new")} /></ActionPanel>}>
+  return <Form isLoading={!ready || sending} actions={<ActionPanel><Action.SubmitForm title="发送 / 重试上一笔" onSubmit={() => submit("retry")} /><Action.SubmitForm title="再发一份" onSubmit={() => submit("new")} /></ActionPanel>}>
     <Form.TextArea id="content" title="内容" placeholder="想到什么就记下来，也可以粘贴链接" value={content} onChange={value => { if (!ready || sending) return; setContent(value); save(value, files); }} />
     <Form.FilePicker id="files" title="图片 / 文件" allowMultipleSelection canChooseDirectories={false} value={files} onChange={value => { if (!ready || sending) return; setFiles(value); save(content, value); }} />
-    <Form.Description text="发送或重试会沿用最近的未确认请求；选择作为新内容发送会保留先前未确认请求。" />
+    <Form.Description text="有未确认发送时，可重试上一笔；选择再发一份会保留上一笔。" />
   </Form>;
 }

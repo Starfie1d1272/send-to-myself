@@ -1222,6 +1222,7 @@ body { line-height: 1.6; }
 .att__file-name { white-space: normal; overflow-wrap: anywhere; }
 .device-dialog button { min-height: 36px; }
 @media (max-width: 560px), (pointer: coarse) {
+  .secret--shown { min-height: 44px; min-width: 44px; }
   .attach-btn, .icon-btn, .actions .icon-btn, .tray__x, .check { min-width: 44px; min-height: 44px; }
   .send, .chip, .button, .device-dialog button, .filterbar > button, .filterbar .chips > button, .actions > button, .actions .due-wrap > button, .item__body > button:not(.redacted):not(.suggest), .att__copy, .att details summary { min-height: 44px; }
   .att details summary { width: fit-content; padding: 9px 10px; }
