@@ -1,3 +1,4 @@
+import { parseDetectionContext } from './DetectionContext';
 import { common } from '@kit.AbilityKit';
 import { webview } from '@kit.ArkWeb';
 import { url } from '@kit.ArkTS';
@@ -44,12 +45,13 @@ export class NativeBridge {
   async logout(): Promise<string> { await this.verifyPage(); return this.logoutAction(); }
   async openTools(): Promise<string> { try { await this.openTransfers(); return 'opened'; } catch (_error) { throw new Error('请回到应用首页操作'); } }
   async openTransfers(): Promise<string> { await this.verifyPage(); this.showTools(); return JSON.stringify({ status: 'opened' }); }
-  async openUpload(content: string, key: string): Promise<string> {
+  async openUpload(content: string, key: string, detectionContextJson?: string): Promise<string> {
     await this.verifyPage();
     const connection = await readConnection(this.context);
     if (!connection) throw new Error('SERVER_CHANGED');
     if (!this.uploadRoute) throw new Error('BUSY');
-    return openHandoff(this.context, content, key, connection.origin, this.uploadRoute);
+    const detectionContext = detectionContextJson === undefined ? undefined : parseDetectionContext(detectionContextJson);
+    return openHandoff(this.context, content, key, connection.origin, this.uploadRoute, detectionContext);
   }
   async getUploadReceipt(key: string): Promise<string> {
     await this.verifyPage();

@@ -14,7 +14,7 @@ const bool = (v: string | undefined): boolean | undefined =>
   v === undefined ? undefined : v === "true" || v === "1";
 
 // 发送（不分类，仅正文；附件走 /upload）
-itemsRoute.post("/", zValidator("json", createItemInput), (c) => {
+itemsRoute.post("/", zValidator("json", createItemInput, (result, c) => { if (!result.success) return c.json({ error: "invalid_input" }, 400); }), (c) => {
   try { return c.json(svc.createItem(c.req.valid("json")), 201); }
   catch (error) { if (error instanceof svc.ItemError) return error.message === "already_deleted" || error.message === "purge_in_progress" ? c.json({ error: error.message }, 409) : c.json({ error: error.message }, 400); throw error; }
 });
@@ -37,7 +37,12 @@ itemsRoute.post("/upload", async (c) => {
   try { body = await c.req.parseBody({ all: true }); }
   catch { return c.json({ error: "invalid_multipart" }, 400); }
   const content = typeof body.content === "string" ? body.content : "";
-  const input = createItemInput.safeParse({ content, dedupeKey: body.dedupeKey });
+  let detectionContext: unknown;
+  if (body.detectionContext !== undefined) {
+    if (typeof body.detectionContext !== "string" || !body.detectionContext || body.detectionContext.length > 256) return c.json({ error: "invalid_input" }, 400);
+    try { detectionContext = JSON.parse(body.detectionContext); } catch { return c.json({ error: "invalid_input" }, 400); }
+  }
+  const input = createItemInput.safeParse({ content, dedupeKey: body.dedupeKey, detectionContext });
   if (!input.success) return c.json({ error: "invalid_input" }, 400);
   const { dedupeKey } = input.data;
 
@@ -64,7 +69,7 @@ itemsRoute.post("/upload", async (c) => {
     });
   }
 
-  try { return c.json(await svc.createItemWithFiles(content, files, dedupeKey), 201); }
+  try { return c.json(await svc.createItemWithFiles(content, files, dedupeKey, input.data.detectionContext), 201); }
   catch (error) { if (error instanceof svc.ItemError && error.message === "already_deleted") return c.json({ error: error.message }, 409); throw error; }
 });
 
@@ -96,7 +101,7 @@ itemsRoute.get("/:id", (c) => {
   return item ? c.json(item) : c.json({ error: "not_found" }, 404);
 });
 
-itemsRoute.patch("/:id", zValidator("json", updateItemInput), (c) => {
+itemsRoute.patch("/:id", zValidator("json", updateItemInput, (result, c) => { if (!result.success) return c.json({ error: "invalid_input" }, 400); }), (c) => {
   try {
     const item = svc.updateItem(c.req.param("id"), c.req.valid("json"));
     return item ? c.json(item) : c.json({ error: "not_found" }, 404);

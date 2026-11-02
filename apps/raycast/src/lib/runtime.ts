@@ -1,3 +1,4 @@
+import { captureDetectionContext } from "./types";
 import { getPreferenceValues, LocalStorage, environment } from "@raycast/api";
 import { randomUUID } from "node:crypto";
 import { readFile, stat, mkdir, writeFile, readdir, rm } from "node:fs/promises";
@@ -11,6 +12,7 @@ export function client() {
   return new InboxClient(preferences.serverUrl, preferences.deviceToken);
 }
 export async function send(content: string, paths: string[], onConfirmed?: () => Promise<void>) {
+  const context = captureDetectionContext();
   const api = client();
   const files: File[] = [];
   let size = 0;
@@ -23,7 +25,7 @@ export async function send(content: string, paths: string[], onConfirmed?: () =>
     const name = basename(path);
     files.push(new File([bytes], name, { type: lookup(name) || "application/octet-stream" }));
   }
-  return sendWithRetryKey(api, content, files, LocalStorage, onConfirmed);
+  return sendWithRetryKey(api, content, files, LocalStorage, onConfirmed, context);
 }
 export async function download(id: string, filename: string): Promise<string> {
   const dir = join(environment.supportPath, "attachments");

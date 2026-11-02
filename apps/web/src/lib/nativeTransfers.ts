@@ -1,3 +1,4 @@
+import type { DetectionContext } from "@sendtomyself/shared";
 import { getNativeBridge } from "./nativeBridge";
 
 type UploadStatus = "queued" | "cancelled" | "not_queued" | "unknown" | "accepted";
@@ -10,9 +11,9 @@ function parse(value: string, key: string, allowed: UploadStatus[]): Result {
   return data;
 }
 export function canOpenNativeUpload() { const b = getNativeBridge(); return typeof b?.openUpload === "function" && typeof b.getUploadReceipt === "function"; }
-export async function openNativeUpload(content: string, key: string) {
+export async function openNativeUpload(content: string, key: string, context?: DetectionContext) {
   const bridge = getNativeBridge(); if (!bridge?.openUpload || !bridge.getUploadReceipt) throw new Error("unavailable");
-  return parse(await bridge.openUpload(content, key), key, ["queued", "cancelled", "not_queued", "unknown"]);
+  return parse(await bridge.openUpload(content, key, context ? JSON.stringify(context) : undefined), key, ["queued", "cancelled", "not_queued", "unknown"]);
 }
 export async function readNativeUploadReceipt(key: string) {
   const bridge = getNativeBridge(); if (!bridge?.getUploadReceipt) throw new Error("unavailable");

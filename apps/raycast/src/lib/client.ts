@@ -1,4 +1,4 @@
-import type { Item } from "./types";
+import type { DetectionContext, Item } from "./types";
 
 export function normalizeServer(raw: string): string {
   const url = new URL(raw.includes("://") ? raw.trim() : `https://${raw.trim()}`);
@@ -40,15 +40,16 @@ export class InboxClient {
     if (cursor) params.set("cursor", cursor);
     return (await this.request(`/api/items?${params}`, { signal })).json();
   }
-  async send(content: string, files: File[], dedupeKey: string): Promise<Item> {
+  async send(content: string, files: File[], dedupeKey: string, detectionContext?: DetectionContext): Promise<Item> {
     if (!content.trim() && !files.length) throw new Error("请填写内容或选择文件。");
     if (files.length) {
       const body = new FormData();
       body.set("content", content); body.set("dedupeKey", dedupeKey);
+      if (detectionContext) body.set("detectionContext", JSON.stringify(detectionContext));
       files.forEach(file => body.append("files", file));
       return (await this.request("/api/items/upload", { method: "POST", body })).json();
     }
-    return (await this.request("/api/items", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ content, dedupeKey }) })).json();
+    return (await this.request("/api/items", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ content, dedupeKey, detectionContext }) })).json();
   }
   async attachment(id: string): Promise<Blob> {
     return (await this.request(`/api/attachments/${encodeURIComponent(id)}/raw`)).blob();

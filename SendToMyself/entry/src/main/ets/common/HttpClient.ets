@@ -1,3 +1,4 @@
+import { DetectionContext } from './DetectionContext';
 import { http } from '@kit.NetworkKit';
 import { common } from '@kit.AbilityKit';
 import { fileIo } from '@kit.CoreFileKit';
@@ -75,10 +76,10 @@ export async function getJson(context: common.Context, connection: Authenticated
     header: { 'Authorization': 'Bearer ' + connection.deviceToken }, connectTimeout: 15000, readTimeout: 15000 });
 }
 export async function postTextItem(context: common.Context, connection: AuthenticatedConnection,
-  content: string, dedupeKey: string): Promise<boolean> {
+  content: string, dedupeKey: string, detectionContext?: DetectionContext): Promise<boolean> {
   const response = await protectedRequest(context, connection, '/api/items', { method: http.RequestMethod.POST,
     header: { 'Authorization': 'Bearer ' + connection.deviceToken, 'Content-Type': 'application/json' },
-    extraData: JSON.stringify({ content: content, dedupeKey: dedupeKey }), connectTimeout: 15000, readTimeout: 15000 });
+    extraData: JSON.stringify({ content: content, dedupeKey: dedupeKey, detectionContext: detectionContext }), connectTimeout: 15000, readTimeout: 15000 });
   if (response.responseCode === 201) return true;
   if (response.responseCode === 401) {
     await clearTokenIfCurrent(context, connection.origin, connection.revision);

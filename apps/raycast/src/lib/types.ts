@@ -6,3 +6,6 @@ export interface Item {
   sensitive: boolean;
   attachments?: Array<{ id: string; filename: string; mimeType: string; size: number }>;
 }
+
+export interface DetectionContext { capturedAt: string; utcOffsetMinutes: number }
+export function captureDetectionContext(): DetectionContext { const date = new Date(); return { capturedAt: date.toISOString(), utcOffsetMinutes: -date.getTimezoneOffset() }; }

@@ -25,6 +25,12 @@ export type ItemCategory = z.infer<typeof itemCategory>;
 const id = z.string().min(1);
 const isoDateTime = z.string().datetime({ offset: true });
 
+export const detectionContextSchema = z.object({
+  capturedAt: isoDateTime.max(64).refine(value => Number.isFinite(Date.parse(value))),
+  utcOffsetMinutes: z.number().int().min(-840).max(840),
+});
+export type DetectionContext = z.infer<typeof detectionContextSchema>;
+
 // —— Attachment ——
 
 export const attachmentSchema = z.object({
@@ -117,6 +123,7 @@ export const createItemInput = z.object({
    * 避免弱网重试造成重复。客户端生成（uuid）；网页直发可不填。
    */
   dedupeKey: z.string().min(1).max(64).optional(),
+  detectionContext: detectionContextSchema.optional(),
 });
 export type CreateItemInput = z.infer<typeof createItemInput>;
 
@@ -124,6 +131,7 @@ export type CreateItemInput = z.infer<typeof createItemInput>;
 export const updateItemInput = z
   .object({
     content: z.string().max(100_000),
+    detectionContext: detectionContextSchema,
     category: itemCategory,
     isTodo: z.boolean(),
     completed: z.boolean(),
@@ -131,7 +139,7 @@ export const updateItemInput = z
     pinned: z.boolean(),
     sensitive: z.boolean().nullable(),
   })
-  .partial();
+  .partial().refine(value => value.detectionContext === undefined || value.content !== undefined);
 export type UpdateItemInput = z.infer<typeof updateItemInput>;
 
 // —— 时间线查询 ——

@@ -1,5 +1,5 @@
 export interface NativeBridge {
-  openUpload?: (content: string, dedupeKey: string) => Promise<string>;
+  openUpload?: (content: string, dedupeKey: string, detectionContextJson?: string) => Promise<string>;
   getUploadReceipt?: (dedupeKey: string) => Promise<string>;
   openTransfers?: () => Promise<string>;
   openTools?: () => Promise<string>;

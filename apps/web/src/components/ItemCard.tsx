@@ -1,3 +1,4 @@
+import { captureDetectionContext } from "../lib/detectionContext";
 import { useEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
 import type { Item } from "@sendtomyself/shared";
@@ -130,7 +131,12 @@ export function ItemCard({
   };
   const saveEdit = async () => {
     if (!draft.trim() && !item.attachments?.length) { setError("请输入文字"); return; }
-    if (await run(() => update.mutateAsync({ id: item.id, patch: { content: draft } }))) { await clearSnapshot(); setEditing(false); }
+    await lastWrite.current;
+    const context = snapshot.current?.content === draft ? snapshot.current.detectionContext ?? captureDetectionContext() : captureDetectionContext();
+    if (!snapshot.current?.detectionContext || snapshot.current.content !== draft) {
+      try { snapshot.current = await saveEditDraft(item.id, draft, context); } catch { snapshot.current = { content: draft, savedAt: Date.now(), detectionContext: context }; setDraftStatus("修改尚未保存到本机，请勿关闭窗口"); }
+    }
+    if (await run(() => update.mutateAsync({ id: item.id, patch: { content: draft, detectionContext: context } }))) { await clearSnapshot(); setEditing(false); }
   };
   const cancelEdit = async () => { await clearSnapshot(); setEditing(false); setError(""); };
 
@@ -238,7 +244,7 @@ export function ItemCard({
               onClick={() => patch({ isTodo: true, dueAt: suggestion!.dueAt })}
             >
               <IconClock width={14} height={14} />
-              识别到截止「{suggestion!.matchedText}」· 设为待办
+              识别到截止「{suggestion!.matchedText}」：{formatDue(suggestion!.dueAt)}（本机时间）· 设为待办
             </button>
           )}
 
