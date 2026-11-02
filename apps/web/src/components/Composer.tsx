@@ -4,25 +4,26 @@ import { formatSize } from "../lib/format";
 import { IconFile, IconImage, IconPaperclip, IconX } from "./icons";
 
 export function Composer() {
-  const { draft, change, send, ready, pending, draftError, error, notice, progress, info, badFilename, deleted, sendAsNew, stop } = useComposer();
+  const { draft, change, send, canSend, overLimit, ready, pending, draftError, error, notice, progress, info, badFilename, deleted, sendAsNew, stop } = useComposer();
   const value = draft.content;
   const files = draft.files;
   const [dragging, setDragging] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
-  const previews = useRef(new Map<File, string>());
-  useEffect(() => () => { for (const url of previews.current.values()) URL.revokeObjectURL(url); }, []);
+  const [previews, setPreviews] = useState<Map<File, string>>(new Map());
+  useEffect(() => {
+    const urls = new Map<File, string>();
+    for (const file of files) {
+      if (file.type.startsWith("image/") && !urls.has(file)) urls.set(file, URL.createObjectURL(file));
+    }
+    setPreviews(urls);
+    return () => { for (const url of urls.values()) URL.revokeObjectURL(url); };
+  }, [files]);
   useEffect(() => {
     const focus = () => ref.current?.focus();
     window.addEventListener("send-to-myself:focus-composer", focus);
     return () => window.removeEventListener("send-to-myself:focus-composer", focus);
   }, []);
-  const preview = (file: File) => {
-    if (!file.type.startsWith("image/")) return undefined;
-    let url = previews.current.get(file);
-    if (!url) { url = URL.createObjectURL(file); previews.current.set(file, url); }
-    return url;
-  };
   const grow = () => {
     const el = ref.current;
     if (!el) return;
@@ -33,13 +34,7 @@ export function Composer() {
   useEffect(grow, [value]);
 
   const addFiles = (list: FileList | File[]) => change(value, [...files, ...Array.from(list)]);
-  const removeAt = (i: number) => {
-    const file = files[i]; const url = file && previews.current.get(file);
-    if (url && file) { URL.revokeObjectURL(url); previews.current.delete(file); }
-    change(value, files.filter((_, index) => index !== i));
-  };
-  const overLimit = !!info && (files.some(file => file.size > info.maxUploadBytes) || files.length > info.maxUploadFiles || files.reduce((sum, file) => sum + file.size, 0) > info.maxUploadTotalBytes);
-  const canSend = (value.trim().length > 0 || files.length > 0) && !pending && ready && !overLimit && !badFilename && !deleted;
+  const removeAt = (i: number) => change(value, files.filter((_, index) => index !== i));
 
   return (
     <div
@@ -86,8 +81,8 @@ export function Composer() {
         <div className="tray">
           {files.map((f, i) => (
             <div className="tray__item" key={i}>
-              {preview(f) ? (
-                <img src={preview(f)} alt="" className="tray__thumb" />
+              {previews.has(f) ? (
+                <img src={previews.get(f)} alt="" className="tray__thumb" />
               ) : (
                 <span className="tray__file">
                   <IconFile width={16} height={16} />

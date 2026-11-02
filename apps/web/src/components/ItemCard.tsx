@@ -70,13 +70,13 @@ export function ItemCard({
   const lock = useRef(false);
   const snapshot = useRef<EditSnapshot | undefined>(undefined);
   const lastWrite = useRef<Promise<void>>(Promise.resolve());
-  const retry = useRef<(() => Promise<unknown>) | null>(null);
-  const run = async (operation: () => Promise<unknown>) => {
+  const retry = useRef<{ operation: () => Promise<unknown>; preview: boolean } | null>(null);
+  const run = async (operation: () => Promise<unknown>, preview = false) => {
     if (lock.current) return false;
-    lock.current = true; setBusy(true); setError(""); setNotice(""); retry.current = operation;
+    lock.current = true; setBusy(true); setError(""); setNotice(""); retry.current = { operation, preview };
     try { await operation(); retry.current = null; setNotice("已保存"); return true; }
     catch (err) {
-      setError(mutationErrorMessage(err));
+      setError(preview ? "预览抓取失败，原链接仍保留，请重试。" : mutationErrorMessage(err));
       if (err instanceof ApiError && err.status === 404 && editing) {
         await lastWrite.current; await clearEditDraft(item.id).catch(() => {});
       }
@@ -226,7 +226,7 @@ export function ItemCard({
                   className="link-chip link-chip--action"
                   title="重新抓取预览"
                   disabled={busy}
-                  onClick={() => void run(async () => { const result = await refetchPreview.mutateAsync(item.id); if (result.meta?.preview?.status === "error") throw new Error("preview failed"); })}
+                  onClick={() => void run(async () => { const result = await refetchPreview.mutateAsync(item.id); if (result.meta?.preview?.status === "error") throw new Error("preview failed"); }, true)}
                 >
                   {refetchPreview.isPending ? "抓取中…" : "抓取预览"}
                 </button>
@@ -261,7 +261,7 @@ export function ItemCard({
       </div>
 
       {notice && <p role="status">{notice}</p>}
-      {error && <p className="composer__error" role="alert">{error} {editing ? <><button disabled={busy} onClick={() => void saveEdit()}>重试保存</button><button onClick={() => void copyText(draft)}>复制未保存内容</button></> : <button disabled={busy} onClick={() => { if (retry.current) void run(retry.current); }}>重试</button>}</p>}
+      {error && <p className="composer__error" role="alert">{error} {editing ? <><button disabled={busy} onClick={() => void saveEdit()}>重试保存</button><button onClick={() => void copyText(draft)}>复制未保存内容</button></> : <button disabled={busy} onClick={() => { if (retry.current) void run(retry.current.operation, retry.current.preview); }}>重试</button>}</p>}
       {copyError && <p className="composer__error" role="alert">{copyError}</p>}
       <fieldset className="actions" disabled={busy || editing} style={{ border: 0, padding: 0, margin: 0 }}>
         {trash ? (

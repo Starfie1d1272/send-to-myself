@@ -38,8 +38,12 @@ export function useComposer() {
     current.current = next; setDraft(next); setError(""); setBadFilename(undefined); setDeleted(false);
     void saveDraft(next).then(() => setDraftError(false)).catch(() => setDraftError(true));
   };
+  const exceedsLimit = (files: File[]) => !!info && (files.some(file => file.size > info.maxUploadBytes) || files.length > info.maxUploadFiles || files.reduce((sum, file) => sum + file.size, 0) > info.maxUploadTotalBytes);
+  const overLimit = exceedsLimit(draft.files);
+  const allowed = (value: ComposerDraft) => (value.content.trim().length > 0 || value.files.length > 0) && !pending && ready && !exceedsLimit(value.files) && !badFilename && !deleted;
+  const canSend = allowed(draft);
   const send = async () => {
-    if (attempt.current || !ready || (!draft.content.trim() && !draft.files.length)) return;
+    if (attempt.current || !allowed(current.current)) return;
     const controller = new AbortController(); attempt.current = controller; setPending(true); setError(""); setNotice(""); setProgress(undefined);
     const snapshot = { ...current.current, files: [...current.current.files], webSendAttempted: true };
     const generation = draftGeneration();
@@ -66,5 +70,5 @@ export function useComposer() {
       }
     } finally { if (attempt.current === controller) { attempt.current = null; setPending(false); } }
   };
-  return { draft, change, send, ready, pending, draftError, error, notice, progress, info, badFilename, deleted, sendAsNew: () => change(current.current.content, current.current.files), stop: () => attempt.current?.abort() };
+  return { draft, change, send, canSend, overLimit, ready, pending, draftError, error, notice, progress, info, badFilename, deleted, sendAsNew: () => change(current.current.content, current.current.files), stop: () => attempt.current?.abort() };
 }
