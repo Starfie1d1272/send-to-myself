@@ -13,6 +13,7 @@ const messages: Record<string, string> = {
   invalid_shortcut: "请使用 Ctrl/⌘/Alt 加一个按键。",
   shortcut_conflict: "快捷键注册失败，可能已被其他程序占用。",
   forbidden: "当前页面无权修改设置。",
+  superseded: "连接已被新的操作取代，请重试。",
 };
 const el = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const form = el<HTMLFormElement>("form"), input = el<HTMLInputElement>("url"), connect = el<HTMLButtonElement>("connect");
