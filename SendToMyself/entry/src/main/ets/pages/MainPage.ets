@@ -12,14 +12,7 @@ import { NativeBridge, bridgePermission } from '../common/NativeBridge';
 import { registerHostReauthentication, unregisterHostReauthentication } from '../common/HostReauthentication';
 
 // 与 Web 端 (apps/web/src/styles/global.css) 共用的设计语言
-const C_PAPER = '#f2ece1';
-const C_CARD = '#fbf7ef';
-const C_INK = '#241d16';
-const C_INK_SOFT = '#5b5044';
-const C_INK_FAINT = '#938573';
-const C_LINE = '#d3c4ab';
-const C_ACCENT = '#bc4b2a';
-const C_RED = '#a8331e';
+import { PAPER as C_PAPER, CARD as C_CARD, CARD_HI, INK as C_INK, INK_SOFT as C_INK_SOFT, INK_FAINT as C_INK_FAINT, LINE_STRONG as C_LINE, ACCENT as C_ACCENT, ERROR as C_RED } from '../common/Theme';
 
 type Phase = 'loading' | 'login' | 'web';
 
@@ -374,15 +367,15 @@ struct MainPage {
       }
       if (this.authOverlay) {
         Column({ space: 12 }) {
-          Text('重新登录当前连接').fontSize(20)
-          TextInput({ placeholder: '登录口令' }).type(InputType.Password).enabled(!this.authSubmitting).onChange((value: string) => { this.password = value; })
+          Text('重新登录当前连接').fontSize(20).fontColor(C_INK)
+          TextInput({ placeholder: '登录口令' }).type(InputType.Password).backgroundColor(CARD_HI).fontColor(C_INK).placeholderColor(C_INK_SOFT).enabled(!this.authSubmitting).onChange((value: string) => { this.password = value; })
           Button('重新登录').enabled(!this.authSubmitting).onClick(() => { this.submitReauthenticate(); })
           Button('取消').enabled(!this.authSubmitting).onClick(() => { this.cancelReauthenticate(); })
         }.padding(24).backgroundColor(C_CARD).width('90%')
       }
       if (this.signedOut) {
         Column({ space: 12 }) {
-          Text(this.logoutNotice || '正在退出当前连接…')
+          Text(this.logoutNotice || '正在退出当前连接…').fontColor(C_INK)
           Button('返回连接').onClick(() => { this.signedOut = false; this.phase = 'login'; })
         }.padding(24).backgroundColor(C_CARD).width('100%').height('100%').justifyContent(FlexAlign.Center)
       }
@@ -440,7 +433,7 @@ struct MainPage {
           .enabled(!this.busy)
           .width('100%')
           .height(48)
-          .backgroundColor(Color.White)
+          .backgroundColor(CARD_HI)
           .borderRadius(10)
           .borderWidth(1)
           .borderColor(C_LINE)
@@ -458,7 +451,7 @@ struct MainPage {
           .enabled(!this.busy)
           .width('100%')
           .height(48)
-          .backgroundColor(Color.White)
+          .backgroundColor(CARD_HI)
           .borderRadius(10)
           .borderWidth(1)
           .borderColor(C_LINE)

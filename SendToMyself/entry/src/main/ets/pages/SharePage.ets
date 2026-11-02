@@ -1,3 +1,4 @@
+import { PAPER, INK_SOFT, ERROR, SUCCESS } from '../common/Theme';
 import { common, UIExtensionContentSession } from '@kit.AbilityKit';
 
 @Entry
@@ -7,7 +8,7 @@ struct SharePage {
   @LocalStorageLink('shareResult') @Watch('onResultChange') result: string = '';
   @LocalStorageLink('shareError') @Watch('onErrorChange') error: string = '';
   @LocalStorageLink('shareMessage') message: string = '';
-  @State statusColor: ResourceColor = Color.Gray;
+  @State statusColor: ResourceColor = INK_SOFT;
   @State opening: boolean = false;
   private session: UIExtensionContentSession | undefined = undefined;
 
@@ -27,26 +28,26 @@ struct SharePage {
   onErrorChange(): void {
     if (!this.error) return;
     this.statusText = '失败：' + this.error;
-    this.statusColor = Color.Red;
+    this.statusColor = ERROR;
 
   }
 
   handleResult(result: string): void {
     if (result === 'success') {
       this.statusText = '已发送';
-      this.statusColor = Color.Green;
+      this.statusColor = SUCCESS;
       this.autoClose(800);
     } else if (result === 'queued') {
       this.statusText = this.message || '已保存在本机，打开应用或恢复网络后重试';
-      this.statusColor = Color.Orange;
+      this.statusColor = INK_SOFT;
 
     } else if (result === 'needsLogin') {
       this.statusText = '请先在应用内登录';
-      this.statusColor = Color.Red;
+      this.statusColor = ERROR;
 
     } else {
       this.statusText = this.message || '发送失败';
-      this.statusColor = Color.Red;
+      this.statusColor = ERROR;
 
     }
   }
@@ -60,7 +61,7 @@ struct SharePage {
       if (this.session) await this.session.terminateSelf();
     } catch (_error) {
       this.statusText = '暂时无法打开应用，请手动打开后查看传输任务';
-      this.statusColor = Color.Red;
+      this.statusColor = ERROR;
     } finally { this.opening = false; }
   }
 
@@ -87,6 +88,6 @@ struct SharePage {
     .height('100%')
     .justifyContent(FlexAlign.Center)
     .alignItems(HorizontalAlign.Center)
-    .backgroundColor(Color.White)
+    .backgroundColor(PAPER)
   }
 }
