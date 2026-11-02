@@ -25,7 +25,8 @@ struct Config {
     shortcut: Option<String>,
 }
 struct LauncherUrl(Mutex<Option<Url>>);
-struct SettingsLock(Mutex<()>);
+// The same lock serializes settings writes and owns connection attempts.
+struct SettingsLock(Mutex<u64>);
 #[derive(Default)]
 struct Runtime {
     active: Option<Shortcut>,
@@ -205,7 +206,13 @@ async fn connect_server(
     window: tauri::WebviewWindow,
     url: String,
 ) -> Result<ConnectResult, SettingsError> {
-    check_launcher(&app, &window)?;
+    let settings_lock = app.state::<SettingsLock>();
+    let attempt = {
+        let mut generation = settings_lock.0.lock().unwrap();
+        check_launcher(&app, &window)?;
+        *generation = generation.wrapping_add(1);
+        *generation
+    };
     let parsed = validate_server(&url).map_err(|_| failure("invalid_url", "请填写应用根地址"))?;
     if app
         .state::<LauncherUrl>()
@@ -219,8 +226,11 @@ async fn connect_server(
     }
     probe_server(&parsed).await?;
     let origin = parsed.origin().ascii_serialization();
-    let settings_lock = app.state::<SettingsLock>();
-    let _guard = settings_lock.0.lock().unwrap();
+    let generation = settings_lock.0.lock().unwrap();
+    if *generation != attempt {
+        return Err(failure("superseded", "连接已被新的操作取代"));
+    }
+    check_launcher(&app, &window)?;
     let mut cfg = read_config_for_write(&app)?;
     if cfg.server_url.as_deref() != Some(origin.as_str()) {
         cfg.server_url = Some(origin.clone());
@@ -477,9 +487,12 @@ fn toggle_window(app: &tauri::AppHandle) {
     }
 }
 
-/// 切换服务器：清空已存地址并导航回本地启动页，让用户重填。
+/// 打开本地设置，同时使之前页面的连接尝试失效。
 /// 托盘菜单与全局快捷键（Cmd/Ctrl+Shift+逗号）共用——不依赖托盘也能逃生。
 fn switch_server(app: &tauri::AppHandle) {
+    let settings_lock = app.state::<SettingsLock>();
+    let mut generation = settings_lock.0.lock().unwrap();
+    *generation = generation.wrapping_add(1);
     let target = app.state::<LauncherUrl>().0.lock().unwrap().clone();
     if let (Some(w), Some(mut u)) = (app.get_webview_window("main"), target) {
         u.set_query(Some("view=settings"));
@@ -516,7 +529,7 @@ pub fn run() {
             let launcher_url = main.url().ok();
             app.manage(LauncherUrl(Mutex::new(launcher_url)));
 
-            app.manage(SettingsLock(Mutex::new(())));
+            app.manage(SettingsLock(Mutex::new(0)));
             app.manage(RuntimeState(Mutex::new(Runtime::default())));
 
             // —— 托盘 ——
