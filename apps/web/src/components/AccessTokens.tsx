@@ -15,10 +15,10 @@ export function AccessTokens({ onClose }: { onClose: () => void }) {
   const [copying, setCopying] = useState(false);
   const qc = useQueryClient();
   const devices = useQuery({ queryKey: ["devices"], queryFn: api.devices, enabled: access.authenticated && !access.reauthRequired && !access.exiting, retry: false });
-  const create = useMutation({ mutationFn: () => api.createDevice(name.trim()), onSuccess: result => {
+  const create = useMutation({ networkMode: "always", mutationFn: () => api.createDevice(name.trim()), onSuccess: result => {
     setToken(result.token); setMessage(""); void qc.invalidateQueries({ queryKey: ["devices"] });
   } });
-  const revoke = useMutation({ mutationFn: api.revokeDevice, onSuccess: () => {
+  const revoke = useMutation({ networkMode: "always", mutationFn: api.revokeDevice, onSuccess: () => {
     setToken(""); void qc.invalidateQueries({ queryKey: ["devices"] });
   } });
   return <Dialog onClose={onClose} labelledBy="device-title">
