@@ -12,6 +12,7 @@ import {
   itemUrls,
   quickDue,
 } from "../lib/format";
+import { extractUrlSpans } from "@sendtomyself/shared/detect";
 import { findSecretSpans } from "@sendtomyself/shared/detect/secret";
 import { copyText, copyImage } from "../lib/clipboard";
 import { attachmentRawUrl } from "../lib/api";
@@ -32,23 +33,14 @@ import {
   IconTrash,
 } from "./icons";
 
-const URL_RE = /(https?:\/\/[^\s]+)/g;
-
 function LinkifiedText({ text }: { text: string }) {
-  const parts = text.split(URL_RE);
-  return (
-    <>
-      {parts.map((p, i) =>
-        URL_RE.test(p) ? (
-          <a key={i} href={p} target="_blank" rel="noreferrer" className="inline-link">
-            {p}
-          </a>
-        ) : (
-          <span key={i}>{p}</span>
-        ),
-      )}
-    </>
-  );
+  let offset = 0;
+  const parts = extractUrlSpans(text).map((span) => {
+    const before = text.slice(offset, span.start);
+    offset = span.end;
+    return <span key={span.start}>{before}<a href={span.url} target="_blank" rel="noreferrer" className="inline-link">{span.url}</a></span>;
+  });
+  return <>{parts}{text.slice(offset)}</>;
 }
 
 export function ItemCard({

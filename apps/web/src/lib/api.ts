@@ -1,24 +1,7 @@
-import type { CreateItemInput, Item, UpdateItemInput } from "@sendtomyself/shared";
+import type { CreateItemInput, Item, UpdateItemInput, ItemPage, TimelineFilter } from "@sendtomyself/shared";
 
-export interface ListResult {
-  items: Item[];
-  nextCursor: string | null;
-}
-
-export interface ListParams {
-  kind?: string;
-  category?: string;
-  isTodo?: boolean;
-  completed?: boolean;
-  pinned?: boolean;
-  sensitive?: boolean;
-  hasLinks?: boolean;
-  dueBefore?: string;
-  q?: string;
-  cursor?: string;
-  deleted?: boolean;
-  limit?: number;
-}
+export type ListResult = ItemPage;
+export type ListParams = TimelineFilter;
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) {

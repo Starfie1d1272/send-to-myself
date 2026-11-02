@@ -130,7 +130,7 @@ test("upload, download, filename search, trash and restore preserve attachment b
   assert.equal(svc.listItems({ deleted: true }).items[0]?.id, item.id);
   const restored = svc.restoreItem(item.id)!;
   assert.equal(restored.attachments?.length, 1);
-  assert.equal(await readFile(resolveKey(item.attachments![0]!.storageKey), "utf8"), "original bytes");
+  assert.equal(await readFile(resolveKey(db.select().from(attachments).where(eq(attachments.id, item.attachments![0]!.id)).get()!.storageKey), "utf8"), "original bytes");
 });
 
 test("HTTP queries and multipart input reject invalid limits, cursors and dedupe keys", async () => {
@@ -203,7 +203,7 @@ test("WAL snapshot restores item state, attachment bytes and detects missing/cor
   assert.equal(exported.items[0].pinned, 1);
   assert.ok(exported.items[0].deleted_at);
   await verifyBackup(backup, process.env.STORAGE_ROOT!);
-  const key = item.attachments![0]!.storageKey;
+  const key = db.select().from(attachments).where(eq(attachments.id, item.attachments![0]!.id)).get()!.storageKey;
   await writeFile(resolveKey(key), "modified"); // 相同字节数，仅大小校验无法发现。
   await assert.rejects(verifyBackup(backup, process.env.STORAGE_ROOT!), /checksum/);
   await rm(resolveKey(key));

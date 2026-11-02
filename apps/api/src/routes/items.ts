@@ -12,9 +12,10 @@ const bool = (v: string | undefined): boolean | undefined =>
   v === undefined ? undefined : v === "true" || v === "1";
 
 // 发送（不分类，仅正文；附件走 /upload）
-itemsRoute.post("/", zValidator("json", createItemInput), (c) =>
-  c.json(svc.createItem(c.req.valid("json")), 201),
-);
+itemsRoute.post("/", zValidator("json", createItemInput), (c) => {
+  try { return c.json(svc.createItem(c.req.valid("json")), 201); }
+  catch (error) { if (error instanceof svc.ItemError) return c.json({ error: error.message }, 400); throw error; }
+});
 
 // 带附件发送（multipart：content 文本 + 一个或多个 files，SPEC §8, §10）
 itemsRoute.post("/upload", async (c) => {
@@ -51,7 +52,7 @@ itemsRoute.post("/upload", async (c) => {
 // 时间线 / 搜索 / 筛选（游标分页）
 itemsRoute.get("/", (c) => {
   const q = c.req.query();
-  for (const key of ["isTodo", "completed", "pinned", "sensitive", "deleted", "hasLinks"]) {
+  for (const key of ["isTodo", "completed", "pinned", "sensitive", "deleted", "hasLinks", "hasImages", "hasFiles"]) {
     if (q[key] !== undefined && !["true", "false", "1", "0"].includes(q[key]!)) {
       return c.json({ error: "invalid_query" }, 400);
     }
@@ -60,18 +61,15 @@ itemsRoute.get("/", (c) => {
     ...q,
     limit: q.limit === undefined ? undefined : Number(q.limit),
     isTodo: bool(q.isTodo), completed: bool(q.completed), pinned: bool(q.pinned),
-    hasLinks: bool(q.hasLinks),
+    hasLinks: bool(q.hasLinks), hasImages: bool(q.hasImages), hasFiles: bool(q.hasFiles),
+    sensitive: bool(q.sensitive), deleted: bool(q.deleted),
   });
   if (!parsed.success) return c.json({ error: "invalid_query" }, 400);
   if (q.cursor) {
     try { decodeCursor(q.cursor); }
     catch { return c.json({ error: "invalid_cursor" }, 400); }
   }
-  return c.json(svc.listItems({
-    ...parsed.data,
-    sensitive: bool(q.sensitive),
-    deleted: bool(q.deleted) ?? false,
-  }));
+  return c.json(svc.listItems(parsed.data));
 });
 
 itemsRoute.get("/:id", (c) => {
@@ -80,8 +78,10 @@ itemsRoute.get("/:id", (c) => {
 });
 
 itemsRoute.patch("/:id", zValidator("json", updateItemInput), (c) => {
-  const item = svc.updateItem(c.req.param("id"), c.req.valid("json"));
-  return item ? c.json(item) : c.json({ error: "not_found" }, 404);
+  try {
+    const item = svc.updateItem(c.req.param("id"), c.req.valid("json"));
+    return item ? c.json(item) : c.json({ error: "not_found" }, 404);
+  } catch (error) { if (error instanceof svc.ItemError) return c.json({ error: error.message }, 400); throw error; }
 });
 
 // 软删除
