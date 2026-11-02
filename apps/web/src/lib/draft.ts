@@ -12,13 +12,44 @@ export interface ComposerDraft {
 const DB = "send-to-myself-drafts";
 const STORE = "drafts";
 const KEY = "composer";
+const EPOCH = "session-epoch";
+const LOGOUT_MARKER = "send-to-myself-session-logout";
+const ATTEMPT_POINTER = "send-to-myself-pending-attempt";
+const attemptKey = (key: string) => `attempt:${key}`;
+function attemptPointer(): string | undefined {
+  try { return sessionStorage.getItem(ATTEMPT_POINTER) || undefined; } catch { return undefined; }
+}
+function setAttemptPointer(key: string): boolean {
+  try { sessionStorage.setItem(ATTEMPT_POINTER, key); return true; } catch { return false; }
+}
+function clearAttemptPointer(key: string): void {
+  try { if (sessionStorage.getItem(ATTEMPT_POINTER) === key) sessionStorage.removeItem(ATTEMPT_POINTER); } catch { /* storage may be unavailable */ }
+}
+export function disownAttempt(): void {
+  const key = attemptPointer();
+  if (key) clearAttemptPointer(key);
+}
+let sessionEpoch: number | undefined;
 let connection: Promise<IDBDatabase> | undefined;
 let writes: Promise<void> = Promise.resolve();
 let frozen = false;
 let generation = 0;
+function readLogoutMarker(): { available: boolean; value: string | null } {
+  try { return { available: true, value: localStorage.getItem(LOGOUT_MARKER) }; }
+  catch { return { available: false, value: null }; }
+}
+let sessionMarker = readLogoutMarker();
+function checkLogoutMarker(): boolean {
+  const current = readLogoutMarker();
+  if (sessionMarker.available && current.available && sessionMarker.value !== current.value) {
+    freezeDraft(true);
+    if (typeof window !== "undefined") window.dispatchEvent(new Event("send-to-myself:session-stale"));
+  }
+  return !frozen;
+}
 export function freezeDraft(value: boolean) { if (value && !frozen) generation++; frozen = value; }
 export function draftGeneration() { return generation; }
-export function draftIsWritable() { return !frozen; }
+export function draftIsWritable() { return checkLogoutMarker(); }
 
 function database(): Promise<IDBDatabase> {
   if (!connection) {
@@ -35,18 +66,63 @@ function database(): Promise<IDBDatabase> {
 
 interface StoredFile { blob: Blob; name: string; lastModified: number }
 interface StoredDraft { detectionContext?: DetectionContext; content: string; files: StoredFile[]; dedupeKey?: string; webSendAttempted?: boolean; nativeHandoffPending?: true }
+export interface PendingAttempt { key: string; capturedAt?: string; hasText: boolean; fileCount: number; native: boolean }
+function fromStored(saved: StoredDraft | undefined): ComposerDraft {
+  return saved ? { content: saved.content, detectionContext: saved.detectionContext, nativeHandoffPending: saved.nativeHandoffPending, webSendAttempted: saved.webSendAttempted ?? !!saved.dedupeKey, ...(saved.dedupeKey ? { dedupeKey: saved.dedupeKey } : {}), files: saved.files.map(file => new File([file.blob], file.name, { type: file.blob.type, lastModified: file.lastModified })) } : { content: "", files: [] };
+}
+
+/** Lists only unconfirmed attempts; reading this list never dispatches them. */
+export async function listPendingAttempts(): Promise<PendingAttempt[]> {
+  return enqueue(() => transaction<PendingAttempt[]>((store, done) => {
+    const request = store.getAll(IDBKeyRange.bound("attempt:", "attempt:\uffff"));
+    request.onsuccess = () => done((request.result as StoredDraft[]).filter(value => value.dedupeKey && (value.webSendAttempted || value.nativeHandoffPending)).map(value => ({ key: value.dedupeKey!, capturedAt: value.detectionContext?.capturedAt, hasText: !!value.content.trim(), fileCount: value.files.length, native: !!value.nativeHandoffPending })));
+  }));
+}
+
+/** Select an existing attempt without modifying the shared composer. */
+export async function selectPendingAttempt(key: string): Promise<ComposerDraft | undefined> {
+  return enqueue(() => transaction<ComposerDraft | undefined>((store, done, fail) => {
+    const request = store.get(attemptKey(key));
+    request.onsuccess = () => {
+      const value = request.result as StoredDraft | undefined;
+      if (!value || value.dedupeKey !== key || (!value.webSendAttempted && !value.nativeHandoffPending)) { done(undefined); return; }
+      try {
+        const draft = fromStored(value);
+        if (!setAttemptPointer(key)) { fail(new Error("无法保存待确认发送的恢复位置")); return; }
+        done(draft);
+      } catch (error) { fail(error instanceof Error ? error : new Error("草稿读取失败")); }
+    };
+  }));
+}
+
+export async function loadSharedDraft(): Promise<ComposerDraft> {
+  return enqueue(() => transaction<ComposerDraft>((store, done, fail) => {
+    const request = store.get(KEY);
+    request.onsuccess = () => { try { done(fromStored(request.result as StoredDraft | undefined)); } catch (error) { fail(error instanceof Error ? error : new Error("草稿读取失败")); } };
+  }));
+}
 
 export async function loadDraft(): Promise<ComposerDraft> {
   await writes;
   const db = await database();
+  if (sessionEpoch === undefined) await resumeDraftSession();
   return new Promise((resolve, reject) => {
-    const request = db.transaction(STORE).objectStore(STORE).get(KEY);
+    const store = db.transaction(STORE).objectStore(STORE);
+    const pointer = attemptPointer();
+    const request = store.get(pointer ? attemptKey(pointer) : KEY);
     request.onsuccess = () => {
+      if (pointer && !request.result) {
+        clearAttemptPointer(pointer);
+        const fallback = store.get(KEY);
+        fallback.onsuccess = () => finish(fallback.result as StoredDraft | undefined);
+        fallback.onerror = () => reject(fallback.error);
+        return;
+      }
+      finish(request.result as StoredDraft | undefined);
+    };
+    const finish = (saved: StoredDraft | undefined) => {
       try {
-      const saved = request.result as StoredDraft | undefined;
-      resolve(saved ? { content: saved.content, detectionContext: saved.detectionContext, nativeHandoffPending: saved.nativeHandoffPending, webSendAttempted: saved.webSendAttempted ?? !!saved.dedupeKey, ...(saved.dedupeKey ? { dedupeKey: saved.dedupeKey } : {}), files: saved.files.map((file) =>
-        new File([file.blob], file.name, { type: file.blob.type, lastModified: file.lastModified })) }
-        : { content: "", files: [] });
+      resolve(fromStored(saved));
       } catch (error) { reject(error); }
     };
     request.onerror = () => reject(request.error);
@@ -59,30 +135,37 @@ export function saveDraft(draft: ComposerDraft): Promise<void> {
   return writeDraft(draft, generation);
 }
 
+function stored(draft: ComposerDraft): StoredDraft {
+  return { content: draft.content, detectionContext: draft.detectionContext, dedupeKey: draft.dedupeKey,
+    webSendAttempted: draft.webSendAttempted, nativeHandoffPending: draft.nativeHandoffPending,
+    files: draft.files.map(file => ({ blob: file, name: file.name, lastModified: file.lastModified })) };
+}
 function writeDraft(draft: ComposerDraft, expectedGeneration?: number): Promise<void> {
-  const snapshot: StoredDraft = {
-    content: draft.content,
-    detectionContext: draft.detectionContext,
-    dedupeKey: draft.dedupeKey,
-    webSendAttempted: draft.webSendAttempted,
-    nativeHandoffPending: draft.nativeHandoffPending,
-    files: draft.files.map((file) => ({ blob: file, name: file.name, lastModified: file.lastModified })),
-  };
-  const write = writes.catch(() => {}).then(async () => {
+  const snapshot = stored(draft);
+  return enqueue(() => transaction<void>((store, done) => {
     if (expectedGeneration !== undefined && (frozen || generation !== expectedGeneration)) throw new Error("草稿写入已暂停");
-    const db = await database();
-    if (expectedGeneration !== undefined && (frozen || generation !== expectedGeneration)) throw new Error("草稿写入已暂停");
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction(STORE, "readwrite");
-      if (!snapshot.content && snapshot.files.length === 0 && !snapshot.nativeHandoffPending && !snapshot.detectionContext) tx.objectStore(STORE).delete(KEY);
-      else tx.objectStore(STORE).put(snapshot, KEY);
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-      tx.onabort = () => reject(tx.error ?? new Error("草稿保存失败"));
-    });
-  });
-  writes = write;
-  return write;
+    if (!snapshot.content && !snapshot.files.length && !snapshot.nativeHandoffPending && !snapshot.detectionContext) store.delete(KEY);
+    else store.put(snapshot, KEY);
+    done();
+  }));
+}
+/** Persist the attempt only while the composer still belongs to this window. */
+export function prepareComposerDraft(draft: ComposerDraft, expectedKey: string | undefined): Promise<boolean> {
+  if (frozen) return Promise.reject(new Error("草稿写入已暂停"));
+  const expectedGeneration = generation;
+  const snapshot = stored(draft);
+  const pointed = !!draft.dedupeKey && setAttemptPointer(draft.dedupeKey);
+  return enqueue(() => transaction<boolean>((store, done) => {
+    const request = store.get(KEY);
+    request.onsuccess = () => {
+      if (frozen || generation !== expectedGeneration) { done(false); return; }
+      const current = request.result as StoredDraft | undefined;
+      if (pointed && draft.dedupeKey) store.put(snapshot, attemptKey(draft.dedupeKey));
+      const owned = !current || current.dedupeKey === expectedKey;
+      if (owned) store.put(snapshot, KEY);
+      done(owned || pointed);
+    };
+  }));
 }
 
 export const clearDraft = () => writeDraft({ content: "", files: [] });
@@ -95,28 +178,79 @@ export function newDedupeKey(): string {
 export interface EditSnapshot { content: string; savedAt: number; detectionContext?: DetectionContext }
 export interface EditDraft extends EditSnapshot { itemId: string }
 function enqueue<T>(fn: () => Promise<T>): Promise<T> {
-  const result = writes.catch(() => {}).then(fn);
+  const scheduledGeneration = generation;
+  const result = writes.catch(() => {}).then(() => {
+    if (!checkLogoutMarker() || generation !== scheduledGeneration) throw new Error("草稿写入已暂停");
+    return fn();
+  });
   writes = result.then(() => {}, () => {});
   return result;
 }
 function transaction<T>(operation: (store: IDBObjectStore, done: (value: T) => void, fail: (error: Error) => void) => void): Promise<T> {
+  const localGeneration = generation;
+  if (!checkLogoutMarker()) return Promise.reject(new Error("草稿写入已暂停"));
   return database().then(db => new Promise<T>((resolve, reject) => {
     const tx = db.transaction(STORE, "readwrite");
+    const store = tx.objectStore(STORE);
     let result: T;
-    operation(tx.objectStore(STORE), value => { result = value; }, reject);
-    tx.oncomplete = () => resolve(result);
-    tx.onerror = () => reject(tx.error);
-    tx.onabort = () => reject(tx.error ?? new Error("草稿存储失败"));
+    let failure: Error | undefined;
+    const request = store.get(EPOCH);
+    request.onsuccess = () => {
+      const epoch = typeof request.result === "number" ? request.result : 0;
+      if (sessionEpoch === undefined) sessionEpoch = epoch;
+      if (sessionEpoch !== epoch) {
+        freezeDraft(true);
+        if (typeof window !== "undefined") window.dispatchEvent(new Event("send-to-myself:session-stale"));
+      }
+      if (!checkLogoutMarker() || generation !== localGeneration || sessionEpoch !== epoch) {
+        failure = new Error("草稿写入已暂停"); tx.abort(); return;
+      }
+      try { operation(store, value => { result = value; }, error => { failure = error; }); }
+      catch (error) { failure = error instanceof Error ? error : new Error("草稿写入失败"); tx.abort(); }
+    };
+    tx.oncomplete = () => failure ? reject(failure) : resolve(result);
+    tx.onerror = () => reject(failure ?? tx.error);
+    tx.onabort = () => reject(failure ?? tx.error ?? new Error("草稿存储失败"));
   }));
 }
+export async function resumeDraftSession(acceptLogout = false): Promise<void> {
+  if (acceptLogout) sessionMarker = readLogoutMarker();
+  else if (!checkLogoutMarker()) throw new Error("草稿写入已暂停");
+  sessionEpoch = undefined;
+  const db = await database();
+  await new Promise<void>((resolve, reject) => {
+    const request = db.transaction(STORE).objectStore(STORE).get(EPOCH);
+    request.onsuccess = () => { sessionEpoch = typeof request.result === "number" ? request.result : 0; resolve(); };
+    request.onerror = () => reject(request.error);
+  });
+}
+/** Advance the epoch and clear drafts in one transaction so old windows cannot write back. */
+export async function retireDraftSession(): Promise<void> {
+  const db = await database();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE, "readwrite"); const store = tx.objectStore(STORE);
+    const request = store.get(EPOCH);
+    request.onsuccess = () => { const next = (typeof request.result === "number" ? request.result : 0) + 1; store.put(next, EPOCH); store.delete(KEY); store.delete(IDBKeyRange.bound("edit:", "edit:\uffff")); store.delete(IDBKeyRange.bound("attempt:", "attempt:\uffff")); };
+    tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error ?? new Error("草稿清理失败"));
+  });
+}
+
 export function clearDraftIfKey(key: string, expectedGeneration?: number): Promise<void> {
-  return enqueue(() => transaction<void>((store, done) => {
+  return enqueue(() => transaction<boolean>((store, done) => {
     const request = store.get(KEY);
-    request.onsuccess = () => { if ((expectedGeneration === undefined || (!frozen && generation === expectedGeneration)) && (request.result as StoredDraft | undefined)?.dedupeKey === key) store.delete(KEY); done(); };
-  }));
+    request.onsuccess = () => { const permitted = expectedGeneration === undefined || (!frozen && generation === expectedGeneration); if (permitted) { if ((request.result as StoredDraft | undefined)?.dedupeKey === key) store.delete(KEY); store.delete(attemptKey(key)); } done(permitted); };
+  })).then(permitted => { if (permitted) clearAttemptPointer(key); });
 }
 export function clearNativeHandoffIfKey(key: string, expectedGeneration: number): Promise<void> {
   return enqueue(() => transaction<void>((store, done) => {
+    const attempt = store.get(attemptKey(key));
+    attempt.onsuccess = () => {
+      const saved = attempt.result as StoredDraft | undefined;
+      if (!frozen && generation === expectedGeneration && saved?.nativeHandoffPending) {
+        delete saved.nativeHandoffPending;
+        store.put(saved, attemptKey(key));
+      }
+    };
     const request = store.get(KEY);
     request.onsuccess = () => {
       const saved = request.result as StoredDraft | undefined;
