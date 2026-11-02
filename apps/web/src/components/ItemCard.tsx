@@ -31,7 +31,6 @@ import {
   IconRestore,
 } from "./icons";
 
-class EditDraftConflict extends Error {}
 class EditDraftFrozen extends Error {}
 
 function LinkifiedText({ text }: { text: string }) {
@@ -87,7 +86,7 @@ export function ItemCard({
     lock.current = true; setBusy(true); setError(""); setNotice(""); retry.current = { operation, preview, missingSnapshot, successMessage };
     try { await operation(); retry.current = null; setNotice(successMessage?.() ?? "已保存"); return true; }
     catch (err) {
-      setError(err instanceof EditDraftFrozen ? "当前会话正在退出，本次未提交。" : err instanceof EditDraftConflict ? "另一窗口已修改草稿，本次未提交。请复制当前内容后重新打开编辑，或在另一窗口处理。" : preview ? "预览抓取失败，原链接仍保留，请重试。" : err instanceof ApiError && err.code === "cleanup_failed" ? "永久删除未完成，请检查 NAS 存储后重试" : mutationErrorMessage(err));
+      setError(err instanceof EditDraftFrozen ? "当前会话正在退出，本次未提交。" : preview ? "预览抓取失败，原链接仍保留，请重试。" : err instanceof ApiError && err.code === "cleanup_failed" ? "永久删除未完成，请检查 NAS 存储后重试" : mutationErrorMessage(err));
       if (err instanceof ApiError && err.status === 404 && editing) {
         const expected = missingSnapshot?.();
         if (expected) await clearEditDraft(item.id, expected).catch(() => {});
@@ -163,7 +162,7 @@ export function ItemCard({
         setDraftStatus(error instanceof Error && error.message === "draft_full" ? "本机编辑草稿已满，本次修改仅保留在当前页面；请保存到 NAS 后再关闭。" : "修改尚未保存到本机，请勿关闭窗口。");
       }
       ensureWritable();
-      if (!storageUnavailable && !attemptSnapshot) throw new EditDraftConflict();
+      if (!storageUnavailable && !attemptSnapshot) memoryAttempt.current = { content, detectionContext: context };
       if (attemptSnapshot) { snapshot.current = attemptSnapshot; memoryAttempt.current = undefined; }
       await update.mutateAsync({ id: item.id, patch: { content, detectionContext: context } });
       if (attemptSnapshot) await clearEditDraft(item.id, attemptSnapshot).catch(() => { storageUnavailable = true; });

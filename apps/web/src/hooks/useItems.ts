@@ -22,13 +22,15 @@ export function useItemMutations() {
       onError, onSuccess: invalidate,
     }),
     update: useMutation({
+      networkMode: "always",
       mutationFn: (v: { id: string; patch: UpdateItemInput }) => api.update(v.id, v.patch),
       onError, onSuccess: invalidate,
     }),
-    remove: useMutation({ mutationFn: (id: string) => api.remove(id), onError, onSuccess: invalidate }),
-    permanent: useMutation({ mutationFn: (id: string) => api.permanentlyRemove(id), onError, onSuccess: invalidate }),
-    restore: useMutation({ mutationFn: (id: string) => api.restore(id), onError, onSuccess: invalidate }),
+    remove: useMutation({ networkMode: "always", mutationFn: (id: string) => api.remove(id), onError, onSuccess: invalidate }),
+    permanent: useMutation({ networkMode: "always", mutationFn: (id: string) => api.permanentlyRemove(id), onError, onSuccess: invalidate }),
+    restore: useMutation({ networkMode: "always", mutationFn: (id: string) => api.restore(id), onError, onSuccess: invalidate }),
     refetchPreview: useMutation({
+      networkMode: "always",
       mutationFn: (id: string) => api.refetchPreview(id),
       onError, onSuccess: invalidate,
     }),
