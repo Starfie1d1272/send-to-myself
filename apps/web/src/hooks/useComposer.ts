@@ -2,7 +2,7 @@ import { captureDetectionContext } from "../lib/detectionContext";
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../lib/api";
-import { clearDraftIfKey, clearNativeHandoffIfKey, disownAttempt, draftGeneration, draftIsWritable, loadDraft, newDedupeKey, prepareComposerDraft, saveDraft, type ComposerDraft } from "../lib/draft";
+import { clearDraftIfKey, clearNativeHandoffIfKey, disownAttempt, draftGeneration, draftIsWritable, listPendingAttempts, loadDraft, loadSharedDraft, newDedupeKey, prepareComposerDraft, saveDraft, selectPendingAttempt, type ComposerDraft, type PendingAttempt } from "../lib/draft";
 import { canOpenNativeUpload, openNativeUpload, readNativeUploadReceipt } from "../lib/nativeTransfers";
 import { mutationErrorMessage } from "../lib/mutation-error";
 import { useAuthAccess } from "./useAuth";
@@ -29,22 +29,30 @@ export function useComposer() {
   const [pending, setPending] = useState(false);
   const [webFallback, setWebFallback] = useState(false);
   const [newRequired, setNewRequired] = useState(false);
+  const [pendingAttempts, setPendingAttempts] = useState<PendingAttempt[]>([]);
+  const [selectedAttempt, setSelectedAttempt] = useState(false);
   const attempt = useRef<AbortController | null>(null);
   const handoffBusy = useRef(false);
+  const refreshAttempts = async () => {
+    const generation = draftGeneration();
+    try { const result = await listPendingAttempts(); if (draftIsWritable() && generation === draftGeneration()) setPendingAttempts(result); }
+    catch { if (generation === draftGeneration()) setDraftError(true); }
+  };
   useEffect(() => {
     let active = true;
     void loadDraft().then(saved => {
       if (!active) return;
       const next = { ...saved, dedupeKey: saved.dedupeKey ?? newDedupeKey() };
-      current.current = next; setDraft(next);
+      current.current = next; setDraft(next); setSelectedAttempt(!!(saved.webSendAttempted || saved.nativeHandoffPending));
     }).catch(() => { if (active) setDraftError(true); }).finally(() => { if (active) setReady(true); });
+    void refreshAttempts();
     return () => { active = false; };
   }, []);
   const change = (content: string, files: File[]) => {
     if (attempt.current || handoffBusy.current || !ready) return;
     if (current.current.nativeHandoffPending && content === current.current.content) { setError("交接结果尚未确认，请查看传输任务或重新检查"); return; }
     if (current.current.webSendAttempted || current.current.nativeHandoffPending) setNotice(deleted ? "上一笔内容已永久删除；修改后将作为新内容发送" : "将作为新内容发送；上一笔发送结果可能尚未确认");
-    disownAttempt();
+    disownAttempt(); setSelectedAttempt(false);
     const next = { content, files, dedupeKey: newDedupeKey(), webSendAttempted: false };
     current.current = next; setDraft(next); setError(""); setBadFile(undefined); setDeleted(false);
     void saveDraft(next).then(() => setDraftError(false)).catch(() => setDraftError(true));
@@ -67,7 +75,7 @@ export function useComposer() {
     catch { if (generation === draftGeneration()) setDraftError(true); }
     if (generation === draftGeneration() && current.current.dedupeKey === key) {
       const next = { content: "", files: [], dedupeKey: newDedupeKey(), webSendAttempted: false };
-      current.current = next; setDraft(next); setError(""); setNotice("已保存在本机，等待发送");
+      current.current = next; setDraft(next); setSelectedAttempt(false); setError(""); setNotice("已保存在本机，等待发送");
     }
   };
   const checkReceipt = async () => {
@@ -109,7 +117,7 @@ export function useComposer() {
         }
       } else if (generation === draftGeneration() && current.current.dedupeKey === marked.dedupeKey) setError("交接结果尚未确认，请查看传输任务或重新检查");
     } catch { if (generation === draftGeneration() && current.current.dedupeKey === marked.dedupeKey) setError("交接结果尚未确认，请查看传输任务或重新检查"); }
-    finally { handoffBusy.current = false; if (generation === draftGeneration()) setPending(false); }
+    finally { handoffBusy.current = false; if (generation === draftGeneration()) { setPending(false); void refreshAttempts(); } }
     return true;
   };
   const send = async (newDraft?: ComposerDraft, expectedKey?: string) => {
@@ -127,7 +135,7 @@ export function useComposer() {
       if (generation === draftGeneration() && attempt.current === controller) {
         await clearDraftIfKey(snapshot.dedupeKey!).then(() => setDraftError(false)).catch(() => setDraftError(true));
         const next = { content: "", files: [], dedupeKey: newDedupeKey(), webSendAttempted: false };
-        current.current = next; setDraft(next); setNotice("已发送");
+        current.current = next; setDraft(next); setSelectedAttempt(false); setNotice("已发送");
       }
     } catch (err) {
       if (generation === draftGeneration()) {
@@ -141,9 +149,35 @@ export function useComposer() {
           if (err instanceof ApiError && err.code === "already_deleted") setDeleted(true);
         }
       }
-    } finally { if (attempt.current === controller) { attempt.current = null; setPending(false); } }
+    } finally { if (attempt.current === controller) { attempt.current = null; setPending(false); void refreshAttempts(); } }
   };
-  return { draft, change, send, addNative, checkReceipt, webFallback, newRequired, canSend, overLimit, ready, pending, draftError, error, notice, progress, info, badFilename, deleted, sendAsNew: () => {
+  const restoreAttempt = async (key: string) => {
+    if (!ready || pending || attempt.current || handoffBusy.current) return;
+    handoffBusy.current = true; setPending(true);
+    const generation = draftGeneration();
+    try {
+      const saved = await selectPendingAttempt(key);
+      if (!draftIsWritable() || generation !== draftGeneration()) return;
+      if (!saved) { await refreshAttempts(); return; }
+      current.current = saved; setDraft(saved); setSelectedAttempt(true); setDeleted(false); setBadFile(undefined); setNotice("");
+      setError(saved.nativeHandoffPending ? "交接结果尚未确认，请查看传输任务或重新检查" : "");
+    } catch { if (generation === draftGeneration()) setDraftError(true); }
+    finally { handoffBusy.current = false; if (generation === draftGeneration()) setPending(false); }
+  };
+  const restoreShared = async () => {
+    if (!ready || pending || attempt.current || handoffBusy.current) return;
+    handoffBusy.current = true; setPending(true);
+    const generation = draftGeneration();
+    try {
+      const saved = await loadSharedDraft();
+      if (!draftIsWritable() || generation !== draftGeneration()) return;
+      disownAttempt();
+      const next = { ...saved, dedupeKey: saved.dedupeKey ?? newDedupeKey() };
+      current.current = next; setDraft(next); setSelectedAttempt(false); setError(""); setDeleted(false); setBadFile(undefined); setNotice("");
+    } catch { if (generation === draftGeneration()) setDraftError(true); }
+    finally { handoffBusy.current = false; if (generation === draftGeneration()) setPending(false); }
+  };
+  return { draft, change, send, addNative, checkReceipt, webFallback, newRequired, canSend, overLimit, ready, pending, draftError, error, notice, progress, info, badFilename, deleted, pendingAttempts, selectedAttempt, refreshAttempts, restoreAttempt, restoreShared, sendAsNew: () => {
     if (attempt.current || handoffBusy.current || !ready) return;
     if (current.current.nativeHandoffPending && !canOpenNativeUpload()) { setError("请返回原生应用重新选择附件，旧任务仍可能在发送。"); return; }
     const previousKey = current.current.dedupeKey;

@@ -52,6 +52,41 @@ function database(): Promise<IDBDatabase> {
 
 interface StoredFile { blob: Blob; name: string; lastModified: number }
 interface StoredDraft { detectionContext?: DetectionContext; content: string; files: StoredFile[]; dedupeKey?: string; webSendAttempted?: boolean; nativeHandoffPending?: true }
+export interface PendingAttempt { key: string; capturedAt?: string; hasText: boolean; fileCount: number; native: boolean }
+function fromStored(saved: StoredDraft | undefined): ComposerDraft {
+  return saved ? { content: saved.content, detectionContext: saved.detectionContext, nativeHandoffPending: saved.nativeHandoffPending, webSendAttempted: saved.webSendAttempted ?? !!saved.dedupeKey, ...(saved.dedupeKey ? { dedupeKey: saved.dedupeKey } : {}), files: saved.files.map(file => new File([file.blob], file.name, { type: file.blob.type, lastModified: file.lastModified })) } : { content: "", files: [] };
+}
+
+/** Lists only unconfirmed attempts; reading this list never dispatches them. */
+export async function listPendingAttempts(): Promise<PendingAttempt[]> {
+  return enqueue(() => transaction<PendingAttempt[]>((store, done) => {
+    const request = store.getAll(IDBKeyRange.bound("attempt:", "attempt:\uffff"));
+    request.onsuccess = () => done((request.result as StoredDraft[]).filter(value => value.dedupeKey && (value.webSendAttempted || value.nativeHandoffPending)).map(value => ({ key: value.dedupeKey!, capturedAt: value.detectionContext?.capturedAt, hasText: !!value.content.trim(), fileCount: value.files.length, native: !!value.nativeHandoffPending })));
+  }));
+}
+
+/** Select an existing attempt without modifying the shared composer. */
+export async function selectPendingAttempt(key: string): Promise<ComposerDraft | undefined> {
+  return enqueue(() => transaction<ComposerDraft | undefined>((store, done, fail) => {
+    const request = store.get(attemptKey(key));
+    request.onsuccess = () => {
+      const value = request.result as StoredDraft | undefined;
+      if (!value || value.dedupeKey !== key || (!value.webSendAttempted && !value.nativeHandoffPending)) { done(undefined); return; }
+      try {
+        const draft = fromStored(value);
+        if (!setAttemptPointer(key)) { fail(new Error("无法保存待确认发送的恢复位置")); return; }
+        done(draft);
+      } catch (error) { fail(error instanceof Error ? error : new Error("草稿读取失败")); }
+    };
+  }));
+}
+
+export async function loadSharedDraft(): Promise<ComposerDraft> {
+  return enqueue(() => transaction<ComposerDraft>((store, done, fail) => {
+    const request = store.get(KEY);
+    request.onsuccess = () => { try { done(fromStored(request.result as StoredDraft | undefined)); } catch (error) { fail(error instanceof Error ? error : new Error("草稿读取失败")); } };
+  }));
+}
 
 export async function loadDraft(): Promise<ComposerDraft> {
   await writes;
@@ -73,9 +108,7 @@ export async function loadDraft(): Promise<ComposerDraft> {
     };
     const finish = (saved: StoredDraft | undefined) => {
       try {
-      resolve(saved ? { content: saved.content, detectionContext: saved.detectionContext, nativeHandoffPending: saved.nativeHandoffPending, webSendAttempted: saved.webSendAttempted ?? !!saved.dedupeKey, ...(saved.dedupeKey ? { dedupeKey: saved.dedupeKey } : {}), files: saved.files.map((file) =>
-        new File([file.blob], file.name, { type: file.blob.type, lastModified: file.lastModified })) }
-        : { content: "", files: [] });
+      resolve(fromStored(saved));
       } catch (error) { reject(error); }
     };
     request.onerror = () => reject(request.error);
