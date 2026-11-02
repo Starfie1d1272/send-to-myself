@@ -70,7 +70,7 @@ export function useComposer() {
   }, [qc]);
   const addNative = async (): Promise<boolean> => {
     const snapshot = current.current;
-    if (!ready || pending || snapshot.nativeHandoffPending) return true;
+    if (!ready || pending || attempt.current || handoffBusy.current || snapshot.nativeHandoffPending) return true;
     if (!canOpenNativeUpload() || snapshot.files.length) return false;
     if (snapshot.webSendAttempted) { setNewRequired(true); setError("原发送可能已到达 NAS，添加附件将作为新内容发送"); return true; }
     handoffBusy.current = true; setPending(true);
@@ -93,7 +93,7 @@ export function useComposer() {
     return true;
   };
   const send = async () => {
-    if (attempt.current || !allowed(current.current)) return;
+    if (attempt.current || handoffBusy.current || !allowed(current.current)) return;
     const controller = new AbortController(); attempt.current = controller; setPending(true); setError(""); setNotice(""); setProgress(undefined);
     const snapshot = { ...current.current, files: [...current.current.files], webSendAttempted: true };
     const generation = draftGeneration();
