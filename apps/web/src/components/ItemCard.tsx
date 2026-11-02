@@ -54,7 +54,8 @@ export function ItemCard({
   trash?: boolean;
   gap?: "first" | "cont" | "normal";
 }) {
-  const { update, remove, restore, refetchPreview } = useItemMutations();
+  const { update, remove, restore, permanent, refetchPreview } = useItemMutations();
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [revealed, setRevealed] = useState(false);
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState("");
@@ -76,7 +77,7 @@ export function ItemCard({
     lock.current = true; setBusy(true); setError(""); setNotice(""); retry.current = { operation, preview };
     try { await operation(); retry.current = null; setNotice("已保存"); return true; }
     catch (err) {
-      setError(preview ? "预览抓取失败，原链接仍保留，请重试。" : mutationErrorMessage(err));
+      setError(preview ? "预览抓取失败，原链接仍保留，请重试。" : err instanceof ApiError && err.code === "cleanup_failed" ? "永久删除未完成，请检查 NAS 存储后重试" : mutationErrorMessage(err));
       if (err instanceof ApiError && err.status === 404 && editing) {
         await lastWrite.current; await clearEditDraft(item.id).catch(() => {});
       }
@@ -207,7 +208,7 @@ export function ItemCard({
             )
           )}
 
-          {attachments.length > 0 && !item.sensitive && (
+          {attachments.length > 0 && !item.sensitive && !item.purgeStartedAt && (
             <Attachments items={attachments} />
           )}
 
@@ -245,6 +246,7 @@ export function ItemCard({
             </button>
           )}
 
+          {trash && <p>{item.purgeStartedAt ? "永久删除尚未完成" : `删除于 ${item.deletedAt ? new Date(item.deletedAt).toLocaleString() : ""}`}{!item.purgeStartedAt && item.trashExpiresAt && ` · 预计 ${new Date(item.trashExpiresAt).toLocaleString()} 后自动清理`}</p>}
           <div className="item__meta">
             {item.dueAt && bucket !== "none" && (
               <span className={`due due--${bucket}`}>
@@ -260,14 +262,16 @@ export function ItemCard({
         </div>
       </div>
 
+      {confirmDelete && <dialog ref={el => { if (el && !el.open) el.showModal(); }} onCancel={() => setConfirmDelete(false)} aria-labelledby={`purge-${item.id}`} className="device-dialog"><h2 id={`purge-${item.id}`}>永久删除这条内容？</h2><p>正文和 {attachments.length} 个附件将从 NAS 删除，无法从回收站恢复。</p><button onClick={() => setConfirmDelete(false)}>取消</button><button onClick={() => { setConfirmDelete(false); void run(async () => { await permanent.mutateAsync(item.id); await clearEditDraft(item.id); }); }}>永久删除</button></dialog>}
       {notice && <p role="status">{notice}</p>}
       {error && <p className="composer__error" role="alert">{error} {editing ? <><button disabled={busy} onClick={() => void saveEdit()}>重试保存</button><button onClick={() => void copyText(draft)}>复制未保存内容</button></> : <button disabled={busy} onClick={() => { if (retry.current) void run(retry.current.operation, retry.current.preview); }}>重试</button>}</p>}
       {copyError && <p className="composer__error" role="alert">{copyError}</p>}
       <fieldset className="actions" disabled={busy || editing} style={{ border: 0, padding: 0, margin: 0 }}>
         {trash ? (
-          <button className="icon-btn" title="恢复" onClick={() => void run(() => restore.mutateAsync(item.id))}>
-            <IconRestore />
-          </button>
+          <>
+            <button className="icon-btn" title="恢复" disabled={!!item.purgeStartedAt} onClick={() => void run(() => restore.mutateAsync(item.id))}><IconRestore /></button>
+            <button onClick={() => item.purgeStartedAt ? void run(async () => { await permanent.mutateAsync(item.id); await clearEditDraft(item.id); }) : setConfirmDelete(true)}>{busy ? "正在清理…" : item.purgeStartedAt ? "重试清理" : "永久删除"}</button>
+          </>
         ) : (
           <>
             <button className="icon-btn" title={copied ? "已复制" : "复制"} onClick={copy}>

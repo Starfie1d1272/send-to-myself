@@ -89,6 +89,8 @@ export const itemSchema = z.object({
   sensitiveOverride: z.boolean().nullable().default(null),
   /** 软删除/回收站；为空=正常。 */
   deletedAt: isoDateTime.optional(),
+  trashExpiresAt: isoDateTime.optional(),
+  purgeStartedAt: isoDateTime.optional(),
 
   /** 链接预览、自动识别结果等易变字段（Memos payload 模式）。 */
   meta: itemMetaSchema.optional(),

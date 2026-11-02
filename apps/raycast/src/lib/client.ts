@@ -25,6 +25,10 @@ export class InboxClient {
       throw new Error("无法连接服务器。发送结果可能尚未确认，请保持内容不变后重试。");
     }
     if (!response.ok) {
+      if (response.status === 409) {
+        const body = await response.json().catch(() => null) as { error?: string } | null;
+        if (body?.error === "already_deleted") throw new Error("这笔发送已在 NAS 被永久删除；待发送内容已保留。");
+      }
       throw new Error(response.status === 401 ? "设备令牌无效或已吊销，请更新扩展设置。" :
         response.status === 413 ? "附件超过服务器上传限制，请减少文件后重试。" :
         `请求失败（${response.status}），请重试。`);

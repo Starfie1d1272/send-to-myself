@@ -26,6 +26,8 @@ export const items = sqliteTable(
     pinned: integer("pinned", { mode: "boolean" }).notNull().default(false),
     sensitive: integer("sensitive", { mode: "boolean" }).notNull().default(false),
     sensitiveOverride: integer("sensitive_override", { mode: "boolean" }),
+    trashRetentionStartedAt: integer("trash_retention_started_at"),
+    purgeStartedAt: integer("purge_started_at"),
     deletedAt: integer("deleted_at"), // 软删除；为空=正常
 
     // 客户端幂等键：原生壳离线队列补发时去重，避免同一条发送多次。
@@ -86,3 +88,8 @@ export type AttachmentRow = typeof attachments.$inferSelect;
 export type AttachmentInsert = typeof attachments.$inferInsert;
 export type SessionRow = typeof sessions.$inferSelect;
 export type DeviceTokenRow = typeof deviceTokens.$inferSelect;
+
+export const deletedDedupeKeys = sqliteTable("deleted_dedupe_keys", {
+  dedupeKey: text("dedupe_key").primaryKey(),
+  deletedAt: integer("deleted_at").notNull(),
+});

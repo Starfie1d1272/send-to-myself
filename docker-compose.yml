@@ -12,6 +12,7 @@ services:
       AUTH_PASSWORD: ${AUTH_PASSWORD:?请在 .env 设置 AUTH_PASSWORD}
       # 经反代时 cookie 走 HTTPS
       SECURE_COOKIE: ${SECURE_COOKIE:-true}
+      # 0 关闭自动到期选取；已开始的清理仍继续。
       TRASH_RETENTION_DAYS: ${TRASH_RETENTION_DAYS:-30}
       MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-52428800}
       SESSION_TTL_DAYS: ${SESSION_TTL_DAYS:-30}

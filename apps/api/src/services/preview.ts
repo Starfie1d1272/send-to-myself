@@ -33,7 +33,7 @@ export async function fetchPreview(rawUrl: string): Promise<LinkPreview> {
 export async function fetchPreviewInto(itemId: string, rawUrl: string, expectedContent: string): Promise<Item | null> {
   const preview = await fetchPreview(rawUrl);
   const row = db.select().from(items).where(eq(items.id, itemId)).get();
-  if (!row || row.deletedAt !== null || row.content !== expectedContent || detectUrls(row.content)[0] !== rawUrl) return null;
+  if (!row || row.deletedAt !== null || row.purgeStartedAt !== null || row.content !== expectedContent || detectUrls(row.content)[0] !== rawUrl) return null;
   const meta = row.meta ? JSON.parse(row.meta) : {};
   meta.preview = preview;
   db.update(items).set({ meta: JSON.stringify(meta) }).where(eq(items.id, itemId)).run();

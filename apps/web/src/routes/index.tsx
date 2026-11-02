@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { api } from "../lib/api";
 import { timelineParams } from "../lib/timeline";
 import { useItems } from "../hooks/useItems";
 import { useRealtime } from "../lib/realtime";
@@ -30,6 +31,7 @@ export function TimelinePage() {
   const realtime = useRealtime(refresh, access.authenticated && !access.reauthRequired && !access.exiting);
 
   const { data: auth } = useAuth();
+  const { data: info } = useQuery({ queryKey: ["server-info"], queryFn: api.info, enabled: filter === "trash" && access.authenticated && !access.reauthRequired && !access.exiting });
 
 
   const items = data?.pages.flatMap((page) => page.items) ?? [];
@@ -63,6 +65,7 @@ export function TimelinePage() {
         {toolsError && <p role="alert">{toolsError}</p>}
         <Composer />
         <FilterBar active={filter} onChange={setFilter} query={query} onQuery={setQuery} />
+        {filter === "trash" && <p>{info === undefined ? "暂时无法读取保留设置，请以各条目显示的到期时间为准" : info.trashRetentionDays > 0 ? `删除的内容保留 ${info.trashRetentionDays} 天，到期后永久删除。已有旧内容从自动清理启用时开始计时。` : "自动清理已关闭，内容保留到你手动永久删除。"}</p>}
         {isError && (
           <div className="state" role="alert">
             <p>加载失败，已显示的内容仍保留。</p>

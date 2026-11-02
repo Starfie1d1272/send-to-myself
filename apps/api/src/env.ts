@@ -24,7 +24,7 @@ const trashRetentionDays = (() => {
   if (raw === undefined) return 30;
   const value = Number(raw);
   if (raw.trim() && Number.isSafeInteger(value) && value >= 0) return value;
-  console.warn("Invalid TRASH_RETENTION_DAYS; disabling expiry");
+  console.warn("TRASH_RETENTION_DAYS 配置无效，自动到期清理已关闭");
   return 0;
 })();
 

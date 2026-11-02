@@ -15,6 +15,6 @@ export function ServerInfo({ onClose, status }: { onClose: () => void; status: R
     {info.isError && <p role="alert">读取失败 <button onClick={() => void info.refetch()}>重试</button></p>}
     {info.data && <><p>核心版本：{info.data.coreVersion}{info.data.buildRevision && ` · ${info.data.buildRevision.slice(0, 12)}`}</p>
       <p>单文件 {mib(info.data.maxUploadBytes)}；整批 {mib(info.data.maxUploadTotalBytes)}；最多 {info.data.maxUploadFiles} 件</p>
-      <p>回收站：{info.data.trashRetentionDays ? `${info.data.trashRetentionDays} 天（自动清理尚未启用）` : "自动到期清理已关闭"}</p></>}
+      <p>回收站：{info.data.trashRetentionDays ? `${info.data.trashRetentionDays} 天` : "自动到期清理已关闭"}</p></>}
   </dialog>;
 }
