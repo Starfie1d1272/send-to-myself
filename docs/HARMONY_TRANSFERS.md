@@ -80,4 +80,4 @@
 - [华为 ArkWeb 应用侧方法调用指南](https://developer.huawei.com/consumer/cn/doc/harmonyos-guides-v5/web-in-page-app-function-invoking-V5)：异步 JavaScriptProxy 及 URL 权限白名单。
 
 
-连接和认证由 #53 的 `ConnectionSession` 所有；#48 的附件交接工作以前者为前置，复用连接快照。退出尝试暂停所有已登记服务器的任务，保留记录和文件；跨进程在途状态无法确认时不声称全部停止。上述新增连接行为尚需鸿蒙 SDK 构建和真机验收。
+连接和认证由 #53 的 `ConnectionSession` 所有；#48 的附件交接工作以前者为前置，复用连接快照。退出尝试暂停所有已登记服务器的任务，保留记录和文件；受保护的短请求持共享锁，退出通过独占探测确认跨进程是否仍有在途请求，任务或请求无法确认停止时报告 unconfirmed。上述新增连接行为尚需鸿蒙 SDK 构建和真机验收。

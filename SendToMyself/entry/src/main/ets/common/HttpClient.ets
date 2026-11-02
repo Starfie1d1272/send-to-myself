@@ -1,5 +1,6 @@
 import { http } from '@kit.NetworkKit';
 import { common } from '@kit.AbilityKit';
+import { fileIo } from '@kit.CoreFileKit';
 import { AuthenticatedConnection, beginAuthorizedDispatch, clearTokenIfCurrent } from './ConnectionSession';
 
 class HttpError extends Error {
@@ -9,9 +10,32 @@ class HttpError extends Error {
   }
 }
 const requests: Set<http.HttpRequest> = new Set<http.HttpRequest>();
+let protectedReservations = 0;
 export function stopProtectedRequests(): void {
-  requests.forEach((client: http.HttpRequest) => { client.destroy(); });
-  requests.clear();
+  requests.forEach((client: http.HttpRequest) => { try { client.destroy(); } catch (_error) {} });
+}
+// A shared OS lock covers every protected short request in either process. An
+// exclusive probe after logout can therefore distinguish quiescence from an
+// inaccessible in-flight request without keeping a persistent request ledger.
+function requestLock(context: common.Context): fileIo.File {
+  return fileIo.openSync(context.filesDir + '/transfer-protected-http.lock', fileIo.OpenMode.READ_WRITE | fileIo.OpenMode.CREATE);
+}
+export function protectedRequestsStopped(context: common.Context): boolean {
+  if (requests.size > 0 || protectedReservations > 0) return false;
+  let file: fileIo.File | undefined;
+  let locked = false;
+  let stopped = false;
+  try {
+    file = requestLock(context); file.tryLock(true); locked = true;
+    stopped = true;
+  } catch (_error) { stopped = false; }
+  finally {
+    if (file) {
+      try { if (locked) file.unlock(); } catch (_error) { stopped = false; }
+      try { fileIo.closeSync(file); } catch (_error) { stopped = false; }
+    }
+  }
+  return stopped;
 }
 export async function anonymousPost(origin: string, path: string, body: object, cookie?: string): Promise<http.HttpResponse> {
   const client = http.createHttp();
@@ -24,7 +48,11 @@ export async function anonymousPost(origin: string, path: string, body: object, 
 async function protectedRequest(context: common.Context, connection: AuthenticatedConnection,
   path: string, options: http.HttpRequestOptions): Promise<http.HttpResponse> {
   const client = http.createHttp();
+  let file: fileIo.File | undefined;
+  let locked = false;
   try {
+    file = requestLock(context);
+    file.tryLock(false); locked = true; protectedReservations++;
     return await beginAuthorizedDispatch(context, connection, () => {
       requests.add(client);
       return client.request(connection.origin + path, options);
@@ -32,7 +60,14 @@ async function protectedRequest(context: common.Context, connection: Authenticat
   } catch (error) {
     if ((error as Error).message === 'CONNECTION_CHANGED') throw error as Error;
     throw new HttpError(0, 'Network error', false, true);
-  } finally { requests.delete(client); client.destroy(); }
+  } finally {
+    requests.delete(client);
+    try { client.destroy(); } catch (_error) {}
+    if (file) {
+      try { if (locked) file.unlock(); }
+      finally { if (locked) protectedReservations--; fileIo.closeSync(file); }
+    }
+  }
 }
 export async function getJson(context: common.Context, connection: AuthenticatedConnection, path: string): Promise<http.HttpResponse> {
   return protectedRequest(context, connection, path, { method: http.RequestMethod.GET,

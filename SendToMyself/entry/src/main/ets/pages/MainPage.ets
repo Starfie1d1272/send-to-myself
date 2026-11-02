@@ -1,6 +1,6 @@
 import { webview } from '@kit.ArkWeb';
-import { readConnection, requireConnection, clearTokenIfCurrent, normalizeOrigin, AuthenticatedConnection } from '../common/ConnectionSession';
-import { checkTokenValid, loginAndMintToken, logoutCurrentConnection, LoginResultData } from '../common/AuthService';
+import { readConnection, requireConnection, clearTokenIfCurrent, normalizeOrigin, AuthenticatedConnection, ConnectionSession } from '../common/ConnectionSession';
+import { checkTokenValid, loginAndMintToken, logoutCurrentConnection } from '../common/AuthService';
 import { startNetMonitor, stopNetMonitor } from '../common/NetMonitor';
 import { processQueue, queueStatus } from '../common/QueueService';
 import { hilog } from '@kit.PerformanceAnalysisKit';
@@ -226,40 +226,33 @@ struct MainPage {
     }
     this.busy = true;
     this.errorMsg = '';
-    let candidate: string;
-    try { candidate = normalizeOrigin(this.serverUrl); this.serverUrl = candidate; }
-    catch (_error) { this.busy = false; this.errorMsg = '服务器地址无效'; return; }
-    const password = this.password;
-    let result: LoginResultData;
     try {
-      result = await loginAndMintToken(this.context, candidate, password, '鸿蒙手机');
-    } catch (_error) {
-      this.busy = false; this.errorMsg = '无法完成登录或保存凭据，请重试';
-      hilog.error(DOMAIN, TAG, 'Login or credential storage failed');
-      return;
-    }
-    if (result.success) {
-      this.useFreshEntry = true;
-      this.hasToken = true;
-      this.password = '';
-      if (!result.connection || !result.webSetCookie) { this.busy = false; this.errorMsg = '网页会话未建立'; return; }
-      const current = await readConnection(this.context);
-      if (!current || current.origin !== result.connection.origin || current.revision !== result.connection.revision) {
-        this.busy = false; this.errorMsg = '连接已改变，请重试'; return;
+      let candidate: string;
+      try { candidate = normalizeOrigin(this.serverUrl); this.serverUrl = candidate; }
+      catch (_error) { this.errorMsg = '服务器地址无效'; return; }
+      const result = await loginAndMintToken(this.context, candidate, this.password, '鸿蒙手机');
+      if (!result.success) { this.errorMsg = this.mapError(result.errorMessage); return; }
+      if (!result.connection || !result.webSetCookie) { this.errorMsg = '网页会话未建立'; return; }
+      let current: ConnectionSession | null;
+      try { current = await readConnection(this.context); }
+      catch (_error) { this.hasToken = false; this.errorMsg = '暂时无法读取本机连接，请重试'; return; }
+      if (!current || current.origin !== result.connection.origin || current.revision !== result.connection.revision || !current.deviceToken) {
+        this.hasToken = false; this.errorMsg = '连接已改变，请重试'; return;
       }
-      this.activeOrigin = result.connection.origin;
-      this.serverUrl = result.connection.origin;
-      try { await this.injectCookieToWeb(result.webSetCookie, result.connection.origin); this.webCookieBlocked = false; }
-      catch (_error) { this.busy = false; this.webCookieBlocked = true; this.errorMsg = '网页会话未建立，请检查Cookie配置并重试'; return; }
+      this.activeOrigin = current.origin;
+      this.serverUrl = current.origin;
+      this.hasToken = true;
+      try { await this.injectCookieToWeb(result.webSetCookie, current.origin); this.webCookieBlocked = false; }
+      catch (_error) { this.webCookieBlocked = true; this.errorMsg = '网页会话未建立，请检查Cookie配置并重试'; return; }
+      this.useFreshEntry = true;
+      this.password = '';
       this.phase = 'web';
-      this.busy = false;
       startNetMonitor(this.context, () => { this.loadQueueStatus(); });
       this.retryQueue();
-    } else {
-      this.busy = false;
-      this.errorMsg = this.mapError(result.errorMessage);
-      hilog.error(DOMAIN, TAG, 'Login failed: %{public}s', result.errorMessage ?? 'unknown');
-    }
+    } catch (_error) {
+      this.hasToken = false; this.errorMsg = '无法完成登录或读取本机连接，请重试';
+      hilog.error(DOMAIN, TAG, 'Login or credential storage failed');
+    } finally { this.busy = false; }
   }
 
   private entryUrl(): string {
@@ -513,9 +506,13 @@ struct MainPage {
             .borderColor(C_LINE)
             .margin({ top: 12 })
             .enabled(!this.busy && !this.webCookieBlocked)
-            .onClick(() => {
-              this.errorMsg = '';
-              this.phase = 'web';
+            .onClick(async () => {
+              try {
+                const current = await readConnection(this.context);
+                if (!current?.deviceToken) { this.hasToken = false; this.errorMsg = '请重新登录'; return; }
+                this.activeOrigin = current.origin; this.serverUrl = current.origin;
+                this.hasToken = true; this.errorMsg = ''; this.phase = 'web';
+              } catch (_error) { this.hasToken = false; this.errorMsg = '暂时无法读取本机连接，请重试'; }
             })
 
           Text('退出当前连接')

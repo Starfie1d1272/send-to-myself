@@ -153,14 +153,17 @@ test("Harmony credentials survive module reload with ordinary encrypted assets",
 test("Harmony queue preserves concurrent arrivals and serializes overlapping drains", async (t) => {
   const f = fixture(t); const queue = f.load("./QueueService");
   const entered = deferred(); const finish = deferred();
+  const otherHttp = f.newProcess()("./HttpClient");
   f.state.respond = async () => { entered.resolve(); await finish.promise; return { responseCode: 201 }; };
   await Promise.all([queue.enqueue(f.context, "first", "text", "one"), queue.enqueue(f.context, "second", "text", "two")]);
   const processing = queue.processQueue(f.context);
   await entered.promise;
+  assert.equal(otherHttp.protectedRequestsStopped(f.context), false);
   const overlap = queue.processQueue(f.context);
   await queue.enqueue(f.context, "new", "text", "three");
   finish.resolve();
   await Promise.all([processing, overlap]);
+  assert.equal(otherHttp.protectedRequestsStopped(f.context), true);
   assert.equal(f.requests.length, 2);
   assert.equal(await queue.isQueued(f.context, "first"), false);
   assert.equal(await queue.isQueued(f.context, "second"), false);

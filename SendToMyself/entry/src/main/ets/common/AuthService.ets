@@ -3,7 +3,7 @@ import { pauseAllQueueTasks } from './QueueService';
 import { pauseAllDownloads } from './NativeDownloads';
 import { http } from '@kit.NetworkKit';
 import { common } from '@kit.AbilityKit';
-import { anonymousPost, extractSessionCookie, getJson, stopProtectedRequests } from './HttpClient';
+import { anonymousPost, extractSessionCookie, getJson, stopProtectedRequests, protectedRequestsStopped } from './HttpClient';
 import { AuthenticatedConnection, ConnectionSession, commitConnection, clearTokenIfCurrent, normalizeOrigin, readConnection } from './ConnectionSession';
 
 interface DeviceTokenResponse { token: string }
@@ -83,9 +83,11 @@ export async function logoutCurrentConnection(context: common.Context, activeOri
       if (!cleared) throw new Error('CONNECTION_CHANGED');
       try { stopProtectedRequests(); } catch (_error) {}
       try { onSignedOut(current.origin); } catch (_error) {}
-      try { await pauseAllQueueTasks(context); } catch (_error) {}
-      try { await pauseAllDownloads(context); } catch (_error) {}
-      // The other process may still own an in-flight request, so stopping cannot be confirmed here.
+      let queueStopped = false;
+      let downloadsStopped = false;
+      try { queueStopped = await pauseAllQueueTasks(context); } catch (_error) {}
+      try { downloadsStopped = await pauseAllDownloads(context); } catch (_error) {}
+      const transferStop = queueStopped && downloadsStopped && protectedRequestsStopped(context) ? 'complete' : 'unconfirmed';
       let cookieCleared = false;
       try {
         const after = await readConnection(context);
@@ -111,7 +113,7 @@ export async function logoutCurrentConnection(context: common.Context, activeOri
         } catch (_error) {} finally { client.destroy(); }
       }
       return { status: 'signed_out', serverOrigin: current.origin, cookieCleared: cookieCleared,
-        transferStop: 'unconfirmed', remoteSessionLogout: remote };
+        transferStop: transferStop, remoteSessionLogout: remote };
   } catch (error) {
     if ((error as Error).message === 'CONNECTION_CHANGED') throw error as Error;
     throw new Error('LOCAL_STORAGE_FAILED');
