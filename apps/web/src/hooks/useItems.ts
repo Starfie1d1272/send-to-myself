@@ -7,7 +7,7 @@ import { itemPages } from "../lib/timeline";
 
 export function useItems(params: ListParams) {
   const access = useAuthAccess();
-  return useInfiniteQuery({ ...itemPages(params), enabled: access.authenticated && !access.reauthRequired && !access.exiting });
+  return useInfiniteQuery({ ...itemPages(params), placeholderData: (previous) => previous, enabled: access.authenticated && !access.reauthRequired && !access.exiting });
 }
 
 export function useItemMutations() {

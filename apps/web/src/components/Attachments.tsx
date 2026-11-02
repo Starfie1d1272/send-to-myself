@@ -8,7 +8,7 @@ import {
   attachmentThumbUrl,
 } from "../lib/api";
 import { formatSize } from "../lib/format";
-import { IconDownload, IconFile, IconShare } from "./icons";
+import { IconFile } from "./icons";
 import { Lightbox } from "./Lightbox";
 
 const isImage = (a: Attachment) => a.mimeType.startsWith("image/");
@@ -65,7 +65,7 @@ export function Attachments({ items }: { items: Attachment[] }) {
               if (await copyImage(attachmentRawUrl(a.id))) setCopied(a.id);
               else setShareError("图片复制失败，请更新桌面客户端或下载后使用。");
             }}>{copied === a.id ? "已复制图片" : "复制图片"}</button>
-            <button className="att__copy" disabled={busyId !== null} onClick={() => share(a)}>分享图片</button>
+            <details><summary>更多</summary><button disabled={busyId !== null} onClick={() => share(a)}>分享图片</button></details>
             <a className="att__copy" href={attachmentDownloadUrl(a.id)} download={a.filename}
               onClick={(event) => {
                 if (hasNativeDownload()) { event.preventDefault(); void download(a); }
@@ -94,11 +94,9 @@ export function Attachments({ items }: { items: Attachment[] }) {
                 if (hasNativeDownload()) { event.preventDefault(); void download(a); }
               }}
             >
-              <IconDownload width={17} height={17} />
+              保存
             </a>
-            <button className="icon-btn" title="分享" disabled={busyId !== null} onClick={() => share(a)}>
-              <IconShare width={17} height={17} />
-            </button>
+            <details><summary>更多</summary><button disabled={busyId !== null} onClick={() => share(a)}>分享</button></details>
           </div>
         </div>
       ))}
