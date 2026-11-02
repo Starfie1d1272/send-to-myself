@@ -3,18 +3,18 @@ import { common } from '@kit.AbilityKit';
 import { util } from '@kit.ArkTS';
 import { SharedFileData, cleanSharedFiles } from './ShareFiles';
 import { enqueueWebUpload, getUploadReceipt, retryQueueItem } from './QueueService';
-import { readConnection } from './ConnectionSession';
+import { ConnectionSession, assertCurrentConnection } from './ConnectionSession';
 
 export interface HandoffResult { status: string; dedupeKey: string; serverOrigin: string; reason?: string }
 export class UploadHandoff {
   detectionContext?: DetectionContext;
-  content: string; key: string; origin: string; requestId: string;
+  content: string; key: string; origin: string; requestId: string; connection: ConnectionSession;
   files: SharedFileData[] = [];
   writing: boolean = false; finished: boolean = false;
   private resolve: (value: string) => void;
   promise: Promise<string>;
-  constructor(content: string, key: string, origin: string, detectionContext?: DetectionContext) {
-    this.detectionContext = detectionContext; this.content = content; this.key = key; this.origin = origin; this.requestId = util.generateRandomUUID();
+  constructor(content: string, key: string, connection: ConnectionSession, detectionContext?: DetectionContext) {
+    this.detectionContext = detectionContext; this.content = content; this.key = key; this.connection = connection; this.origin = connection.origin; this.requestId = util.generateRandomUUID();
     let complete: (value: string) => void = () => {};
     this.promise = new Promise<string>((resolve) => { complete = resolve; });
     this.resolve = complete;
@@ -38,33 +38,39 @@ export class UploadHandoff {
   }
   async submit(context: common.Context): Promise<void> {
     if (!this.canPrepare() || this.files.length === 0) return;
-    const connection = await readConnection(context);
+    try { await assertCurrentConnection(context, this.connection); }
+    catch (_error) { if (this.canPrepare()) this.finish('not_queued', 'route_failed'); return; }
     if (!this.canPrepare()) return;
-    if (!connection || connection.origin !== this.origin) { this.finish('not_queued', 'route_failed'); return; }
     this.writing = true;
-    const result = await enqueueWebUpload(context, this.key, this.content, this.files, this.origin, this.detectionContext);
+    const result = await enqueueWebUpload(context, this.key, this.content, this.files, this.origin, this.detectionContext, this.connection);
     if (result === 'accepted') {
+      try { await assertCurrentConnection(context, this.connection); }
+      catch (_error) { this.finish('unknown'); return; }
       this.finish('queued');
-      retryQueueItem(context, this.key).catch(() => {});
+      retryQueueItem(context, this.key, this.connection).catch(() => {});
     } else if (result === 'not_accepted') this.finish('not_queued', 'prepare_failed');
     else this.finish('unknown');
   }
 }
 let active: UploadHandoff | undefined;
 export function currentHandoff(): UploadHandoff | undefined { return active; }
-export async function openHandoff(context: common.Context, content: string, key: string, origin: string,
+export async function openHandoff(context: common.Context, content: string, key: string, connection: ConnectionSession,
   route: () => Promise<void>, detectionContext?: DetectionContext): Promise<string> {
+  const origin = connection.origin;
+  await assertCurrentConnection(context, connection);
   if (content.length > 100000 || key.length < 1 || key.length > 64) return JSON.stringify({ status: 'not_queued', dedupeKey: key, serverOrigin: origin, reason: 'invalid_input' });
   if (active) {
-    if (active.key === key && active.origin === origin) return active.promise;
+    if (active.key === key && active.origin === origin && active.connection.revision === connection.revision) return active.promise;
     throw new Error('BUSY');
   }
-  if (await getUploadReceipt(context, key, origin)) return JSON.stringify({ status: 'queued', dedupeKey: key, serverOrigin: origin });
+  const accepted = await getUploadReceipt(context, key, origin);
+  await assertCurrentConnection(context, connection);
+  if (accepted) return JSON.stringify({ status: 'queued', dedupeKey: key, serverOrigin: origin });
   if (active) {
-    if (active.key === key && active.origin === origin) return active.promise;
+    if (active.key === key && active.origin === origin && active.connection.revision === connection.revision) return active.promise;
     throw new Error('BUSY');
   }
-  const handoff = new UploadHandoff(content, key, origin, detectionContext); active = handoff;
+  const handoff = new UploadHandoff(content, key, connection, detectionContext); active = handoff;
   try { await route(); } catch (_error) { handoff.finish('not_queued', 'route_failed'); }
   return handoff.promise;
 }

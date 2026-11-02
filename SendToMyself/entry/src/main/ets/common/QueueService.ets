@@ -2,7 +2,7 @@ import { DetectionContext } from './DetectionContext';
 import { preferences } from '@kit.ArkData';
 import { common } from '@kit.AbilityKit';
 import { postTextItem, isAuthError, isNetworkError, isAlreadyDeleted } from './HttpClient';
-import { readConnection, requireConnection, normalizeOrigin, beginAuthorizedDispatch, ConnectionSession } from './ConnectionSession';
+import { readConnection, requireConnection, normalizeOrigin, beginAuthorizedDispatch, ConnectionSession, assertCurrentConnection } from './ConnectionSession';
 import { SharedFileData, legacyFile, cleanSharedFiles } from './ShareFiles';
 import { PREFS_NAME_QUEUE, PREFS_KEY_QUEUE } from './Constants';
 import { withTransferLock, TransferBusyError } from './TransferLock';
@@ -86,15 +86,17 @@ async function finishItem(context: common.Context, item: QueueItemData): Promise
   if (item.agentId) { try { await removeTask(item.agentId); } catch (_error) {} }
 }
 async function persistEnqueue(context: common.Context, key: string, kind: 'text' | 'upload',
-  content?: string, files?: SharedFileData[], targetOrigin?: string, web: boolean = false, detectionContext?: DetectionContext): Promise<EnqueueResult> {
+  content?: string, files?: SharedFileData[], targetOrigin?: string, web: boolean = false, detectionContext?: DetectionContext, expected?: ConnectionSession): Promise<EnqueueResult> {
   let current: ConnectionSession | null;
   try { current = await readConnection(context); } catch (_error) { return 'not_accepted'; }
-  if (!current || !key || key.length > 64 || (targetOrigin && current.origin !== targetOrigin)) return 'not_accepted';
+  if (!current || !key || key.length > 64 || (targetOrigin && current.origin !== targetOrigin) ||
+    (expected && (current.origin !== expected.origin || current.revision !== expected.revision))) return 'not_accepted';
   const server = current.origin;
   let writeStarted = false;
   try {
     return await withTransferLock<EnqueueResult>(context, 'queue', async () => {
       let envelope = await loadEnvelope(context);
+      if (expected) { try { await assertCurrentConnection(context, expected); } catch (_error) { return 'not_accepted'; } }
       const existing = envelope.items.find((item: QueueItemData) => item.dedupeKey === key);
       if (existing && (!existing.serverUrl || normalizeOrigin(existing.serverUrl) !== server)) return 'not_accepted';
       if (!existing) envelope.items.push({ dedupeKey: key, kind: kind, content: content, files: files,
@@ -126,8 +128,8 @@ export async function enqueue(context: common.Context, key: string, kind: 'text'
   return persistEnqueue(context, key, kind, content, files, targetOrigin, false, detectionContext);
 }
 export async function enqueueWebUpload(context: common.Context, key: string, content: string,
-  files: SharedFileData[], targetOrigin: string, detectionContext?: DetectionContext): Promise<EnqueueResult> {
-  return persistEnqueue(context, key, 'upload', content, files, targetOrigin, true, detectionContext);
+  files: SharedFileData[], targetOrigin: string, detectionContext?: DetectionContext, expected?: ConnectionSession): Promise<EnqueueResult> {
+  return persistEnqueue(context, key, 'upload', content, files, targetOrigin, true, detectionContext, expected);
 }
 export async function getUploadReceipt(context: common.Context, key: string, origin: string): Promise<boolean> {
   return withTransferLock(context, 'queue', async () => {
@@ -146,7 +148,7 @@ export async function queueStatus(context: common.Context): Promise<QueueStatus>
 }
 
 // The item lock spans dispatch, acknowledgment and cancellation, including across processes.
-async function processItem(context: common.Context, key: string, retry: boolean): Promise<void> {
+async function processItem(context: common.Context, key: string, retry: boolean, expected?: ConnectionSession): Promise<void> {
   await withTransferLock(context, 'item-' + key, async () => {
     const item = (await readQueue(context)).find((entry: QueueItemData) => entry.dedupeKey === key);
     if (!item) return;
@@ -157,6 +159,7 @@ async function processItem(context: common.Context, key: string, retry: boolean)
       return;
     }
     try {
+      if (expected) await assertCurrentConnection(context, expected);
       if (item.agentId) {
         const info = await taskInfo(item.agentId);
         if (info?.progress.state === request.agent.State.COMPLETED) {
@@ -178,6 +181,7 @@ async function processItem(context: common.Context, key: string, retry: boolean)
           return;
         }
         const connection = await requireConnection(context);
+        if (expected && (connection.origin !== expected.origin || connection.revision !== expected.revision)) throw new Error('CONNECTION_CHANGED');
         if (!item.serverUrl || normalizeOrigin(item.serverUrl) !== connection.origin) throw new Error('待发送内容属于另一服务器，请切回原服务器');
         if (item.agentSessionRevision !== connection.revision) {
           await removeTask(item.agentId);
@@ -202,6 +206,7 @@ async function processItem(context: common.Context, key: string, retry: boolean)
         }
       }
       const connection = await requireConnection(context);
+      if (expected && (connection.origin !== expected.origin || connection.revision !== expected.revision)) throw new Error('CONNECTION_CHANGED');
       if (!item.serverUrl || normalizeOrigin(item.serverUrl) !== connection.origin) {
         throw new Error('待发送内容目标无法确认或属于另一服务器，请切回原服务器');
       }
@@ -251,8 +256,8 @@ export async function reconcileQueue(context: common.Context): Promise<void> {
     catch (error) { if (!(error instanceof TransferBusyError)) throw error as Error; }
   }
 }
-export async function retryQueueItem(context: common.Context, key: string): Promise<void> {
-  await processItem(context, key, true);
+export async function retryQueueItem(context: common.Context, key: string, expected?: ConnectionSession): Promise<void> {
+  await processItem(context, key, true, expected);
 }
 export async function removeQueueItem(context: common.Context, key: string): Promise<void> {
   await withTransferLock(context, 'item-' + key, async () => {

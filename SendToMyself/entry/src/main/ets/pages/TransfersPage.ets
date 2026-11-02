@@ -1,12 +1,13 @@
 import { PAPER, CARD, CARD_HI, INK, INK_SOFT, ERROR, CARD_RADIUS } from '../common/Theme';
 import { common } from '@kit.AbilityKit';
+import { readConnection } from '../common/ConnectionSession';
 import { promptAction } from '@kit.ArkUI';
 import { requestHostReauthentication } from '../common/HostReauthentication';
 import { QueueRow, listQueue, processQueue, reconcileQueue, retryQueueItem, removeQueueItem, pauseQueueItem } from '../common/QueueService';
 import { DownloadRow, listDownloads, refreshDownloads, retryDownload, removeDownload,
   shareDownload, saveDownload } from '../common/NativeDownloads';
 
-export interface TransferPageParams { downloadId?: string; action?: string }
+export interface TransferPageParams { downloadId?: string; action?: string; sourceOrigin?: string; sourceRevision?: string }
 
 @Entry
 @Component
@@ -42,19 +43,28 @@ struct TransfersPage {
     if (this.loading || !this.visible || AppStorage.get<boolean>('appForeground') === false) return;
     this.loading = true;
     try {
-      await reconcileQueue(this.context);
-      await refreshDownloads(this.context);
-      const rows = await listQueue(this.context);
-      const downloads = await listDownloads(this.context);
+      // Render stored records before any system task reconciliation can block on the OS.
+      try { this.queue = await listQueue(this.context); } catch (_error) { this.error = '无法读取待发送内容'; }
+      try { this.downloads = await listDownloads(this.context); } catch (_error) { this.error = '无法读取本机下载'; }
+      try { await reconcileQueue(this.context); } catch (_error) { this.error = '部分待发送状态无法确认，内容已保留'; }
+      try { await refreshDownloads(this.context); } catch (_error) { this.error = '部分传输状态无法确认，本机内容已保留'; }
+      try { this.queue = await listQueue(this.context); } catch (_error) { this.error = '无法读取待发送内容'; }
+      try { this.downloads = await listDownloads(this.context); } catch (_error) { this.error = '无法读取本机下载'; }
       if (!this.visible) return;
-      this.queue = rows;
-      this.downloads = downloads;
+      const downloads = this.downloads;
       if (this.autoOpen.downloadId && downloads.some((item: DownloadRow) => item.id === this.autoOpen.downloadId && item.ready)) {
         const id = this.autoOpen.downloadId;
         const action = this.autoOpen.action;
+        const sourceOrigin = this.autoOpen.sourceOrigin;
+        const sourceRevision = this.autoOpen.sourceRevision;
         this.autoOpen = {};
         if (AppStorage.get<boolean>('appForeground') !== false) {
-          await this.perform(id, () => action === 'save' ? saveDownload(this.context, id) : shareDownload(this.context, id));
+          await this.perform(id, async () => {
+            const source = await readConnection(this.context);
+            if (!source || !sourceOrigin || !sourceRevision || source.origin !== sourceOrigin || source.revision !== sourceRevision) throw new Error('连接已改变，请重新操作');
+            if (action === 'save') await saveDownload(this.context, id, source);
+            else if (action === 'share') await shareDownload(this.context, id, source);
+          });
         }
       }
     } catch (_error) { if (this.visible) this.error = '暂时无法读取传输记录，请稍后刷新'; }

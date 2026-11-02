@@ -3,7 +3,7 @@ import { preferences, uniformTypeDescriptor } from '@kit.ArkData';
 import { fileIo, fileUri, picker } from '@kit.CoreFileKit';
 import { util } from '@kit.ArkTS';
 import { systemShare } from '@kit.ShareKit';
-import { AuthenticatedConnection, readConnection, requireConnection, beginAuthorizedDispatch, normalizeOrigin } from './ConnectionSession';
+import { AuthenticatedConnection, ConnectionSession, readConnection, requireConnection, beginAuthorizedDispatch, normalizeOrigin, assertCurrentConnection, authenticatedSnapshot } from './ConnectionSession';
 import { withTransferLock, TransferBusyError } from './TransferLock';
 import { getJson } from './HttpClient';
 import { request, taskInfo, transferHeaders, removeTask, progressText } from './TransferAgent';
@@ -116,18 +116,21 @@ export async function prepareDownload(context: common.Context, attachmentId: str
   });
 }
 interface AttachmentMetadata { id: string; filename: string; mimeType: string; size: number }
-export async function requestAttachmentAction(context: common.UIAbilityContext, attachmentId: string, action: string): Promise<string> {
+export async function requestAttachmentAction(context: common.UIAbilityContext, attachmentId: string, action: string, source: ConnectionSession): Promise<string> {
   if (!validAttachmentId(attachmentId) || (action !== 'save' && action !== 'share')) throw new Error('附件信息无效');
-  const current = await readConnection(context);
-  if (!current) throw new Error('请先连接服务器');
-  const existing = (await all(context)).find((item: DownloadRecord) => item.attachmentId === attachmentId && item.serverUrl === current.origin && !item.cancelRequested);
+  await assertCurrentConnection(context, source);
+  const existing = (await all(context)).find((item: DownloadRecord) => item.attachmentId === attachmentId && item.serverUrl === source.origin && !item.cancelRequested);
+  await assertCurrentConnection(context, source);
   if (existing) return existing.id;
-  const connection = await requireConnection(context);
+  const connection = authenticatedSnapshot(source);
   const response = await getJson(context, connection, '/api/attachments/' + attachmentId);
   if (response.responseCode !== 200) throw new Error(response.responseCode === 404 ? '附件不可用或核心版本过旧，请检查或升级核心' : '无法读取附件信息（HTTP ' + response.responseCode.toString() + '）');
   const metadata = JSON.parse(response.result as string) as AttachmentMetadata;
   if (metadata.id !== attachmentId || typeof metadata.filename !== 'string' || typeof metadata.mimeType !== 'string') throw new Error('附件信息无效，请升级配套核心');
-  return prepareDownload(context, attachmentId, metadata.filename, metadata.mimeType, metadata.size, connection);
+  await assertCurrentConnection(context, source);
+  const id = await prepareDownload(context, attachmentId, metadata.filename, metadata.mimeType, metadata.size, connection);
+  await assertCurrentConnection(context, source);
+  return id;
 }
 async function cleanup(context: common.Context, item: DownloadRecord): Promise<void> {
   if (item.taskId) await removeTask(item.taskId);
@@ -254,12 +257,13 @@ async function readyFile(context: common.Context, id: string): Promise<DownloadR
   }
   return item;
 }
-export async function shareDownload(context: common.UIAbilityContext, id: string): Promise<void> {
+export async function shareDownload(context: common.UIAbilityContext, id: string, expected?: ConnectionSession): Promise<void> {
   if (presenting.has(id)) return;
   presenting.add(id);
   try {
     await withTransferLock(context, 'download-' + id, async () => {
       const item = await readyFile(context, id);
+      if (expected) await assertCurrentConnection(context, expected);
       let utd: string = uniformTypeDescriptor.UniformDataType.FILE;
       try { utd = uniformTypeDescriptor.getUniformDataTypeByMIMEType(item.mimeType); } catch (_error) {}
       const data = new systemShare.SharedData({ utd: utd, uri: fileUri.getUriFromPath(item.path), title: item.filename });
@@ -272,15 +276,17 @@ export async function shareDownload(context: common.UIAbilityContext, id: string
     }, false);
   } catch (error) { presenting.delete(id); controllers.delete(id); throw error as Error; }
 }
-export async function saveDownload(context: common.UIAbilityContext, id: string): Promise<void> {
+export async function saveDownload(context: common.UIAbilityContext, id: string, expected?: ConnectionSession): Promise<void> {
   if (presenting.has(id)) return;
   presenting.add(id);
   let destination: fileIo.File | undefined;
   try {
     await withTransferLock(context, 'download-' + id, async () => {
       const item = await readyFile(context, id);
+      if (expected) await assertCurrentConnection(context, expected);
       const uris = await new picker.DocumentViewPicker(context).save({ newFileNames: [item.filename] });
       if (uris.length === 0) return;
+      if (expected) await assertCurrentConnection(context, expected);
       destination = fileIo.openSync(uris[0], fileIo.OpenMode.WRITE_ONLY | fileIo.OpenMode.TRUNC);
       await fileIo.copyFile(item.path, destination.fd);
     }, false);

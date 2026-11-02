@@ -3,7 +3,7 @@ import { common } from '@kit.AbilityKit';
 import { fileIo, picker } from '@kit.CoreFileKit';
 import { copySharedFileAsync, SharedFileData } from '../common/ShareFiles';
 import { currentHandoff, UploadHandoff } from '../common/UploadHandoff';
-import { readConnection, requireConnection } from '../common/ConnectionSession';
+import { assertCurrentConnection, authenticatedSnapshot } from '../common/ConnectionSession';
 import { getJson } from '../common/HttpClient';
 
 interface Limits { maxUploadBytes: number; maxUploadTotalBytes: number; maxUploadFiles: number }
@@ -44,16 +44,16 @@ struct UploadPage {
     const handoff = this.handoff; if (!handoff || this.busy || !handoff.files.length) return;
     this.busy = true;
     try {
-      const current = await readConnection(this.context);
+      await assertCurrentConnection(this.context, handoff.connection);
       if (!handoff.canPrepare()) { if (this.visible) this.getUIContext().getRouter().back(); return; }
-      if (!current || current.origin !== handoff.origin) { handoff.finish('not_queued', 'route_failed'); this.getUIContext().getRouter().back(); return; }
       let limits: Limits | undefined;
       try {
-        const connection = await requireConnection(this.context);
+        const connection = authenticatedSnapshot(handoff.connection);
         const response = await Promise.race([getJson(this.context, connection, '/api/info'), new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 4000))]);
         if (response.responseCode === 200) limits = JSON.parse(response.result as string) as Limits;
       } catch (_error) {}
       if (!handoff.canPrepare()) { if (this.visible) this.getUIContext().getRouter().back(); return; }
+      await assertCurrentConnection(this.context, handoff.connection);
       if (limits) {
         const sizes = handoff.files.map((file: SharedFileData) => fileIo.statSync(file.path).size);
         if (sizes.length > limits.maxUploadFiles || sizes.some((size: number) => size > limits!.maxUploadBytes) || sizes.reduce((a: number, b: number) => a + b, 0) > limits.maxUploadTotalBytes) { this.status = '附件超过服务器限制，请调整'; return; }
