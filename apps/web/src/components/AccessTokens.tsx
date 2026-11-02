@@ -34,7 +34,9 @@ export function AccessTokens({ onClose }: { onClose: () => void }) {
       <button disabled={copying} onClick={async () => { setCopying(true); try { setMessage(await copyText(token) ? "已复制令牌" : "复制失败，请手动复制令牌"); } finally { setCopying(false); } }}>{copying ? "复制中…" : "复制令牌"}</button>
       <button onClick={() => { setToken(""); setMessage(""); }}>已保存</button>
     </div>}
-    {(devices.error || create.error || revoke.error) && <InlineStatus tone="error">{[devices.error, create.error, revoke.error].some(error => error instanceof ApiError && error.status === 401) ? "请在浏览器打开同一地址，用口令登录后管理接入令牌" : "操作失败，请重试。"}</InlineStatus>}
+    {devices.error && <InlineStatus tone="error">{devices.error instanceof ApiError && devices.error.status === 401 ? "请在浏览器打开同一地址，用口令登录后管理接入令牌" : <>读取接入令牌失败。 <button className="button" disabled={devices.isFetching} onClick={() => void devices.refetch()}>{devices.isFetching ? "重试中…" : "重试读取"}</button></>}</InlineStatus>}
+    {create.error && <InlineStatus tone="error">{create.error instanceof ApiError && create.error.status === 401 ? "请在浏览器打开同一地址，用口令登录后管理接入令牌" : "创建令牌失败，请重试。"}</InlineStatus>}
+    {revoke.error && <InlineStatus tone="error">{revoke.error instanceof ApiError && revoke.error.status === 401 ? "请在浏览器打开同一地址，用口令登录后管理接入令牌" : "吊销令牌失败，请重试。"}</InlineStatus>}
     {message && <InlineStatus>{message}</InlineStatus>}
     {devices.isLoading ? <p>加载设备…</p> : <ul>{devices.data?.devices.map(device => <li key={device.tail}>
       <span>{device.name} · 尾号 {device.tail} · 创建于 {new Date(device.createdAt * 1000).toLocaleString()} · 最近使用 {device.lastUsedAt === null ? "尚未使用" : new Date(device.lastUsedAt * 1000).toLocaleString()}</span><button disabled={revoke.isPending} onClick={() => revoke.mutate(device.tail)}>吊销</button>

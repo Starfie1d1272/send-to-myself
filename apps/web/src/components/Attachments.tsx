@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { copyImage } from "../lib/clipboard";
 import { shareAttachment, saveAttachment, hasNativeDownload } from "../lib/share";
 import type { Attachment } from "@sendtomyself/shared";
@@ -13,6 +13,24 @@ import { Lightbox } from "./Lightbox";
 
 const isImage = (a: Attachment) => a.mimeType.startsWith("image/");
 
+function More({ disabled, onShare, label = "分享" }: { disabled: boolean; onShare: () => Promise<boolean>; label?: string }) {
+  const ref = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    const onPointer = (event: PointerEvent) => {
+      if (ref.current?.open && !ref.current.contains(event.target as Node)) ref.current.open = false;
+    };
+    document.addEventListener("pointerdown", onPointer);
+    return () => document.removeEventListener("pointerdown", onPointer);
+  }, []);
+  return <details ref={ref} onKeyDown={event => {
+    if (event.key === "Escape" && ref.current?.open) {
+      event.stopPropagation(); ref.current.open = false; ref.current.querySelector("summary")?.focus();
+    }
+  }}><summary>更多</summary><button className="button button--quiet" disabled={disabled} onClick={async () => {
+    if (await onShare() && ref.current) ref.current.open = false;
+  }}>{label}</button></details>;
+}
+
 export function Attachments({ items }: { items: Attachment[] }) {
   // 当前在看大图的原图 URL；null=未打开。单 WebView 壳里 target="_blank" 打不开，故用壳内弹层。
   const [copied, setCopied] = useState<string | null>(null);
@@ -23,19 +41,21 @@ export function Attachments({ items }: { items: Attachment[] }) {
     if (busyId) return;
     setBusyId(attachment.id); setShareError(""); setNotice("");
     try { await saveAttachment(attachment); }
-    catch { setShareError("无法开始下载，请在传输页查看或重试。"); }
+    catch { setShareError("无法开始下载，请在传输任务查看或重试。"); }
     finally { setBusyId(null); }
   };
   const share = async (attachment: Attachment) => {
-    if (busyId) return;
+    if (busyId) return false;
     setBusyId(attachment.id); setShareError(""); setNotice("");
     try {
       const result = await shareAttachment(attachment);
       if (result === "queued") setNotice("已加入传输，下载完成后打开系统分享。");
       if (result === "unsupported") {
         setShareError("此设备不支持直接分享文件，请下载后发送。");
+        return false;
       }
-    } catch { setShareError("分享失败，请重试或下载后发送。"); }
+      return result !== "cancelled";
+    } catch { setShareError("分享失败，请重试或下载后发送。"); return false; }
     finally { setBusyId(null); }
   };
   const [viewing, setViewing] = useState<{ url: string; alt: string } | null>(null);
@@ -65,7 +85,7 @@ export function Attachments({ items }: { items: Attachment[] }) {
               if (await copyImage(attachmentRawUrl(a.id))) setCopied(a.id);
               else setShareError("图片复制失败，请更新桌面客户端或下载后使用。");
             }}>{copied === a.id ? "已复制图片" : "复制图片"}</button>
-            <details><summary>更多</summary><button disabled={busyId !== null} onClick={() => share(a)}>分享图片</button></details>
+            <More disabled={busyId !== null} onShare={() => share(a)} label="分享图片" />
             <a className="att__copy" href={attachmentDownloadUrl(a.id)} download={a.filename}
               onClick={(event) => {
                 if (hasNativeDownload()) { event.preventDefault(); void download(a); }
@@ -86,7 +106,7 @@ export function Attachments({ items }: { items: Attachment[] }) {
           </div>
           <div className="att__file-actions">
             <a
-              className="icon-btn"
+              className="button button--quiet"
               href={attachmentDownloadUrl(a.id)}
               title="下载"
               download={a.filename}
@@ -96,7 +116,7 @@ export function Attachments({ items }: { items: Attachment[] }) {
             >
               保存
             </a>
-            <details><summary>更多</summary><button disabled={busyId !== null} onClick={() => share(a)}>分享</button></details>
+            <More disabled={busyId !== null} onShare={() => share(a)} />
           </div>
         </div>
       ))}
