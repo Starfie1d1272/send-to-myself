@@ -16,7 +16,8 @@ export async function copyText(text: string): Promise<boolean> {
     textarea = document.createElement("textarea");
     textarea.value = text; textarea.setAttribute("readonly", "");
     textarea.style.position = "fixed"; textarea.style.top = "-1000px"; textarea.style.opacity = "0";
-    document.body.appendChild(textarea); textarea.select();
+    const dialog = focused instanceof Element ? focused.closest("dialog[open]") : null;
+    (dialog ?? document.body).appendChild(textarea); textarea.select();
     return document.execCommand("copy");
   } catch { return false; }
   finally { textarea?.remove(); if (focused instanceof HTMLElement) focused.focus(); }

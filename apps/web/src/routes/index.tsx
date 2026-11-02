@@ -23,13 +23,12 @@ export function TimelinePage() {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => { const timer = setTimeout(() => setSearch(state.query), 250); return () => clearTimeout(timer); }, [state.query]);
   useEffect(() => {
-    if (state.view !== "todo" || state.todoScope !== "next7days") return;
     const refreshNow = () => { if (document.visibilityState === "visible") setNow(new Date()); };
     refreshNow();
     const timer = setInterval(refreshNow, 60000);
     window.addEventListener("focus", refreshNow); document.addEventListener("visibilitychange", refreshNow);
     return () => { clearInterval(timer); window.removeEventListener("focus", refreshNow); document.removeEventListener("visibilitychange", refreshNow); };
-  }, [state.view, state.todoScope]);
+  }, []);
   const changeState = (next: TimelineViewState) => {
     if ((state.view === "trash") !== (next.view === "trash")) setSearch(next.query);
     if (next.view === "todo" && next.todoScope === "next7days" && (state.view !== "todo" || state.todoScope !== "next7days")) setNow(new Date());
@@ -50,7 +49,7 @@ export function TimelinePage() {
 
   const items = data?.pages.flatMap((page) => page.items) ?? [];
 
-  const today = new Date();
+  const today = now;
   const dateStr = `${today.getFullYear()} · ${today.getMonth() + 1}月${today.getDate()}日`;
 
   return (
@@ -86,7 +85,7 @@ export function TimelinePage() {
             <button onClick={() => void refetch()}>重试加载</button>
           </div>
         )}
-        {(!isError || items.length > 0) && <Timeline items={items} state={state} onChange={changeState} loading={isLoading} pending={isPlaceholderData} />}
+        {(!isError || items.length > 0) && <Timeline items={items} now={now} state={state} onChange={changeState} loading={isLoading} pending={isPlaceholderData} />}
         {hasNextPage && !isPlaceholderData && (
           <div className="timeline__more">
             <button className="send" disabled={isFetchingNextPage} onClick={() => void fetchNextPage()}>
