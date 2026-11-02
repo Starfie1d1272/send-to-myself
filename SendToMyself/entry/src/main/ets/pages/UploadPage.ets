@@ -3,6 +3,7 @@ import { picker } from '@kit.CoreFileKit';
 import { util } from '@kit.ArkTS';
 import { SharedFileData, copySharedFileAsync, cleanSharedFiles } from '../common/ShareFiles';
 import { enqueue, retryQueueItem } from '../common/QueueService';
+import { readConnection } from '../common/ConnectionSession';
 
 @Entry
 @Component
@@ -20,6 +21,8 @@ struct UploadPage {
     const files: SharedFileData[] = [];
     let persisted = false;
     try {
+      const connection = await readConnection(this.context);
+      if (!connection) throw new Error('请先连接服务器');
       const uris = await new picker.DocumentViewPicker(this.context).select({ maxSelectNumber: 20 });
       if (uris.length === 0) return;
       for (let i = 0; i < uris.length; i++) {
@@ -27,7 +30,7 @@ struct UploadPage {
         files.push(await copySharedFileAsync(this.context, uris[i]));
       }
       const key = util.generateRandomUUID();
-      await enqueue(this.context, key, 'upload', this.content.trim(), files);
+      await enqueue(this.context, key, 'upload', this.content.trim(), files, connection.origin);
       persisted = true;
       this.content = '';
       await retryQueueItem(this.context, key);

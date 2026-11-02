@@ -1,17 +1,15 @@
 import { request, BusinessError } from '@kit.BasicServicesKit';
 import { common } from '@kit.AbilityKit';
-import { loadDeviceToken } from './AssetStore';
+import { AuthenticatedConnection } from './ConnectionSession';
 import { SharedFileData } from './ShareFiles';
 
 export { request };
 
-export async function transferHeaders(): Promise<Record<string, string>> {
-  const token = await loadDeviceToken();
-  if (!token) throw new Error('请先重新登录，待发送内容已保留');
-  return { 'Authorization': 'Bearer ' + token };
+export function transferHeaders(connection: AuthenticatedConnection): Record<string, string> {
+  return { 'Authorization': 'Bearer ' + connection.deviceToken };
 }
 
-export async function createUpload(context: common.Context, server: string, key: string,
+export async function createUpload(context: common.Context, connection: AuthenticatedConnection, key: string,
   content: string, files: SharedFileData[]): Promise<request.agent.Task> {
   const specs: request.agent.FileSpec[] = files.map((file: SharedFileData): request.agent.FileSpec => {
     return { path: file.path, filename: file.filename, contentType: file.mimeType };
@@ -21,8 +19,8 @@ export async function createUpload(context: common.Context, server: string, key:
   ];
   return request.agent.create(context, {
     action: request.agent.Action.UPLOAD, mode: request.agent.Mode.BACKGROUND,
-    url: server.replace(/\/$/, '') + '/api/items/upload', method: 'POST',
-    headers: await transferHeaders(), data: data, multipart: true,
+    url: connection.origin + '/api/items/upload', method: 'POST',
+    headers: transferHeaders(connection), data: data, multipart: true,
     network: request.agent.Network.ANY, metered: true, roaming: false,
     retry: true, redirect: false, gauge: true,
     title: '发给自己 · 发送附件', description: files.length.toString() + ' 个文件',

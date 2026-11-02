@@ -23,7 +23,7 @@
 - 上传使用 `Mode.BACKGROUND`、`multipart: true`，一条消息的全部附件处于同一请求；正文和 `dedupeKey` 为字符串表单字段。
 - 先创建系统任务并持久保存 ID，再调用 `start()`。在两步之间中断，重启后对 INITIALIZED 任务继续启动。
 - 应用重新进入时查询系统保存的状态。COMPLETED 后确认队列完成并清理本机发送副本；失败与未知任务保留文件，等待重试。
-- 失败上传重建系统任务时沿用原 `dedupeKey`；暂停任务使用原 ID 继续。服务端已有唯一键及幂等实现。
+- 失败上传重建系统任务时沿用原 `dedupeKey`；暂停任务仅在目标 origin 和任务 revision 匹配当前连接时继续。凭据代际变化时先移除旧任务，再重建。服务端已有唯一键及幂等实现。
 - 删除先持久化取消意图，再移除系统任务，最后移除队列及副本。取消失败时保留文件；重启继续取消。删除时若服务器已经提交，已发送消息仍在服务器。
 - 正在进行短 HTTP 请求的文字项暂时不能删除；界面提示稍后重试。进度轮询不会反复重发失败文字项。
 
@@ -41,7 +41,7 @@
 
 `NativeBridge.ets` 通过 ArkWeb `registerJavaScriptProxy` 的权限白名单约束 scheme、host、有效 port 和路径；调用时再次核对顶层页面来源及前台状态。
 
-网页仅传附件 ID、文件名、MIME 与长度。原生构造当前服务器的 `/api/attachments/:id/raw` 地址并读取本机设备令牌。ID 不接受 URL、路径分隔符或查询串；文件名清理路径字符并限制 UTF-8 文件名长度。上传/下载关闭自动重定向，避免把认证请求转到其他地址。
+网页仅传附件 ID、文件名、MIME 与长度。原生检查页面 origin 后，将同一连接快照用于构造 `/api/attachments/:id/raw` 地址和认证头。ID 不接受 URL、路径分隔符或查询串；文件名清理路径字符并限制 UTF-8 文件名长度。上传/下载关闭自动重定向，避免把认证请求转到其他地址。
 
 网页端优先使用新桥接，旧版鸿蒙壳及普通浏览器沿用已有 Web Share/下载路径。直接网页分享需要同时更新 Web 构建与鸿蒙壳。
 
@@ -78,3 +78,6 @@
 - [OpenHarmony 官方文件传输指南](https://raw.githubusercontent.com/openharmony/docs/master/en/application-dev/basic-services/request/app-file-upload-download.md)：系统代理传输、应用目录与用户文件目录限制。
 - [华为 systemShare API](https://developer.huawei.com/consumer/cn/doc/harmonyos-references/share-system-share)：`SharedData`、`ShareController`；核对本机官方 SDK 的文件 URI、UTD 与面板生命周期说明。
 - [华为 ArkWeb 应用侧方法调用指南](https://developer.huawei.com/consumer/cn/doc/harmonyos-guides-v5/web-in-page-app-function-invoking-V5)：异步 JavaScriptProxy 及 URL 权限白名单。
+
+
+连接和认证由 #53 的 `ConnectionSession` 所有；#48 的附件交接工作以前者为前置，复用连接快照。退出尝试暂停所有已登记服务器的任务，保留记录和文件；受保护的短请求持共享锁，退出通过独占探测确认跨进程是否仍有在途请求，任务或请求无法确认停止时报告 unconfirmed。上述新增连接行为尚需鸿蒙 SDK 构建和真机验收。

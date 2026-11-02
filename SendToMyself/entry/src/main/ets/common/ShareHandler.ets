@@ -1,7 +1,7 @@
 import { common, Want } from '@kit.AbilityKit';
 import { systemShare } from '@kit.ShareKit';
 import { enqueue, retryQueueItem, isQueued, listQueue, QueueRow } from './QueueService';
-import { loadDeviceToken, loadServerUrl } from './AssetStore';
+import { readConnection } from './ConnectionSession';
 import { SharedFileData, copySharedFileAsync, cleanSharedFiles } from './ShareFiles';
 import { util } from '@kit.ArkTS';
 
@@ -22,7 +22,8 @@ class ShareResult implements ShareResultData {
 }
 
 export async function handleShare(want: Want, context: common.Context): Promise<ShareResultData> {
-  if (!await loadServerUrl()) return new ShareResult(false, true, false, 'Server not configured');
+  const connection = await readConnection(context);
+  if (!connection) return new ShareResult(false, true, false, 'Server not configured');
   let content: string[] = [];
   let records: systemShare.SharedRecord[] = [];
   try {
@@ -52,7 +53,7 @@ export async function handleShare(want: Want, context: common.Context): Promise<
   let key = util.generateRandomUUID();
   try {
     // Persist before the first request; process termination cannot lose accepted shares.
-    await enqueue(context, key, files.length ? 'upload' : 'text', text, files);
+    await enqueue(context, key, files.length ? 'upload' : 'text', text, files, connection.origin);
   } catch (_error) {
     cleanSharedFiles(files);
     return new ShareResult(false, false, false, '无法保存待发送内容，请重新分享');
@@ -61,5 +62,5 @@ export async function handleShare(want: Want, context: common.Context): Promise<
   catch (_error) { return new ShareResult(false, false, true, '内容已保留，请打开应用重试'); }
   if (!await isQueued(context, key)) return new ShareResult(true, false, false);
   let row = (await listQueue(context)).find((item: QueueRow) => item.key === key);
-  return new ShareResult(false, !await loadDeviceToken(), true, row?.status || '已加入后台传输，可在应用内查看进度');
+  return new ShareResult(false, !(await readConnection(context))?.deviceToken, true, row?.status || '已加入后台传输，可在应用内查看进度');
 }
