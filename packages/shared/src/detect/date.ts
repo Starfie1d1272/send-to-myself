@@ -15,7 +15,7 @@ export interface DueSuggestion {
 // The remaining zh parsers are Hant casual and Hant/Hans date, relative
 // weekday, weekday, time-expression and deadline parsers; these use the legacy
 // host-local refDate/instant. Pin Chrono until this adaptation is rechecked.
-// Only the clone is wrapped; the original reference and refiners stay intact.
+// Only the clone is wrapped; legacy Date callers use the original parser.
 const commonParserPrototypes = new Set(chrono.en.casual.parsers.map(parser => Object.getPrototypeOf(parser)));
 const contextualZh = chrono.zh.casual.clone();
 contextualZh.parsers = contextualZh.parsers.map((parser) => {
@@ -47,7 +47,7 @@ export function detectDueDate(text: string, ref: Date | DetectionContext = new D
   // forwardDate：把「本周五」「25号」这类歧义解析为未来，符合 DDL 语义。
   const results = ref instanceof Date
     ? chrono.zh.parse(text, ref, { forwardDate: true })
-    : contextualZh.parse(text, { instant: new Date(ref.capturedAt), timezone: ref.utcOffsetMinutes }, { forwardDate: true });
+    : contextualZh.parse(text, { instant: new Date(ref.capturedAt), timezone: ref.utcOffsetMinutes }, { forwardDate: false });
   if (results.length === 0) return null;
 
   // 优先取附近带「截止/提交/前」等关键词的结果；否则取第一个。
@@ -56,8 +56,10 @@ export function detectDueDate(text: string, ref: Date | DetectionContext = new D
     results[0];
   if (!preferred) return null;
 
+  const due = ref instanceof Date ? preferred.start.date() : contextualDate(preferred, ref);
+  if (!due) return null;
   return {
-    dueAt: preferred.start.date().toISOString(),
+    dueAt: due.toISOString(),
     matchedText: preferred.text,
   };
 }
@@ -65,4 +67,52 @@ export function detectDueDate(text: string, ref: Date | DetectionContext = new D
 function contextAround(text: string, index: number, len: number): string {
   const start = Math.max(0, index - 6);
   return text.slice(start, index + len + 6);
+}
+
+// Chrono's Chinese relative sub-day parsers use host-local Date setters. Use
+// their recognized text with the sender's instant instead. This finite adapter
+// follows the number and unit syntax of the pinned Chinese parsers.
+function relativeSubDay(text: string): number | null {
+  const match = /^(\d+|[零〇一二两兩三四五六七八九十]+|半|几|幾)\s*(?:个|個)?(秒(?:钟|鐘)?|分钟|分鐘|小时|小時|钟|鐘)(?:(?:之|过|過)?后|(?:之)?内|(?:之)?後|(?:之)?內|(?:之)?前)$/.exec(text);
+  if (!match) return null;
+  const digits: Record<string, number> = { 零: 0, 〇: 0, 一: 1, 二: 2, 两: 2, 兩: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
+  const value = match[1]!;
+  let n = value === "半" ? 0.5 : value === "几" || value === "幾" ? 3 : Number(value);
+  if (Number.isNaN(n)) {
+    n = 0;
+    for (const char of value) n = char === "十" ? (n === 0 ? 10 : n * 10) : n + digits[char]!;
+  }
+  const unit = match[2]!;
+  const factor = unit.startsWith("秒") ? 1000 : unit.startsWith("分") ? 60_000 : 3_600_000;
+  return n * factor * (text.endsWith("前") ? -1 : 1);
+}
+
+// Apply forward-date semantics on absolute instants; calendar arithmetic uses
+// UTC fields of the sender's fixed-offset wall clock, never the NAS timezone.
+function contextualDate(result: chrono.ParsedResult, context: DetectionContext): Date | null {
+  const instant = new Date(context.capturedAt);
+  const relative = relativeSubDay(result.text);
+  if (relative !== null) return new Date(instant.getTime() + relative);
+
+  const start = result.start;
+  let date = start.date();
+  if (date >= instant || !(start instanceof chrono.ParsingComponents)) return date;
+  const offset = context.utcOffsetMinutes * 60_000;
+  const wall = new Date(date.getTime() + offset);
+  if (start.isOnlyTime()) {
+    wall.setUTCDate(wall.getUTCDate() + 1);
+  } else if (start.isOnlyWeekdayComponent()) {
+    wall.setUTCDate(wall.getUTCDate() + 7);
+  } else if (start.isDateWithUnknownYear()) {
+    for (let i = 0; i < 3 && wall.getTime() - offset < instant.getTime(); i++) {
+      const month = wall.getUTCMonth();
+      wall.setUTCFullYear(wall.getUTCFullYear() + 1);
+      // Chrono discards invalid yearless dates instead of normalizing Feb 29.
+      if (wall.getUTCMonth() !== month) return null;
+    }
+  } else {
+    return date;
+  }
+  date = new Date(wall.getTime() - offset);
+  return date;
 }
