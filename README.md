@@ -11,9 +11,9 @@
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License" /></a>
 </p>
 
-<p align="center"><img src="docs/screenshots/timeline-desktop.png" alt="桌面时间线历史截图" width="70%" /><br />历史截图（见 c5c3f6d 版本）</p>
+<p align="center"><img src="docs/screenshots/timeline-desktop.png" alt="桌面时间线历史截图" width="70%" /><br />历史版本界面</p>
 
-<details><summary>手机与登录页历史截图（见 c5c3f6d 版本）</summary>
+<details><summary>手机与登录页历史版本界面</summary>
 <p align="center"><img src="docs/screenshots/timeline-mobile.png" alt="移动端时间线历史截图" width="260" /> <img src="docs/screenshots/login.png" alt="登录页历史截图" width="260" /></p>
 </details>
 
