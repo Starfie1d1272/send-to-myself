@@ -122,8 +122,8 @@ struct MainPage {
       if (current.deviceToken) snapshot = authenticatedSnapshot(current);
       const result = await loginAndMintToken(this.context, origin, password, '鸿蒙手机', snapshot, revision);
       if (!result.success) {
-        if (result.connection && result.connection.origin === origin && result.connection.deviceToken === null) this.authRevision = result.connection.revision;
-        this.authSubmitting = false; this.errorMsg = this.mapError(result.errorMessage); return;
+        this.errorMsg = this.mapError(result.errorMessage);
+        throw new Error(result.errorMessage === 'Network error' || result.errorMessage === 'Network error during token minting' ? 'NETWORK_UNAVAILABLE' : 'AUTH_FAILED');
       }
       if (!result.connection || !result.webSetCookie) throw new Error('AUTH_FAILED');
       const after = await readConnection(this.context);
@@ -139,9 +139,10 @@ struct MainPage {
       if (resolve) resolve(JSON.stringify({ status: 'authenticated', serverOrigin: origin, revision: after.revision }));
     } catch (error) {
       const code = (error as Error).message;
-      this.authSubmitting = false;
-      this.errorMsg = code === 'CONNECTION_CHANGED' ? '连接已改变，请取消后重试' :
-        code === 'NETWORK_UNAVAILABLE' ? '连接不上服务器，请检查网络后重试' : '重新登录失败，请检查口令和服务器后重试';
+      if (!this.errorMsg) this.errorMsg = code === 'CONNECTION_CHANGED' ? '连接已改变，请重试' : '重新登录失败，请检查口令和服务器后重试';
+      const reject = this.authReject;
+      this.authResolve = undefined; this.authReject = undefined; this.password = ''; this.busy = false; this.authOverlay = false; this.authSubmitting = false;
+      if (reject) reject(new Error(['CONNECTION_CHANGED', 'NETWORK_UNAVAILABLE', 'LOCAL_STORAGE_FAILED'].includes(code) ? code : 'AUTH_FAILED'));
     }
   }
 
@@ -448,7 +449,10 @@ struct MainPage {
             Text('网页会话清理未完成').fontColor(C_RED)
             Button('重试清理网页会话').backgroundColor(CARD_HI).fontColor(C_INK).enabled(!this.busy).onClick(() => { this.retryCookieCleanup(); })
           }
-          Button('传输任务').backgroundColor(C_ACCENT).fontColor(CARD_HI).enabled(!this.busy).onClick(() => { this.getUIContext().getRouter().pushUrl({ url: 'pages/TransfersPage' }); })
+          Button('重新登录当前连接').backgroundColor(C_ACCENT).fontColor(CARD_HI).enabled(!this.busy).onClick(() => {
+            this.beginReauthenticate().catch(() => {});
+          })
+          Button('传输任务').backgroundColor(CARD_HI).fontColor(C_INK).enabled(!this.busy).onClick(() => { this.getUIContext().getRouter().pushUrl({ url: 'pages/TransfersPage' }); })
           Button('返回连接').backgroundColor(CARD_HI).fontColor(C_INK).enabled(!this.busy).onClick(() => { this.signedOut = false; this.phase = 'login'; })
         }.padding(24).backgroundColor(C_CARD).width('100%').height('100%').justifyContent(FlexAlign.Center)
       }

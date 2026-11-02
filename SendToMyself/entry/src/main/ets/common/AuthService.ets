@@ -18,7 +18,6 @@ export async function loginAndMintToken(context: common.Context, candidate: stri
   deviceName: string, existing?: AuthenticatedConnection, expected?: string, expectedOrigin?: string): Promise<LoginResultData> {
   const origin = normalizeOrigin(candidate);
   let expectedRevision: string | undefined = expected ?? existing?.revision;
-  let invalidated: ConnectionSession | undefined;
   if (existing) {
     const valid = await checkTokenValid(context, existing);
     if (valid === undefined) return { success: false, errorMessage: 'Network error' };
@@ -26,22 +25,21 @@ export async function loginAndMintToken(context: common.Context, candidate: stri
       const cleared = await clearTokenIfCurrent(context, existing.origin, existing.revision);
       if (!cleared) throw new Error('CONNECTION_CHANGED');
       expectedRevision = cleared.revision;
-      invalidated = cleared;
       existing = undefined;
     }
   }
   let login: http.HttpResponse;
   try { const body: LoginRequestBody = { password: password }; login = await anonymousPost(origin, '/api/auth/login', body); }
-  catch (_error) { return { success: false, errorMessage: 'Network error', connection: invalidated }; }
-  if (login.responseCode === 401) return { success: false, errorMessage: 'Invalid credentials', connection: invalidated };
-  if (login.responseCode === 429) return { success: false, errorMessage: 'Too many attempts', connection: invalidated };
-  if (login.responseCode !== 200) { hilog.warn(DOMAIN, TAG, 'Login HTTP status: %{public}d', login.responseCode); return { success: false, errorMessage: 'Server error', connection: invalidated }; }
+  catch (_error) { return { success: false, errorMessage: 'Network error' }; }
+  if (login.responseCode === 401) return { success: false, errorMessage: 'Invalid credentials' };
+  if (login.responseCode === 429) return { success: false, errorMessage: 'Too many attempts' };
+  if (login.responseCode !== 200) { hilog.warn(DOMAIN, TAG, 'Login HTTP status: %{public}d', login.responseCode); return { success: false, errorMessage: 'Server error' }; }
   try {
     const body = JSON.parse(login.result as string) as LoginResponse;
-    if (body.ok !== true) { hilog.warn(DOMAIN, TAG, 'Login response missing success marker'); return { success: false, errorMessage: 'Invalid response', connection: invalidated }; }
-  } catch (_error) { hilog.warn(DOMAIN, TAG, 'Authentication response is not valid JSON'); return { success: false, errorMessage: 'Invalid response', connection: invalidated }; }
+    if (body.ok !== true) { hilog.warn(DOMAIN, TAG, 'Login response missing success marker'); return { success: false, errorMessage: 'Invalid response' }; }
+  } catch (_error) { hilog.warn(DOMAIN, TAG, 'Authentication response is not valid JSON'); return { success: false, errorMessage: 'Invalid response' }; }
   const cookie = extractSessionCookie(login);
-  if (!cookie) return { success: false, errorMessage: 'No session cookie received', connection: invalidated };
+  if (!cookie) return { success: false, errorMessage: 'No session cookie received' };
   if (existing) {
     const current = await readConnection(context);
     if (!current || current.origin !== existing.origin || current.revision !== existing.revision) throw new Error('CONNECTION_CHANGED');
@@ -50,12 +48,12 @@ export async function loginAndMintToken(context: common.Context, candidate: stri
   let device: http.HttpResponse;
   try { const body: CreateDeviceRequestBody = { name: deviceName };
     device = await anonymousPost(origin, '/api/auth/devices', body, cookie.cookieHeader);
-  } catch (_error) { return { success: false, errorMessage: 'Network error during token minting', connection: invalidated }; }
-  if (device.responseCode !== 201) { hilog.warn(DOMAIN, TAG, 'Device token HTTP status: %{public}d', device.responseCode); return { success: false, errorMessage: 'Failed to mint device token', connection: invalidated }; }
+  } catch (_error) { return { success: false, errorMessage: 'Network error during token minting' }; }
+  if (device.responseCode !== 201) { hilog.warn(DOMAIN, TAG, 'Device token HTTP status: %{public}d', device.responseCode); return { success: false, errorMessage: 'Failed to mint device token' }; }
   let token: string;
   try { token = (JSON.parse(device.result as string) as DeviceTokenResponse).token; }
-  catch (_error) { hilog.warn(DOMAIN, TAG, 'Device response is not valid JSON'); return { success: false, errorMessage: 'Invalid response', connection: invalidated }; }
-  if (typeof token !== 'string' || !token) { hilog.warn(DOMAIN, TAG, 'Device response missing token'); return { success: false, errorMessage: 'Invalid response', connection: invalidated }; }
+  catch (_error) { hilog.warn(DOMAIN, TAG, 'Device response is not valid JSON'); return { success: false, errorMessage: 'Invalid response' }; }
+  if (typeof token !== 'string' || !token) { hilog.warn(DOMAIN, TAG, 'Device response missing token'); return { success: false, errorMessage: 'Invalid response' }; }
   const connection = await commitConnection(context, origin, token, expectedRevision, expectedOrigin);
   return { success: true, connection: connection, webSetCookie: cookie.webSetCookie };
 }
