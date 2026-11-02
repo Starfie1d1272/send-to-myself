@@ -3,7 +3,7 @@ services:
     image: ghcr.io/starfie1d1272/send-to-myself:1.0.2
     restart: unless-stopped
     environment:
-      AUTH_PASSWORD: ${AUTH_PASSWORD:?Required}
+      AUTH_PASSWORD: ${AUTH_PASSWORD}
       SECURE_COOKIE: "false"
       MAX_UPLOAD_BYTES: "52428800"
       TRASH_RETENTION_DAYS: "30"
@@ -11,7 +11,7 @@ services:
       - "18787:8787"
     volumes:
       - type: bind
-        source: ${STM_DATA_DIR:?Required}
+        source: ${STM_DATA_DIR}
         target: /data
         bind:
           create_host_path: false
