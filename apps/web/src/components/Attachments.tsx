@@ -86,7 +86,7 @@ export function Attachments({ items }: { items: Attachment[] }) {
             >
               <img src={attachmentThumbUrl(a.id)} alt={a.filename} loading="lazy" />
             </button>
-            <button className="att__copy" onClick={async () => {
+            <div className="att__image-actions"><button className="att__copy" onClick={async () => {
               setShareError(""); setCopied(null);
               if (await copyImage(attachmentRawUrl(a.id))) setCopied(a.id);
               else setShareError("图片复制失败，请更新桌面客户端或下载后使用。");
@@ -95,7 +95,7 @@ export function Attachments({ items }: { items: Attachment[] }) {
             <a className="att__copy" href={attachmentDownloadUrl(a.id)} download={a.filename}
               onClick={(event) => {
                 if (hasNativeDownload()) { event.preventDefault(); void download(a); }
-              }}>保存图片</a>
+              }}>保存图片</a></div>
             </div>
           ))}
         </div>

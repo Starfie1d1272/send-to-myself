@@ -27,6 +27,7 @@ import { SensitiveText } from "./SensitiveText";
 import {
   IconCheck,
   IconClock,
+  IconCopy,
   IconEye,
   IconRestore,
 } from "./icons";
@@ -273,7 +274,7 @@ export function ItemCard({
             )
           )}
 
-          {item.sensitive && <button onClick={() => setRevealed(!revealed)}>{revealed ? "隐藏内容" : "查看内容"}</button>}
+          {item.sensitive && revealed && <button onClick={() => setRevealed(false)}>隐藏内容</button>}
           {attachments.length > 0 && (!item.sensitive || revealed) && !item.purgeStartedAt && (
             <Attachments items={attachments} />
           )}
@@ -331,9 +332,9 @@ export function ItemCard({
           </>
         ) : (
           <>
-            {item.content.trim() && (!item.sensitive || revealed) && <button onClick={copy}>{copied ? "已复制" : "复制文字"}</button>}
+            {item.content.trim() && (!item.sensitive || revealed) && <button className="icon-btn" onClick={copy} aria-label={copied ? "已复制文字" : "复制文字"} title={copied ? "已复制文字" : "复制文字"}>{copied ? <IconCheck width={16} height={16} /> : <IconCopy width={16} height={16} />}</button>}
             <div className="due-wrap" ref={menuRef} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setMenuOpen(false); }}>
-              <button ref={triggerRef} aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}>更多</button>
+              <button className="icon-btn" ref={triggerRef} aria-label="更多操作" title="更多操作" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg></button>
               {menuOpen && <div className="due-menu">
                 <button onClick={() => void menuAction(() => update.mutateAsync({id:item.id,patch:{pinned:!item.pinned}}))}>{item.pinned ? "取消收藏" : "收藏"}</button>
                 <button onClick={() => void menuAction(() => update.mutateAsync({id:item.id,patch:{isTodo:!item.isTodo}}))}>{item.isTodo ? "取消待办" : "设为待办"}</button>

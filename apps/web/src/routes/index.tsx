@@ -59,8 +59,8 @@ export function TimelinePage() {
       <main className="shell">
         <header className="masthead">
           <div className="masthead__brand">
-            <span className="wordmark">发给自己</span>
-            <span className="masthead__sub">SendToMyself · NAS 上的跨设备收件箱</span>
+            <span className="wordmark">SendToMyself</span>
+            <span className="masthead__sub">发给自己 · 统一信息流</span>
           </div>
           <div className="masthead__right">
             <span className="masthead__date">{dateStr}</span>
