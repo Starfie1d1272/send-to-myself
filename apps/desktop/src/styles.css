@@ -125,3 +125,16 @@ button:active {
   line-height: 1.6;
   margin: 16px 0 0;
 }
+
+.launcher { text-align: left; }
+.brand { font-size: 28px; }
+#form { display: grid; }
+#url { width: 100%; min-width: 0; }
+label, h2 { font-size: 14px; font-weight: 600; }
+h2 { margin: 24px 0 10px; }
+.hint { color: var(--ink-soft); font-size: 13px; line-height: 1.6; margin: 6px 0 12px; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.secondary { background: var(--card-hi); color: var(--ink); border: 1px solid var(--line-strong); }
+.secondary:hover { background: var(--paper); }
+button:disabled { opacity: .6; cursor: wait; }
+[hidden] { display: none !important; }
