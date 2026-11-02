@@ -2,6 +2,15 @@ import { resolve } from "node:path";
 
 const num = (v: string | undefined, d: number) => (v ? Number(v) : d);
 
+const previewNumber = (name: string, fallback: number, min: number) => {
+  const raw = process.env[name];
+  if (raw === undefined) return fallback;
+  const value = Number(raw);
+  if (raw.trim() !== "" && Number.isSafeInteger(value) && value >= min) return value;
+  console.warn(`Invalid ${name}; using default`);
+  return fallback;
+};
+
 /** 运行时配置（SPEC §12.1, §8, §13）。 */
 export const env = {
   port: num(process.env.PORT, 8787),
@@ -30,11 +39,11 @@ export const env = {
 
   // —— 链接预览（SPEC §7）——
   /** 抓取总超时（毫秒）。默认 10s：跨境访问 GitHub 等站点 6s 常不够。 */
-  previewTimeoutMs: num(process.env.PREVIEW_TIMEOUT_MS, 10_000),
+  previewTimeoutMs: previewNumber("PREVIEW_TIMEOUT_MS", 10_000, 1),
   /** 抓取响应大小上限（字节）。 */
-  previewMaxBytes: num(process.env.PREVIEW_MAX_BYTES, 2 * 1024 * 1024),
+  previewMaxBytes: previewNumber("PREVIEW_MAX_BYTES", 2 * 1024 * 1024, 1),
   /** 最大重定向跳数。 */
-  previewMaxRedirects: num(process.env.PREVIEW_MAX_REDIRECTS, 5),
+  previewMaxRedirects: previewNumber("PREVIEW_MAX_REDIRECTS", 5, 0),
 
   /** 生产/开发标志。 */
   isProd: process.env.NODE_ENV === "production",

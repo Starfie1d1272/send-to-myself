@@ -13,6 +13,8 @@ previewRoute.get("/image", async (c) => {
   const img = await fetchImage(url);
   if (!img) return c.body(null, 502);
   c.header("content-type", img.contentType);
-  c.header("cache-control", "public, max-age=604800"); // 缓存一周，封面基本不变
+  c.header("cache-control", "private, max-age=604800");
+  c.header("x-content-type-options", "nosniff");
+  c.header("content-security-policy", "sandbox; default-src 'none'");
   return c.body(new Uint8Array(img.data).buffer); // Hono 只收 ArrayBuffer
 });
