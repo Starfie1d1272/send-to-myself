@@ -1,4 +1,4 @@
-import { and, desc, eq, exists, isNotNull, isNull, like, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, exists, gte, isNotNull, isNull, like, lt, or, sql } from "drizzle-orm";
 import { detect, detectSecret, detectUrls } from "@sendtomyself/shared/detect";
 import type {
   CreateItemInput,
@@ -202,7 +202,8 @@ export function listItems(f: ListFilter): ListResult {
     )));
     cond.push(value ? present : sql`NOT ${present}`);
   }
-  if (f.dueBefore) cond.push(lt(items.dueAt, isoToSec(f.dueBefore)));
+  if (f.dueFrom) cond.push(gte(items.dueAt, Math.ceil(Date.parse(f.dueFrom) / 1000)));
+  if (f.dueBefore) cond.push(lt(items.dueAt, Math.ceil(Date.parse(f.dueBefore) / 1000)));
   if (f.q) {
     const kw = `%${f.q.replace(/[\\%_]/g, "\\$&")}%`;
     const match = (value: ReturnType<typeof sql>) => sql`${value} LIKE ${kw} ESCAPE ${'\\'}`;

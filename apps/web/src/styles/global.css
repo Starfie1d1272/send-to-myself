@@ -1185,3 +1185,15 @@ body {
   .masthead__date { display: none; }
   .masthead__right { margin-left: auto; }
 }
+
+/* Timeline filters and card menus */
+.filter-panel { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; }
+.filter-panel > div { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
+.due-menu { min-width: 170px; max-height: min(70vh, 600px); overflow-y: auto; }
+.due-menu form { display: grid; gap: 6px; padding: 7px 10px; }
+.due-menu input { max-width: 100%; }
+.att details summary { cursor: pointer; }
+
+.filterbar > button, .filterbar .chips > button:not(.chip), .actions > button, .actions .due-wrap > button, .item__body > button:not(.redacted):not(.suggest), .att__file-actions > a {
+  border: 1px solid var(--line-strong); background: var(--paper-2); color: var(--ink-soft); border-radius: 8px; padding: 6px 10px; cursor: pointer; font: inherit; font-size: 13px;
+}

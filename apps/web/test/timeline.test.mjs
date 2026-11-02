@@ -2,23 +2,23 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { QueryClient, InfiniteQueryObserver } from "@tanstack/react-query";
 import { api } from "../src/lib/api.ts";
-import { itemPages, timelineParams } from "../src/lib/timeline.ts";
+import { initialTimelineState, itemPages, timelineParams } from "../src/lib/timeline.ts";
 
 test("serializes false filters and filters links/deadlines before pagination", async (t) => {
   const old = globalThis.fetch;
   t.after(() => { globalThis.fetch = old; });
   let requested;
   globalThis.fetch = async (url) => { requested = new URL(url, "https://test.invalid"); return Response.json({ items: [], nextCursor: null }); };
-  await api.list(timelineParams("todo", ""));
+  await api.list(timelineParams({ ...initialTimelineState, view: "todo" }));
   assert.equal(requested.searchParams.get("completed"), "false");
   assert.equal(requested.searchParams.get("isTodo"), "true");
-  await api.list(timelineParams("link", "帖子"));
+  await api.list(timelineParams({ ...initialTimelineState, contentType: "link", query: "帖子" }));
   assert.equal(requested.searchParams.get("hasLinks"), "true");
   assert.equal(requested.searchParams.get("q"), "帖子");
   const now = new Date(2026, 9, 7, 12);
-  const due = timelineParams("due", "", now);
+  const due = timelineParams({ ...initialTimelineState, view: "todo", todoScope: "next7days" }, now);
   assert.equal(due.completed, false);
-  assert.equal(due.dueBefore, new Date(2026, 9, 15).toISOString());
+  assert.equal(due.dueBefore, new Date(now.getTime() + 168 * 3600000).toISOString());
 });
 
 test("query observer loads every page, resets on filter change and refreshes loaded pages", async (t) => {
@@ -34,7 +34,7 @@ test("query observer loads every page, resets on filter change and refreshes loa
     const end = Math.min(start + 100, size);
     return Response.json({ items: Array.from({ length: end - start }, (_, i) => ({ id: start + i })), nextCursor: end < size ? String(end) : null });
   };
-  const observer = new InfiniteQueryObserver(client, itemPages(timelineParams("all", "")));
+  const observer = new InfiniteQueryObserver(client, itemPages(timelineParams(initialTimelineState)));
   const unsubscribe = observer.subscribe(() => {});
   t.after(unsubscribe);
   await observer.refetch();
@@ -47,7 +47,7 @@ test("query observer loads every page, resets on filter change and refreshes loa
   cursors.length = 0;
   await client.invalidateQueries({ queryKey: ["items"] });
   assert.deepEqual(cursors, [0, 100, 200]);
-  observer.setOptions(itemPages(timelineParams("todo", "")));
+  observer.setOptions(itemPages(timelineParams({ ...initialTimelineState, view: "todo" })));
   await observer.refetch();
   assert.equal(observer.getCurrentResult().data.pages.length, 1);
 });
