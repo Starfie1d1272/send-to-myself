@@ -56,8 +56,10 @@ export function detectDueDate(text: string, ref: Date | DetectionContext = new D
     results[0];
   if (!preferred) return null;
 
+  const due = ref instanceof Date ? preferred.start.date() : contextualDate(preferred, ref);
+  if (!due) return null;
   return {
-    dueAt: (ref instanceof Date ? preferred.start.date() : contextualDate(preferred, ref)).toISOString(),
+    dueAt: due.toISOString(),
     matchedText: preferred.text,
   };
 }
@@ -87,7 +89,7 @@ function relativeSubDay(text: string): number | null {
 
 // Apply forward-date semantics on absolute instants; calendar arithmetic uses
 // UTC fields of the sender's fixed-offset wall clock, never the NAS timezone.
-function contextualDate(result: chrono.ParsedResult, context: DetectionContext): Date {
+function contextualDate(result: chrono.ParsedResult, context: DetectionContext): Date | null {
   const instant = new Date(context.capturedAt);
   const relative = relativeSubDay(result.text);
   if (relative !== null) return new Date(instant.getTime() + relative);
@@ -103,7 +105,10 @@ function contextualDate(result: chrono.ParsedResult, context: DetectionContext):
     wall.setUTCDate(wall.getUTCDate() + 7);
   } else if (start.isDateWithUnknownYear()) {
     for (let i = 0; i < 3 && wall.getTime() - offset < instant.getTime(); i++) {
+      const month = wall.getUTCMonth();
       wall.setUTCFullYear(wall.getUTCFullYear() + 1);
+      // Chrono discards invalid yearless dates instead of normalizing Feb 29.
+      if (wall.getUTCMonth() !== month) return null;
     }
   } else {
     return date;
