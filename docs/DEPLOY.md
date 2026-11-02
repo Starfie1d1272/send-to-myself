@@ -55,7 +55,7 @@ docker compose -p sendtomyself -f /实际项目目录/compose.yml -f /实际项�
 
 ### Nginx 与 SSE
 
-已有 Nginx 时，配置证书并代理到 app 的实际宿主端口；上传限制要与应用限制匹配。保留实时路径的关闭缓冲设置：
+已有 Nginx 时，配置证书并代理到 app 的实际宿主端口。默认单文件 50 MiB、整批 100 MiB；应用允许请求体在附件预算之外最多 1 MiB 的 multipart 开销。示例的 101 MiB 代理请求体上限与该默认设置匹配，不改变应用的附件预算；调整 `MAX_UPLOAD_BYTES` 时，相应调整代理上限至至少两倍单文件上限再加 1 MiB。其他代理层也需匹配。保留实时路径的关闭缓冲设置：
 
 ```nginx
 server {
@@ -63,7 +63,7 @@ server {
     server_name 你的域名;
     ssl_certificate /path/to/cert.pem;
     ssl_certificate_key /path/to/key.pem;
-    client_max_body_size 60m;
+    client_max_body_size 101m;
     location / {
         proxy_pass http://127.0.0.1:8787;
         proxy_set_header Host $host;

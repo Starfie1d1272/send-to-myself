@@ -153,6 +153,29 @@ export function saveEditDraft(id: string, content: string, detectionContext?: De
     };
   }));
 }
+/** Attach the attempt context only if this window's saved edit is still current. */
+export function prepareEditDraft(id: string, expected: EditSnapshot | undefined, content: string, detectionContext: DetectionContext): Promise<EditSnapshot | undefined> {
+  if (frozen) return Promise.reject(new Error("草稿写入已暂停"));
+  return enqueue(() => transaction<EditSnapshot | undefined>((store, done, fail) => {
+    const key = `edit:${id}`;
+    const request = store.get(key);
+    request.onsuccess = () => {
+      const current = request.result as EditDraft | undefined;
+      if (expected ? !sameEditSnapshot(current, expected) : !!current) { done(undefined); return; }
+      if (expected?.detectionContext) { done(expected); return; }
+      const write = () => {
+        const prepared = { content, savedAt: Date.now(), detectionContext };
+        store.put({ itemId: id, ...prepared }, key); done(prepared);
+      };
+      if (current) { write(); return; }
+      const count = store.count(IDBKeyRange.bound("edit:", "edit:\uffff"));
+      count.onsuccess = () => { if (count.result >= 20) fail(new Error("draft_full")); else write(); };
+    };
+  }));
+}
+function sameEditSnapshot(value: EditSnapshot | undefined, expected: EditSnapshot): boolean {
+  return value?.content === expected.content && value.savedAt === expected.savedAt && JSON.stringify(value.detectionContext) === JSON.stringify(expected.detectionContext);
+}
 export function clearEditDraft(id: string, expected?: EditSnapshot): Promise<void> {
   return enqueue(() => transaction<void>((store, done) => {
     const key = `edit:${id}`;
@@ -160,7 +183,7 @@ export function clearEditDraft(id: string, expected?: EditSnapshot): Promise<voi
     const request = store.get(key);
     request.onsuccess = () => {
       const value = request.result as EditDraft | undefined;
-      if (value?.content === expected.content && value.savedAt === expected.savedAt && JSON.stringify(value.detectionContext) === JSON.stringify(expected.detectionContext)) store.delete(key);
+      if (sameEditSnapshot(value, expected)) store.delete(key);
       done();
     };
   }));

@@ -12,13 +12,17 @@ export function useComposer() {
   const { create, upload } = useItemMutations();
   const qc = useQueryClient();
   const access = useAuthAccess();
-  const info = useQuery({ queryKey: ["server", "info"], queryFn: api.info, enabled: access.authenticated && !access.reauthRequired && !access.exiting, retry: false }).data;
+  const infoQuery = useQuery({ queryKey: ["server", "info"], queryFn: api.info, enabled: access.authenticated && !access.reauthRequired && !access.exiting, retry: false });
+  const info = infoQuery.data;
+  const infoUpdatedAt = useRef(infoQuery.dataUpdatedAt);
+  infoUpdatedAt.current = infoQuery.dataUpdatedAt;
   const [draft, setDraft] = useState<ComposerDraft>({ content: "", files: [], dedupeKey: newDedupeKey() });
   const current = useRef(draft);
   const [ready, setReady] = useState(false);
   const [draftError, setDraftError] = useState(false);
   const [error, setError] = useState("");
-  const [badFilename, setBadFilename] = useState<string>();
+  const [badFile, setBadFile] = useState<{ filename: string; infoUpdatedAt: number; message: string }>();
+  const badFilename = badFile?.filename;
   const [deleted, setDeleted] = useState(false);
   const [notice, setNotice] = useState("");
   const [progress, setProgress] = useState<{ loaded: number; total?: number }>();
@@ -39,13 +43,21 @@ export function useComposer() {
   const change = (content: string, files: File[]) => {
     if (attempt.current || handoffBusy.current || !ready) return;
     if (current.current.nativeHandoffPending && content === current.current.content) { setError("交接结果尚未确认，请查看传输任务或重新检查"); return; }
-    if (current.current.webSendAttempted || current.current.nativeHandoffPending) setNotice("将作为新内容发送；上一笔发送结果可能尚未确认");
+    if (current.current.webSendAttempted || current.current.nativeHandoffPending) setNotice(deleted ? "上一笔内容已永久删除；修改后将作为新内容发送" : "将作为新内容发送；上一笔发送结果可能尚未确认");
     const next = { content, files, dedupeKey: newDedupeKey(), webSendAttempted: false };
-    current.current = next; setDraft(next); setError(""); setBadFilename(undefined); setDeleted(false);
+    current.current = next; setDraft(next); setError(""); setBadFile(undefined); setDeleted(false);
     void saveDraft(next).then(() => setDraftError(false)).catch(() => setDraftError(true));
   };
   const exceedsLimit = (files: File[]) => !!info && (files.some(file => file.size > info.maxUploadBytes) || files.length > info.maxUploadFiles || files.reduce((sum, file) => sum + file.size, 0) > info.maxUploadTotalBytes);
   const overLimit = exceedsLimit(draft.files);
+  useEffect(() => {
+    if (!badFile || !info || infoQuery.dataUpdatedAt <= badFile.infoUpdatedAt) return;
+    const matching = draft.files.filter(file => file.name === badFile.filename);
+    if (matching.length && matching.every(file => file.size <= info.maxUploadBytes)) {
+      setBadFile(undefined);
+      setError(currentError => currentError === badFile.message ? "" : currentError);
+    }
+  }, [badFile, draft.files, info, infoQuery.dataUpdatedAt]);
   const allowed = (value: ComposerDraft) => (value.content.trim().length > 0 || value.files.length > 0) && !pending && ready && !exceedsLimit(value.files) && !badFilename && !deleted && !value.nativeHandoffPending;
   const canSend = allowed(draft);
   const accepted = async (key: string, generation: number) => {
@@ -120,8 +132,9 @@ export function useComposer() {
           setError("已停止本机上传，NAS 是否已保存尚未确认。内容已保留，可原样重试。");
           void qc.invalidateQueries({ queryKey: ["items"] });
         } else {
-          setError(mutationErrorMessage(err, "发送"));
-          if (err instanceof ApiError && err.code === "file_too_large" && typeof err.details?.filename === "string") setBadFilename(err.details.filename);
+          const message = mutationErrorMessage(err, "发送");
+          setError(message);
+          if (err instanceof ApiError && err.code === "file_too_large" && typeof err.details?.filename === "string") setBadFile({ filename: err.details.filename, infoUpdatedAt: infoUpdatedAt.current, message });
           if (err instanceof ApiError && err.code === "already_deleted") setDeleted(true);
         }
       }
@@ -131,7 +144,7 @@ export function useComposer() {
     if (attempt.current || handoffBusy.current || !ready) return;
     const next = { content: current.current.content, files: current.current.files, dedupeKey: newDedupeKey(), webSendAttempted: false };
     current.current = next; setDraft(next); setNewRequired(false); setError(""); setDeleted(false);
-    setNotice("旧任务可能仍在发送，重新发送可能重复");
+    setNotice(deleted ? "将作为新内容发送" : "旧任务可能仍在发送，重新发送可能重复");
     void saveDraft(next).then(() => setDraftError(false)).catch(() => setDraftError(true));
   }, stop: () => attempt.current?.abort() };
 }

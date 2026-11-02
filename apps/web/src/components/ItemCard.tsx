@@ -18,7 +18,7 @@ import { extractUrlSpans } from "@sendtomyself/shared/detect";
 import { findSecretSpans } from "@sendtomyself/shared/detect/secret";
 import { copyText } from "../lib/clipboard";
 import { ApiError } from "../lib/api";
-import { clearEditDraft, loadEditDraft, saveEditDraft, type EditSnapshot } from "../lib/draft";
+import { clearEditDraft, draftGeneration, draftIsWritable, loadEditDraft, prepareEditDraft, saveEditDraft, type EditSnapshot } from "../lib/draft";
 import { mutationErrorMessage } from "../lib/mutation-error";
 import { useItemMutations } from "../hooks/useItems";
 import { Attachments } from "./Attachments";
@@ -30,6 +30,9 @@ import {
   IconEye,
   IconRestore,
 } from "./icons";
+
+class EditDraftConflict extends Error {}
+class EditDraftFrozen extends Error {}
 
 function LinkifiedText({ text }: { text: string }) {
   let offset = 0;
@@ -76,16 +79,18 @@ export function ItemCard({
   const [busy, setBusy] = useState(false);
   const lock = useRef(false);
   const snapshot = useRef<EditSnapshot | undefined>(undefined);
+  const memoryAttempt = useRef<{ content: string; detectionContext: ReturnType<typeof captureDetectionContext> } | undefined>(undefined);
   const lastWrite = useRef<Promise<void>>(Promise.resolve());
-  const retry = useRef<{ operation: () => Promise<unknown>; preview: boolean } | null>(null);
-  const run = async (operation: () => Promise<unknown>, preview = false) => {
+  const retry = useRef<{ operation: () => Promise<unknown>; preview: boolean; missingSnapshot?: () => EditSnapshot | undefined; successMessage?: () => string } | null>(null);
+  const run = async (operation: () => Promise<unknown>, preview = false, missingSnapshot?: () => EditSnapshot | undefined, successMessage?: () => string) => {
     if (lock.current) return false;
-    lock.current = true; setBusy(true); setError(""); setNotice(""); retry.current = { operation, preview };
-    try { await operation(); retry.current = null; setNotice("已保存"); return true; }
+    lock.current = true; setBusy(true); setError(""); setNotice(""); retry.current = { operation, preview, missingSnapshot, successMessage };
+    try { await operation(); retry.current = null; setNotice(successMessage?.() ?? "已保存"); return true; }
     catch (err) {
-      setError(preview ? "预览抓取失败，原链接仍保留，请重试。" : err instanceof ApiError && err.code === "cleanup_failed" ? "永久删除未完成，请检查 NAS 存储后重试" : mutationErrorMessage(err));
+      setError(err instanceof EditDraftFrozen ? "当前会话正在退出，本次未提交。" : err instanceof EditDraftConflict ? "另一窗口已修改草稿，本次未提交。请复制当前内容后重新打开编辑，或在另一窗口处理。" : preview ? "预览抓取失败，原链接仍保留，请重试。" : err instanceof ApiError && err.code === "cleanup_failed" ? "永久删除未完成，请检查 NAS 存储后重试" : mutationErrorMessage(err));
       if (err instanceof ApiError && err.status === 404 && editing) {
-        await lastWrite.current; await clearEditDraft(item.id).catch(() => {});
+        const expected = missingSnapshot?.();
+        if (expected) await clearEditDraft(item.id, expected).catch(() => {});
       }
       return false;
     } finally { lock.current = false; setBusy(false); }
@@ -112,7 +117,7 @@ export function ItemCard({
   const startEdit = async () => {
     if (lock.current || editing) return;
     lock.current = true; setBusy(true);
-    setDraft(item.content); setEditing(true); setDraftStatus(""); snapshot.current = undefined;
+    setDraft(item.content); setEditing(true); setDraftStatus(""); snapshot.current = undefined; memoryAttempt.current = undefined;
     try {
       const saved = await loadEditDraft(item.id);
       if (saved) { setDraft(saved.content); snapshot.current = saved; setDraftStatus("已恢复未保存的修改"); }
@@ -121,32 +126,61 @@ export function ItemCard({
   };
   useEffect(() => { if (editing && !busy && (!item.sensitive || revealed)) editRef.current?.focus(); }, [editing, busy, item.sensitive, revealed]);
   const changeDraft = (value: string) => {
+    if (lock.current) return;
+    memoryAttempt.current = undefined;
     setDraft(value); setError("");
     lastWrite.current = saveEditDraft(item.id, value).then(saved => { snapshot.current = saved; setDraftStatus(""); }).catch(err => {
       setDraftStatus(err instanceof Error && err.message === "draft_full" ? "本机编辑草稿已满，本次修改仅保留在当前页面；请保存到 NAS 后再关闭。" : "修改尚未保存到本机，请勿关闭窗口");
     });
   };
-  const clearSnapshot = async () => {
-    await lastWrite.current;
-    if (snapshot.current) await clearEditDraft(item.id, snapshot.current).catch(() => setDraftStatus("修改尚未保存到本机，请勿关闭窗口"));
-  };
   const saveEdit = async () => {
     if (!draft.trim() && !item.attachments?.length) { setError("请输入文字"); return; }
-    await lastWrite.current;
-    const context = snapshot.current?.content === draft ? snapshot.current.detectionContext ?? captureDetectionContext() : captureDetectionContext();
-    if (!snapshot.current?.detectionContext || snapshot.current.content !== draft) {
-      try { snapshot.current = await saveEditDraft(item.id, draft, context); } catch { snapshot.current = { content: draft, savedAt: Date.now(), detectionContext: context }; setDraftStatus("修改尚未保存到本机，请勿关闭窗口"); }
-    }
-    if (await run(() => update.mutateAsync({ id: item.id, patch: { content: draft, detectionContext: context } }))) { await clearSnapshot(); setEditing(false); }
+    const content = draft;
+    const startedContext = captureDetectionContext();
+    const generation = draftGeneration();
+    const ensureWritable = () => { if (!draftIsWritable() || draftGeneration() !== generation) throw new EditDraftFrozen(); };
+    let attemptSnapshot: EditSnapshot | undefined;
+    let storageUnavailable = false;
+    await run(async () => {
+      attemptSnapshot = undefined;
+      storageUnavailable = false;
+      await lastWrite.current;
+      ensureWritable();
+      const saved = snapshot.current;
+      const context = memoryAttempt.current?.content === content ? memoryAttempt.current.detectionContext
+        : saved?.content === content ? saved.detectionContext ?? startedContext : startedContext;
+      try { attemptSnapshot = await prepareEditDraft(item.id, saved?.content === content ? saved : undefined, content, context); }
+      catch (error) {
+        ensureWritable();
+        storageUnavailable = true;
+        memoryAttempt.current = { content, detectionContext: context };
+        setDraftStatus(error instanceof Error && error.message === "draft_full" ? "本机编辑草稿已满，本次修改仅保留在当前页面；请保存到 NAS 后再关闭。" : "修改尚未保存到本机，请勿关闭窗口。");
+      }
+      ensureWritable();
+      if (!storageUnavailable && !attemptSnapshot) throw new EditDraftConflict();
+      if (attemptSnapshot) { snapshot.current = attemptSnapshot; memoryAttempt.current = undefined; }
+      await update.mutateAsync({ id: item.id, patch: { content, detectionContext: context } });
+      if (attemptSnapshot) await clearEditDraft(item.id, attemptSnapshot).catch(() => { storageUnavailable = true; });
+      setEditing(false);
+    }, false, () => attemptSnapshot, () => storageUnavailable ? "已保存到 NAS；本机草稿未能确认或清理。" : "已保存");
   };
-  const cancelEdit = async () => { await clearSnapshot(); setEditing(false); setError(""); };
+  const cancelEdit = async () => {
+    if (lock.current) return;
+    lock.current = true; setBusy(true);
+    try {
+      await lastWrite.current;
+      const expected = snapshot.current;
+      if (expected) await clearEditDraft(item.id, expected).catch(() => setDraftStatus("修改尚未保存到本机，请勿关闭窗口"));
+      setEditing(false); setError("");
+    } finally { lock.current = false; setBusy(false); }
+  };
 
   const urls = itemUrls(item);
   const preview = itemPreview(item);
   const reducedMotion = useReducedMotion();
   const suggestion = itemDueSuggestion(item);
   const bucket = dueBucket(item.dueAt);
-  const showSuggestion = !trash && suggestion && !item.dueAt && !item.isTodo;
+  const showSuggestion = !trash && (!item.sensitive || revealed) && suggestion && !item.dueAt && !item.isTodo;
   const attachments = item.attachments ?? [];
   // 命中具体密钥 → 只遮罩密钥本身；手动标敏感但无命中 → 整条遮罩
   const secretSpans = item.sensitive ? findSecretSpans(item.content) : [];
@@ -268,7 +302,7 @@ export function ItemCard({
 
       {confirmDelete && <Dialog onClose={() => setConfirmDelete(false)} labelledBy={`purge-${item.id}`}><h2 id={`purge-${item.id}`}>永久删除这条内容？</h2><p>正文和 {attachments.length} 个附件将从 NAS 删除，无法从回收站恢复。</p><button onClick={() => setConfirmDelete(false)}>取消</button><button className="button button--danger" onClick={() => { setConfirmDelete(false); void run(async () => { await permanent.mutateAsync(item.id); await clearEditDraft(item.id); }); }}>永久删除</button></Dialog>}
       {notice && <p role="status">{notice}</p>}
-      {error && <p className="composer__error" role="alert">{error} {editing ? <><button className="button button--secondary" disabled={busy} onClick={() => void saveEdit()}>重试保存</button><button className="button button--secondary" onClick={() => void copyText(draft)}>复制未保存内容</button></> : <button className="button button--secondary" disabled={busy} onClick={() => { if (retry.current) void (menuOpen ? menuAction(retry.current.operation, retry.current.preview) : run(retry.current.operation, retry.current.preview)); }}>重试</button>}</p>}
+      {error && <p className="composer__error" role="alert">{error} {editing ? <><button className="button button--secondary" disabled={busy} onClick={() => void saveEdit()}>重试保存</button><button className="button button--secondary" onClick={() => void copyText(draft)}>复制未保存内容</button></> : <button className="button button--secondary" disabled={busy} onClick={() => { if (retry.current) void (menuOpen ? menuAction(retry.current.operation, retry.current.preview) : run(retry.current.operation, retry.current.preview, retry.current.missingSnapshot, retry.current.successMessage)); }}>重试</button>}</p>}
       {copyError && <p className="composer__error" role="alert">{copyError}</p>}
       <fieldset className="actions" disabled={busy || editing} style={{ border: 0, padding: 0, margin: 0 }}>
         {trash ? (
