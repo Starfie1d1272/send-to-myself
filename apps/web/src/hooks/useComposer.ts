@@ -69,15 +69,21 @@ export function useComposer() {
   }, [badFile, draft.files, info, infoQuery.dataUpdatedAt]);
   const allowed = (value: ComposerDraft, newIntent = false) => (value.content.trim().length > 0 || value.files.length > 0) && !pending && ready && !exceedsLimit(value.files) && !badFilename && (newIntent || !deleted) && !value.nativeHandoffPending;
   const canSend = allowed(draft);
-  const accepted = async (key: string, generation: number) => {
+  const finishConfirmed = async (key: string, generation: number, message: string) => {
     if (!draftIsWritable() || generation !== draftGeneration()) return;
     try { await clearDraftIfKey(key, generation); if (generation === draftGeneration()) setDraftError(false); }
     catch { if (generation === draftGeneration()) setDraftError(true); }
-    if (generation === draftGeneration() && current.current.dedupeKey === key) {
-      const next = { content: "", files: [], dedupeKey: newDedupeKey(), webSendAttempted: false };
-      current.current = next; setDraft(next); setSelectedAttempt(false); setError(""); setNotice("已保存在本机，等待发送");
+    if (generation !== draftGeneration() || current.current.dedupeKey !== key) return;
+    try {
+      const saved = await loadSharedDraft();
+      if (!draftIsWritable() || generation !== draftGeneration() || current.current.dedupeKey !== key) return;
+      const next = { ...saved, dedupeKey: saved.dedupeKey ?? newDedupeKey() };
+      current.current = next; setDraft(next); setSelectedAttempt(!!(saved.webSendAttempted || saved.nativeHandoffPending)); setError(""); setNotice(message);
+    } catch {
+      if (generation === draftGeneration()) { setDraftError(true); setSelectedAttempt(true); setNotice(message); }
     }
   };
+  const accepted = async (key: string, generation: number) => finishConfirmed(key, generation, "已保存在本机，等待发送");
   const checkReceipt = async () => {
     const snapshot = current.current;
     const generation = draftGeneration();
@@ -133,9 +139,7 @@ export function useComposer() {
       if (snapshot.files.length) await upload.mutateAsync({ content: snapshot.content, files: snapshot.files, dedupeKey: snapshot.dedupeKey, options: { signal: controller.signal, onProgress: setProgress, detectionContext: snapshot.detectionContext } });
       else await create.mutateAsync({ content: snapshot.content, dedupeKey: snapshot.dedupeKey, detectionContext: snapshot.detectionContext });
       if (generation === draftGeneration() && attempt.current === controller) {
-        await clearDraftIfKey(snapshot.dedupeKey!).then(() => setDraftError(false)).catch(() => setDraftError(true));
-        const next = { content: "", files: [], dedupeKey: newDedupeKey(), webSendAttempted: false };
-        current.current = next; setDraft(next); setSelectedAttempt(false); setNotice("已发送");
+        await finishConfirmed(snapshot.dedupeKey!, generation, "已发送");
       }
     } catch (err) {
       if (generation === draftGeneration()) {

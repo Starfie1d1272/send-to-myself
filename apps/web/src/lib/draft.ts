@@ -177,6 +177,16 @@ export function newDedupeKey(): string {
 
 export interface EditSnapshot { content: string; savedAt: number; detectionContext?: DetectionContext }
 export interface EditDraft extends EditSnapshot { itemId: string }
+function notifyEditDraftsChanged(): void {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event("send-to-myself:edit-drafts-changed"));
+}
+/** The existing edit snapshots remain available even when their item is no longer listed. */
+export function listEditDrafts(): Promise<EditDraft[]> {
+  return enqueue(() => transaction<EditDraft[]>((store, done) => {
+    const request = store.getAll(IDBKeyRange.bound("edit:", "edit:\uffff"));
+    request.onsuccess = () => done((request.result as EditDraft[]).filter(value => typeof value.itemId === "string" && typeof value.content === "string" && !!value.content && typeof value.savedAt === "number"));
+  }));
+}
 function enqueue<T>(fn: () => Promise<T>): Promise<T> {
   const scheduledGeneration = generation;
   const result = writes.catch(() => {}).then(() => {
@@ -285,7 +295,7 @@ export function saveEditDraft(id: string, content: string, detectionContext?: De
         store.put({ itemId: id, ...snapshot }, key); done(snapshot);
       };
     };
-  }));
+  })).then(value => { notifyEditDraftsChanged(); return value; });
 }
 /** Attach the attempt context only if this window's saved edit is still current. */
 export function prepareEditDraft(id: string, expected: EditSnapshot | undefined, content: string, detectionContext: DetectionContext): Promise<EditSnapshot | undefined> {
@@ -310,17 +320,18 @@ export function prepareEditDraft(id: string, expected: EditSnapshot | undefined,
 function sameEditSnapshot(value: EditSnapshot | undefined, expected: EditSnapshot): boolean {
   return value?.content === expected.content && value.savedAt === expected.savedAt && JSON.stringify(value.detectionContext) === JSON.stringify(expected.detectionContext);
 }
-export function clearEditDraft(id: string, expected?: EditSnapshot): Promise<void> {
-  return enqueue(() => transaction<void>((store, done) => {
+export function clearEditDraft(id: string, expected?: EditSnapshot): Promise<boolean> {
+  return enqueue(() => transaction<boolean>((store, done) => {
     const key = `edit:${id}`;
-    if (!expected) { store.delete(key); done(); return; }
+    if (!expected) { store.delete(key); done(true); return; }
     const request = store.get(key);
     request.onsuccess = () => {
       const value = request.result as EditDraft | undefined;
-      if (sameEditSnapshot(value, expected)) store.delete(key);
-      done();
+      const matches = sameEditSnapshot(value, expected);
+      if (matches) store.delete(key);
+      done(matches);
     };
-  }));
+  })).then(removed => { notifyEditDraftsChanged(); return removed; });
 }
 export function clearAllEditDrafts(): Promise<void> {
   return enqueue(() => transaction<void>((store, done) => { store.delete(IDBKeyRange.bound("edit:", "edit:\uffff")); done(); }));

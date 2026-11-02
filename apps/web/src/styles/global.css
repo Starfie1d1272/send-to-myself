@@ -1211,6 +1211,11 @@ body {
 .button--quiet { background: transparent; }
 .button--danger { color: var(--red); border-color: var(--red); }
 .field { width: 100%; min-width: 0; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--card-hi); color: var(--ink); font: inherit; font-size: 16px; }
+.edit-draft-recovery { margin: -12px 0 24px; }
+.edit-draft-recovery summary { width: fit-content; max-width: 100%; cursor: pointer; }
+.edit-draft-recovery ul { display: grid; gap: 10px; padding: 0; list-style: none; }
+.edit-draft-recovery textarea { display: block; margin: 8px 0; resize: vertical; line-height: 1.6; }
+.edit-draft-recovery details details { margin-top: 8px; }
 .inline-status { color: var(--ink-soft); line-height: 1.6; overflow-wrap: anywhere; }
 .inline-status--success { color: var(--green); }
 .inline-status--error { color: var(--red); }
