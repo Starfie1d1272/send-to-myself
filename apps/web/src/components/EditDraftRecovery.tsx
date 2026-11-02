@@ -20,14 +20,14 @@ export function EditDraftRecovery() {
     return () => { active = false; window.removeEventListener("send-to-myself:edit-drafts-changed", refresh); window.removeEventListener("focus", refresh); };
   }, []);
   if (!drafts.length) return null;
-  return <details>
-    <summary>本机未保存的编辑（{drafts.length}）</summary>
+  return <details className="edit-draft-recovery">
+    <summary className="button button--quiet">本机未保存的编辑（{drafts.length}）</summary>
     <p>原内容不可见时，可以复制编辑文字后另存。</p>
     <ul>{drafts.map((draft, index) => <li key={draft.itemId}>
-      <details><summary>编辑草稿 {index + 1} · {new Date(draft.savedAt).toLocaleString()}</summary>
-        <textarea readOnly aria-label={`编辑草稿 ${index + 1}`} value={draft.content} />
-        <button type="button" onClick={async () => setNotice(await copyText(draft.content) ? "已复制编辑文字" : "复制失败，请手动选择文字复制")}>复制编辑文字</button>
-        <details><summary>删除本机草稿</summary><p>删除后无法从本机恢复这份编辑文字。</p><button type="button" onClick={async () => {
+      <details><summary className="button button--quiet">编辑草稿 {index + 1} · {new Date(draft.savedAt).toLocaleString()}</summary>
+        <textarea className="field" rows={5} readOnly aria-label={`编辑草稿 ${index + 1}`} value={draft.content} />
+        <button className="button button--secondary" type="button" onClick={async () => setNotice(await copyText(draft.content) ? "已复制编辑文字" : "复制失败，请手动选择文字复制")}>复制编辑文字</button>
+        <details><summary className="button button--quiet">删除本机草稿</summary><p>删除后无法从本机恢复这份编辑文字。</p><button className="button button--danger" type="button" onClick={async () => {
           try { setNotice(await clearEditDraft(draft.itemId, draft) ? "已删除本机草稿" : "草稿已变化，请重新查看"); }
           catch { setNotice("删除失败，请重试"); }
         }}>确认删除本机草稿</button></details>
