@@ -6,7 +6,7 @@ import { processQueue, queueStatus } from '../common/QueueService';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { DOMAIN, TAG } from '../common/Constants';
 import { common } from '@kit.AbilityKit';
-import { WebDownloads } from '../common/WebDownloads';
+import { requestAttachmentAction } from '../common/NativeDownloads';
 import { promptAction } from '@kit.ArkUI';
 import { NativeBridge, bridgePermission } from '../common/NativeBridge';
 
@@ -26,6 +26,7 @@ type Phase = 'loading' | 'login' | 'web';
 @Component
 struct MainPage {
   controller: webview.WebviewController = new webview.WebviewController();
+  @StorageLink('appForeground') @Watch('onForegroundChange') appForeground: boolean = true;
   @State serverUrl: string = '';
   @State activeOrigin: string = '';
   @State hasToken: boolean = false;
@@ -49,19 +50,13 @@ struct MainPage {
   private pageRevision: number = Date.now();
   private useFreshEntry: boolean = false;
   private context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
-  private downloads: WebDownloads = new WebDownloads(this.context);
   private nativeBridge: NativeBridge = new NativeBridge(this.context, this.controller, async (id: string, action: string) => {
     await this.getUIContext().getRouter().pushUrl({ url: 'pages/TransfersPage', params: { downloadId: id, action: action } });
   }, () => {
-    this.getUIContext().showActionSheet({
-      title: '文件与传输', message: '',
-      sheets: [
-        { title: '发送文件', action: () => { this.getUIContext().getRouter().pushUrl({ url: 'pages/UploadPage' }); } },
-        { title: this.pendingCount > 0 ? '传输记录 · ' + this.pendingCount.toString() + ' 条待发送' : '传输记录',
-          action: () => { this.getUIContext().getRouter().pushUrl({ url: 'pages/TransfersPage' }); } }
-      ]
-    });
-  }, () => this.beginReauthenticate(), () => this.logoutConnection());
+    this.getUIContext().getRouter().pushUrl({ url: 'pages/TransfersPage' });
+  }, () => this.beginReauthenticate(), () => this.logoutConnection(), async () => {
+    await this.getUIContext().getRouter().pushUrl({ url: 'pages/UploadPage' });
+  });
 
   private async beginReauthenticate(): Promise<string> {
     if (this.busy) throw new Error('AUTH_BUSY');
@@ -164,7 +159,13 @@ struct MainPage {
     this.retryQueue();
   }
 
-  onPageShow(): void { this.retryQueue(); }
+  onForegroundChange(): void {
+    if (this.appForeground && this.phase === 'web') this.controller.runJavaScript('window.dispatchEvent(new Event("send-to-myself:transfer-updated"))').catch(() => {});
+  }
+  onPageShow(): void {
+    this.retryQueue();
+    this.controller.runJavaScript('window.dispatchEvent(new Event("send-to-myself:transfer-updated"))').catch(() => {});
+  }
 
   async loadQueueStatus(): Promise<void> {
     try {
@@ -275,10 +276,9 @@ struct MainPage {
             Web({ src: this.entryUrl(), controller: this.controller })
               .nestedScroll({ scrollForward: NestedScrollMode.SELF_FIRST, scrollBackward: NestedScrollMode.SELF_FIRST })
               .onControllerAttached(() => {
-                this.downloads.attach(this.controller);
                 try {
                   this.controller.registerJavaScriptProxy(this.nativeBridge, 'stmNative', [],
-                    ['shareAttachment', 'saveAttachment', 'openTools', 'reauthenticate', 'logout'], bridgePermission(this.activeOrigin));
+                    ['shareAttachment', 'saveAttachment', 'openTools', 'openTransfers', 'openUpload', 'getUploadReceipt', 'reauthenticate', 'logout'], bridgePermission(this.activeOrigin));
                 } catch (_error) { promptAction.showToast({ message: '原生分享入口暂不可用，请重新打开应用' }); }
               })
               .onContextMenuShow((event) => {
@@ -287,7 +287,8 @@ struct MainPage {
                 const prefix = this.activeOrigin.replace(/\/$/, '') + '/api/attachments/';
                 if (!source.startsWith(prefix)) return false;
                 const originalImage = /\/raw(\?.*)?$/.test(source);
-                const downloadUrl = source.replace(/\/(thumb|raw)(\?.*)?$/, '/raw?download=1');
+                const match = source.substring(prefix.length).match(/^([a-zA-Z0-9_-]{1,128})\/(?:raw|thumb)(?:\?.*)?$/);
+                if (!match) return false;
                 const actions: SheetInfo[] = [];
                 if (originalImage) {
                   actions.push({ title: '复制图片', action: () => {
@@ -296,11 +297,10 @@ struct MainPage {
                   } });
                 }
                 actions.push({ title: '保存原图', action: () => {
-                  try {
-                    this.controller.startDownload(downloadUrl);
-                  } catch (_error) {
-                    promptAction.showToast({ message: '无法开始下载，请重试' });
-                  } finally { event.result.closeContextMenu(); }
+                  event.result.closeContextMenu();
+                  requestAttachmentAction(this.context, match[1], 'save').then((id: string) => {
+                    this.getUIContext().getRouter().pushUrl({ url: 'pages/TransfersPage', params: { downloadId: id, action: 'save' } });
+                  }).catch(() => { promptAction.showToast({ message: '无法准备附件，请检查连接或升级核心' }); });
                 } });
                 this.getUIContext().showActionSheet({
                   title: '图片',

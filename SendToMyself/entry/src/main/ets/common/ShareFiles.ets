@@ -52,14 +52,14 @@ function sniffMime(path: string): string | undefined {
   return undefined;
 }
 
-export async function copySharedFileAsync(context: common.Context, uri: string, title?: string, utd?: string): Promise<SharedFileData> {
+export async function copySharedFileAsync(context: common.Context, uri: string, title?: string, utd?: string, targetDirectory?: string): Promise<SharedFileData> {
   let filename = title ?? '';
   try {
     let uriName = new fileUri.FileUri(uri).name;
     if (!filename || uriName.indexOf('.') >= 0) filename = uriName || filename;
   } catch (_err) {}
   filename = filename.replace(/[\\/\u0000-\u001f]/g, '_').substring(0, 200) || 'shared-file';
-  let directory = context.filesDir + '/shared-queue';
+  let directory = targetDirectory ?? context.filesDir + '/shared-queue';
   if (!fileIo.accessSync(directory)) fileIo.mkdirSync(directory, true);
   let path = directory + '/' + util.generateRandomUUID();
   let source = fileIo.openSync(uri, fileIo.OpenMode.READ_ONLY);

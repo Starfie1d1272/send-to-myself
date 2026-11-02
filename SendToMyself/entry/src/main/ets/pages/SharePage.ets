@@ -27,7 +27,7 @@ struct SharePage {
     if (!this.error) return;
     this.statusText = '失败：' + this.error;
     this.statusColor = Color.Red;
-    this.autoClose(3000);
+
   }
 
   handleResult(result: string): void {
@@ -38,15 +38,15 @@ struct SharePage {
     } else if (result === 'queued') {
       this.statusText = this.message || '已保存在本机，打开应用或恢复网络后重试';
       this.statusColor = Color.Orange;
-      this.autoClose(1500);
+
     } else if (result === 'needsLogin') {
       this.statusText = '请先在应用内登录';
       this.statusColor = Color.Red;
-      this.autoClose(2000);
+
     } else {
-      this.statusText = '发送失败';
+      this.statusText = this.message || '发送失败';
       this.statusColor = Color.Red;
-      this.autoClose(2000);
+
     }
   }
 
@@ -64,6 +64,9 @@ struct SharePage {
         .fontSize(20)
         .fontWeight(FontWeight.Medium)
         .fontColor(this.statusColor)
+      if (this.result !== 'success') {
+        Button('关闭').onClick(() => { if (this.session) this.session.terminateSelf(); })
+      }
     }
     .width('100%')
     .height('100%')

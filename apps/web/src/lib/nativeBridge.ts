@@ -1,4 +1,7 @@
 export interface NativeBridge {
+  openUpload?: (content: string, dedupeKey: string) => Promise<string>;
+  getUploadReceipt?: (dedupeKey: string) => Promise<string>;
+  openTransfers?: () => Promise<string>;
   openTools?: () => Promise<string>;
   reauthenticate?: () => Promise<string>;
   logout?: () => Promise<string>;

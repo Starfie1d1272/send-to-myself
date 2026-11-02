@@ -5,6 +5,7 @@ import { util } from '@kit.ArkTS';
 import { systemShare } from '@kit.ShareKit';
 import { AuthenticatedConnection, readConnection, requireConnection, beginAuthorizedDispatch, normalizeOrigin } from './ConnectionSession';
 import { withTransferLock, TransferBusyError } from './TransferLock';
+import { getJson } from './HttpClient';
 import { request, taskInfo, transferHeaders, removeTask, progressText } from './TransferAgent';
 
 const STORE = 'attachment_transfers';
@@ -113,6 +114,20 @@ export async function prepareDownload(context: common.Context, attachmentId: str
     });
     return id;
   });
+}
+interface AttachmentMetadata { id: string; filename: string; mimeType: string; size: number }
+export async function requestAttachmentAction(context: common.UIAbilityContext, attachmentId: string, action: string): Promise<string> {
+  if (!validAttachmentId(attachmentId) || (action !== 'save' && action !== 'share')) throw new Error('附件信息无效');
+  const current = await readConnection(context);
+  if (!current) throw new Error('请先连接服务器');
+  const existing = (await all(context)).find((item: DownloadRecord) => item.attachmentId === attachmentId && item.serverUrl === current.origin && !item.cancelRequested);
+  if (existing) return existing.id;
+  const connection = await requireConnection(context);
+  const response = await getJson(context, connection, '/api/attachments/' + attachmentId);
+  if (response.responseCode !== 200) throw new Error(response.responseCode === 404 ? '附件不可用或核心版本过旧，请检查或升级核心' : '无法读取附件信息（HTTP ' + response.responseCode.toString() + '）');
+  const metadata = JSON.parse(response.result as string) as AttachmentMetadata;
+  if (metadata.id !== attachmentId || typeof metadata.filename !== 'string' || typeof metadata.mimeType !== 'string') throw new Error('附件信息无效，请升级配套核心');
+  return prepareDownload(context, attachmentId, metadata.filename, metadata.mimeType, metadata.size, connection);
 }
 async function cleanup(context: common.Context, item: DownloadRecord): Promise<void> {
   if (item.taskId) await removeTask(item.taskId);

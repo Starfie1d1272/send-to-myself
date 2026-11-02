@@ -83,6 +83,7 @@ export async function postTextItem(context: common.Context, connection: Authenti
     await clearTokenIfCurrent(context, connection.origin, connection.revision);
     throw new HttpError(401, '请先重新登录，待发送内容已保留', true, false);
   }
+  if (response.responseCode === 409 && JSON.stringify(response.result).includes('already_deleted')) throw new HttpError(409, '此次发送对应的内容已永久删除', false, false);
   throw new HttpError(response.responseCode, '发送失败（HTTP ' + response.responseCode.toString() + '），内容已保留', false, false);
 }
 export function isNetworkError(err: Error): boolean { return err instanceof HttpError && err.isNetworkError; }

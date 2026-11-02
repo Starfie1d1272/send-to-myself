@@ -3,6 +3,7 @@ export interface ComposerDraft {
   files: File[];
   dedupeKey?: string;
   webSendAttempted?: boolean;
+  nativeHandoffPending?: true;
 }
 
 const DB = "send-to-myself-drafts";
@@ -29,7 +30,7 @@ function database(): Promise<IDBDatabase> {
 }
 
 interface StoredFile { blob: Blob; name: string; lastModified: number }
-interface StoredDraft { content: string; files: StoredFile[]; dedupeKey?: string; webSendAttempted?: boolean }
+interface StoredDraft { content: string; files: StoredFile[]; dedupeKey?: string; webSendAttempted?: boolean; nativeHandoffPending?: true }
 
 export async function loadDraft(): Promise<ComposerDraft> {
   await writes;
@@ -39,7 +40,7 @@ export async function loadDraft(): Promise<ComposerDraft> {
     request.onsuccess = () => {
       try {
       const saved = request.result as StoredDraft | undefined;
-      resolve(saved ? { content: saved.content, webSendAttempted: saved.webSendAttempted ?? !!saved.dedupeKey, ...(saved.dedupeKey ? { dedupeKey: saved.dedupeKey } : {}), files: saved.files.map((file) =>
+      resolve(saved ? { content: saved.content, nativeHandoffPending: saved.nativeHandoffPending, webSendAttempted: saved.webSendAttempted ?? !!saved.dedupeKey, ...(saved.dedupeKey ? { dedupeKey: saved.dedupeKey } : {}), files: saved.files.map((file) =>
         new File([file.blob], file.name, { type: file.blob.type, lastModified: file.lastModified })) }
         : { content: "", files: [] });
       } catch (error) { reject(error); }
@@ -59,13 +60,14 @@ function writeDraft(draft: ComposerDraft): Promise<void> {
     content: draft.content,
     dedupeKey: draft.dedupeKey,
     webSendAttempted: draft.webSendAttempted,
+    nativeHandoffPending: draft.nativeHandoffPending,
     files: draft.files.map((file) => ({ blob: file, name: file.name, lastModified: file.lastModified })),
   };
   const write = writes.catch(() => {}).then(async () => {
     const db = await database();
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(STORE, "readwrite");
-      if (!snapshot.content && snapshot.files.length === 0) tx.objectStore(STORE).delete(KEY);
+      if (!snapshot.content && snapshot.files.length === 0 && !snapshot.nativeHandoffPending) tx.objectStore(STORE).delete(KEY);
       else tx.objectStore(STORE).put(snapshot, KEY);
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
