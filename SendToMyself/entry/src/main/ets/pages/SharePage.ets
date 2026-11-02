@@ -1,4 +1,4 @@
-import { UIExtensionContentSession } from '@kit.AbilityKit';
+import { common, UIExtensionContentSession } from '@kit.AbilityKit';
 
 @Entry
 @Component
@@ -8,6 +8,7 @@ struct SharePage {
   @LocalStorageLink('shareError') @Watch('onErrorChange') error: string = '';
   @LocalStorageLink('shareMessage') message: string = '';
   @State statusColor: ResourceColor = Color.Gray;
+  @State opening: boolean = false;
   private session: UIExtensionContentSession | undefined = undefined;
 
   aboutToAppear(): void {
@@ -50,6 +51,19 @@ struct SharePage {
     }
   }
 
+  private async openApp(): Promise<void> {
+    if (this.opening) return;
+    this.opening = true;
+    try {
+      const context = getContext(this) as common.UIExtensionContext;
+      await context.startAbility({ bundleName: 'com.sendtomyself.harmony', abilityName: 'EntryAbility' });
+      if (this.session) await this.session.terminateSelf();
+    } catch (_error) {
+      this.statusText = '暂时无法打开应用，请手动打开后查看传输任务';
+      this.statusColor = Color.Red;
+    } finally { this.opening = false; }
+  }
+
   autoClose(delayMs: number): void {
     setTimeout(() => {
       if (this.session) {
@@ -64,7 +78,8 @@ struct SharePage {
         .fontSize(20)
         .fontWeight(FontWeight.Medium)
         .fontColor(this.statusColor)
-      if (this.result !== 'success') {
+      if ((this.result || this.error) && this.result !== 'success') {
+        Button('打开应用处理').enabled(!this.opening).onClick(() => { this.openApp(); })
         Button('关闭').onClick(() => { if (this.session) this.session.terminateSelf(); })
       }
     }

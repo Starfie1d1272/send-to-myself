@@ -3,10 +3,11 @@ import { common } from '@kit.AbilityKit';
 import { fileIo } from '@kit.CoreFileKit';
 import { AuthenticatedConnection, beginAuthorizedDispatch, clearTokenIfCurrent } from './ConnectionSession';
 
+interface ApiErrorBody { error?: string }
 class HttpError extends Error {
-  code: number; isAuthError: boolean; isNetworkError: boolean;
-  constructor(code: number, message: string, auth: boolean, network: boolean) {
-    super(message); this.code = code; this.isAuthError = auth; this.isNetworkError = network;
+  code: number; isAuthError: boolean; isNetworkError: boolean; domainCode?: string;
+  constructor(code: number, message: string, auth: boolean, network: boolean, domainCode?: string) {
+    super(message); this.code = code; this.isAuthError = auth; this.isNetworkError = network; this.domainCode = domainCode;
   }
 }
 const requests: Set<http.HttpRequest> = new Set<http.HttpRequest>();
@@ -83,9 +84,15 @@ export async function postTextItem(context: common.Context, connection: Authenti
     await clearTokenIfCurrent(context, connection.origin, connection.revision);
     throw new HttpError(401, '请先重新登录，待发送内容已保留', true, false);
   }
-  if (response.responseCode === 409 && JSON.stringify(response.result).includes('already_deleted')) throw new HttpError(409, '此次发送对应的内容已永久删除', false, false);
+  if (response.responseCode === 409) {
+    try {
+      const body = (typeof response.result === 'string' ? JSON.parse(response.result) : response.result) as ApiErrorBody;
+      if (body.error === 'already_deleted') throw new HttpError(409, '此次发送对应的内容已永久删除', false, false, 'already_deleted');
+    } catch (error) { if (error instanceof HttpError) throw error; }
+  }
   throw new HttpError(response.responseCode, '发送失败（HTTP ' + response.responseCode.toString() + '），内容已保留', false, false);
 }
+export function isAlreadyDeleted(err: Error): boolean { return err instanceof HttpError && err.code === 409 && err.domainCode === 'already_deleted'; }
 export function isNetworkError(err: Error): boolean { return err instanceof HttpError && err.isNetworkError; }
 export function isAuthError(err: Error): boolean { return err instanceof HttpError && err.isAuthError; }
 export interface SessionCookie { cookieHeader: string; webSetCookie: string }

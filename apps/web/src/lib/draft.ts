@@ -15,6 +15,7 @@ let frozen = false;
 let generation = 0;
 export function freezeDraft(value: boolean) { if (value && !frozen) generation++; frozen = value; }
 export function draftGeneration() { return generation; }
+export function draftIsWritable() { return !frozen; }
 
 function database(): Promise<IDBDatabase> {
   if (!connection) {
@@ -51,11 +52,11 @@ export async function loadDraft(): Promise<ComposerDraft> {
 
 /** Preserve ordering: a slow attachment write must not resurrect a sent draft. */
 export function saveDraft(draft: ComposerDraft): Promise<void> {
-  if (frozen) return Promise.resolve();
-  return writeDraft(draft);
+  if (frozen) return Promise.reject(new Error("草稿写入已暂停"));
+  return writeDraft(draft, generation);
 }
 
-function writeDraft(draft: ComposerDraft): Promise<void> {
+function writeDraft(draft: ComposerDraft, expectedGeneration?: number): Promise<void> {
   const snapshot: StoredDraft = {
     content: draft.content,
     dedupeKey: draft.dedupeKey,
@@ -64,7 +65,9 @@ function writeDraft(draft: ComposerDraft): Promise<void> {
     files: draft.files.map((file) => ({ blob: file, name: file.name, lastModified: file.lastModified })),
   };
   const write = writes.catch(() => {}).then(async () => {
+    if (expectedGeneration !== undefined && (frozen || generation !== expectedGeneration)) throw new Error("草稿写入已暂停");
     const db = await database();
+    if (expectedGeneration !== undefined && (frozen || generation !== expectedGeneration)) throw new Error("草稿写入已暂停");
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(STORE, "readwrite");
       if (!snapshot.content && snapshot.files.length === 0 && !snapshot.nativeHandoffPending) tx.objectStore(STORE).delete(KEY);
@@ -102,10 +105,23 @@ function transaction<T>(operation: (store: IDBObjectStore, done: (value: T) => v
     tx.onabort = () => reject(tx.error ?? new Error("草稿存储失败"));
   }));
 }
-export function clearDraftIfKey(key: string): Promise<void> {
+export function clearDraftIfKey(key: string, expectedGeneration?: number): Promise<void> {
   return enqueue(() => transaction<void>((store, done) => {
     const request = store.get(KEY);
-    request.onsuccess = () => { if ((request.result as StoredDraft | undefined)?.dedupeKey === key) store.delete(KEY); done(); };
+    request.onsuccess = () => { if ((expectedGeneration === undefined || (!frozen && generation === expectedGeneration)) && (request.result as StoredDraft | undefined)?.dedupeKey === key) store.delete(KEY); done(); };
+  }));
+}
+export function clearNativeHandoffIfKey(key: string, expectedGeneration: number): Promise<void> {
+  return enqueue(() => transaction<void>((store, done) => {
+    const request = store.get(KEY);
+    request.onsuccess = () => {
+      const saved = request.result as StoredDraft | undefined;
+      if (!frozen && generation === expectedGeneration && saved?.dedupeKey === key && saved.nativeHandoffPending) {
+        delete saved.nativeHandoffPending;
+        if (!saved.content && saved.files.length === 0) store.delete(KEY); else store.put(saved, KEY);
+      }
+      done();
+    };
   }));
 }
 export async function loadEditDraft(id: string): Promise<EditDraft | undefined> {

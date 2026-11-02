@@ -17,6 +17,16 @@ export class UploadHandoff {
     this.promise = new Promise<string>((resolve) => { complete = resolve; });
     this.resolve = complete;
   }
+  canPrepare(): boolean { return active === this && !this.finished && !this.writing; }
+  addPreparedFile(file: SharedFileData): boolean {
+    if (!this.canPrepare()) { cleanSharedFiles([file]); return false; }
+    this.files.push(file); return true;
+  }
+  removePreparedFile(index: number): void {
+    if (!this.canPrepare() || index < 0 || index >= this.files.length) return;
+    cleanSharedFiles([this.files[index]]); this.files.splice(index, 1);
+  }
+  cancel(): void { this.finish(this.writing ? 'unknown' : 'cancelled'); }
   finish(status: string, reason?: string): void {
     if (this.finished) return;
     this.finished = true;
@@ -25,8 +35,9 @@ export class UploadHandoff {
     if (active === this) active = undefined;
   }
   async submit(context: common.Context): Promise<void> {
-    if (this.writing || this.finished || this.files.length === 0) return;
+    if (!this.canPrepare() || this.files.length === 0) return;
     const connection = await readConnection(context);
+    if (!this.canPrepare()) return;
     if (!connection || connection.origin !== this.origin) { this.finish('not_queued', 'route_failed'); return; }
     this.writing = true;
     const result = await enqueueWebUpload(context, this.key, this.content, this.files, this.origin);

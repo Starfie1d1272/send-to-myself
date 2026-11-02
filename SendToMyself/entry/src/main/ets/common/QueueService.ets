@@ -1,6 +1,6 @@
 import { preferences } from '@kit.ArkData';
 import { common } from '@kit.AbilityKit';
-import { postTextItem, isAuthError, isNetworkError } from './HttpClient';
+import { postTextItem, isAuthError, isNetworkError, isAlreadyDeleted } from './HttpClient';
 import { readConnection, requireConnection, normalizeOrigin, beginAuthorizedDispatch, ConnectionSession } from './ConnectionSession';
 import { SharedFileData, legacyFile, cleanSharedFiles } from './ShareFiles';
 import { PREFS_NAME_QUEUE, PREFS_KEY_QUEUE } from './Constants';
@@ -220,7 +220,7 @@ async function processItem(context: common.Context, key: string, retry: boolean)
       }
     } catch (error) {
       item.lastError = (error as Error).message;
-      if (item.lastError === '此次发送对应的内容已永久删除') item.terminalDeleted = true;
+      if (isAlreadyDeleted(error as Error)) item.terminalDeleted = true;
       await updateItem(context, item);
       if (isAuthError(error as Error) || isNetworkError(error as Error)) throw error as Error;
     }

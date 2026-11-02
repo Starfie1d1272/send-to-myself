@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../lib/api";
-import { clearDraftIfKey, draftGeneration, loadDraft, newDedupeKey, saveDraft, type ComposerDraft } from "../lib/draft";
+import { clearDraftIfKey, clearNativeHandoffIfKey, draftGeneration, draftIsWritable, loadDraft, newDedupeKey, saveDraft, type ComposerDraft } from "../lib/draft";
 import { canOpenNativeUpload, openNativeUpload, readNativeUploadReceipt } from "../lib/nativeTransfers";
 import { mutationErrorMessage } from "../lib/mutation-error";
 import { useAuthAccess } from "./useAuth";
@@ -47,20 +47,23 @@ export function useComposer() {
   const overLimit = exceedsLimit(draft.files);
   const allowed = (value: ComposerDraft) => (value.content.trim().length > 0 || value.files.length > 0) && !pending && ready && !exceedsLimit(value.files) && !badFilename && !deleted && !value.nativeHandoffPending;
   const canSend = allowed(draft);
-  const accepted = async (key: string) => {
-    try { await clearDraftIfKey(key); setDraftError(false); } catch { setDraftError(true); }
-    if (current.current.dedupeKey === key) {
+  const accepted = async (key: string, generation: number) => {
+    if (!draftIsWritable() || generation !== draftGeneration()) return;
+    try { await clearDraftIfKey(key, generation); if (generation === draftGeneration()) setDraftError(false); }
+    catch { if (generation === draftGeneration()) setDraftError(true); }
+    if (generation === draftGeneration() && current.current.dedupeKey === key) {
       const next = { content: "", files: [], dedupeKey: newDedupeKey(), webSendAttempted: false };
       current.current = next; setDraft(next); setError(""); setNotice("已保存在本机，等待发送");
     }
   };
   const checkReceipt = async () => {
     const snapshot = current.current;
-    if (!snapshot.nativeHandoffPending || !snapshot.dedupeKey) return;
+    const generation = draftGeneration();
+    if (!draftIsWritable() || !snapshot.nativeHandoffPending || !snapshot.dedupeKey) return;
     try {
-      if ((await readNativeUploadReceipt(snapshot.dedupeKey)).status === "accepted") await accepted(snapshot.dedupeKey);
-      else if (current.current.dedupeKey === snapshot.dedupeKey) setError("交接结果尚未确认，请查看传输任务或重新检查");
-    } catch { if (current.current.dedupeKey === snapshot.dedupeKey) setError("交接结果尚未确认，请查看传输任务或重新检查"); }
+      if ((await readNativeUploadReceipt(snapshot.dedupeKey)).status === "accepted") await accepted(snapshot.dedupeKey, generation);
+      else if (generation === draftGeneration() && current.current.dedupeKey === snapshot.dedupeKey) setError("交接结果尚未确认，请查看传输任务或重新检查");
+    } catch { if (generation === draftGeneration() && current.current.dedupeKey === snapshot.dedupeKey) setError("交接结果尚未确认，请查看传输任务或重新检查"); }
   };
   useEffect(() => { if (ready && current.current.nativeHandoffPending) void checkReceipt(); }, [ready]);
   useEffect(() => {
@@ -74,22 +77,25 @@ export function useComposer() {
     if (!canOpenNativeUpload() || snapshot.files.length) return false;
     if (snapshot.webSendAttempted) { setNewRequired(true); setError("原发送可能已到达 NAS，添加附件将作为新内容发送"); return true; }
     handoffBusy.current = true; setPending(true);
+    const generation = draftGeneration();
     const marked: ComposerDraft = { ...snapshot, nativeHandoffPending: true };
-    try { await saveDraft(marked); setDraftError(false); }
-    catch { setDraftError(true); setWebFallback(true); handoffBusy.current = false; setPending(false); return true; }
+    try { await saveDraft(marked); if (generation === draftGeneration()) setDraftError(false); }
+    catch { if (generation === draftGeneration()) { setDraftError(true); setWebFallback(true); setPending(false); } handoffBusy.current = false; return true; }
+    if (generation !== draftGeneration()) { handoffBusy.current = false; return true; }
     current.current = marked; setDraft(marked); setPending(true); setError(""); setWebFallback(false);
     try {
       const result = await openNativeUpload(marked.content, marked.dedupeKey!);
-      if (result.status === "queued") await accepted(marked.dedupeKey!);
+      if (result.status === "queued") await accepted(marked.dedupeKey!, generation);
       else if (result.status === "cancelled" || result.status === "not_queued") {
-        if (current.current.dedupeKey === marked.dedupeKey) {
+        await clearNativeHandoffIfKey(marked.dedupeKey!, generation);
+        if (generation === draftGeneration() && current.current.dedupeKey === marked.dedupeKey) {
           const next = { ...marked, nativeHandoffPending: undefined };
-          current.current = next; setDraft(next); await saveDraft(next);
+          current.current = next; setDraft(next);
           if (result.status === "not_queued") setError("附件准备失败，草稿已保留");
         }
-      } else setError("交接结果尚未确认，请查看传输任务或重新检查");
-    } catch { setError("交接结果尚未确认，请查看传输任务或重新检查"); }
-    finally { handoffBusy.current = false; setPending(false); }
+      } else if (generation === draftGeneration() && current.current.dedupeKey === marked.dedupeKey) setError("交接结果尚未确认，请查看传输任务或重新检查");
+    } catch { if (generation === draftGeneration() && current.current.dedupeKey === marked.dedupeKey) setError("交接结果尚未确认，请查看传输任务或重新检查"); }
+    finally { handoffBusy.current = false; if (generation === draftGeneration()) setPending(false); }
     return true;
   };
   const send = async () => {
@@ -122,7 +128,7 @@ export function useComposer() {
   };
   return { draft, change, send, addNative, checkReceipt, webFallback, newRequired, canSend, overLimit, ready, pending, draftError, error, notice, progress, info, badFilename, deleted, sendAsNew: () => {
     if (attempt.current || handoffBusy.current || !ready) return;
-    const next = { content: current.current.content, files: [], dedupeKey: newDedupeKey(), webSendAttempted: false };
+    const next = { content: current.current.content, files: current.current.files, dedupeKey: newDedupeKey(), webSendAttempted: false };
     current.current = next; setDraft(next); setNewRequired(false); setError(""); setDeleted(false);
     setNotice("旧任务可能仍在发送，重新发送可能重复");
     void saveDraft(next).then(() => setDraftError(false)).catch(() => setDraftError(true));

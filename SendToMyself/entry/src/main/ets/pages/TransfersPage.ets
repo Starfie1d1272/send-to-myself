@@ -1,4 +1,6 @@
 import { common } from '@kit.AbilityKit';
+import { promptAction } from '@kit.ArkUI';
+import { requestHostReauthentication } from '../common/HostReauthentication';
 import { QueueRow, listQueue, processQueue, reconcileQueue, retryQueueItem, removeQueueItem, pauseQueueItem } from '../common/QueueService';
 import { DownloadRow, listDownloads, refreshDownloads, retryDownload, removeDownload,
   shareDownload, saveDownload } from '../common/NativeDownloads';
@@ -84,6 +86,12 @@ struct TransfersPage {
         Button('刷新').enabled(!this.loading).onClick(() => { this.error = ''; this.refresh(); })
       }.width('100%').padding(12)
       if (this.error) { Text(this.error).fontColor('#a8331e').padding(12).width('100%') }
+      Button('重新登录当前连接').enabled(!this.busyKey).onClick(() => {
+        this.getUIContext().getRouter().back();
+        setTimeout(() => { requestHostReauthentication().catch(() => {
+          promptAction.showToast({ message: '无法打开重新登录，请在首页重试' });
+        }); }, 0);
+      })
       Scroll() {
         Column({ space: 12 }) {
           Text('待发送 · ' + this.queue.length.toString()).fontColor('#241d16').fontSize(18).width('100%')

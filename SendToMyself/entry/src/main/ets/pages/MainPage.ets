@@ -9,6 +9,7 @@ import { common } from '@kit.AbilityKit';
 import { requestAttachmentAction } from '../common/NativeDownloads';
 import { promptAction } from '@kit.ArkUI';
 import { NativeBridge, bridgePermission } from '../common/NativeBridge';
+import { registerHostReauthentication, unregisterHostReauthentication } from '../common/HostReauthentication';
 
 // 与 Web 端 (apps/web/src/styles/global.css) 共用的设计语言
 const C_PAPER = '#f2ece1';
@@ -43,6 +44,7 @@ struct MainPage {
   @State signedOut: boolean = false;
   @State logoutNotice: string = '';
   @State webCookieBlocked: boolean = false;
+  private hostReauthentication: () => Promise<string> = () => this.beginReauthenticate();
   private authResolve?: (value: string) => void;
   private authReject?: (reason: Error) => void;
   private authOrigin: string = '';
@@ -126,6 +128,7 @@ struct MainPage {
   }
 
   async aboutToAppear(): Promise<void> {
+    registerHostReauthentication(this.hostReauthentication);
     try {
       const connection = await readConnection(this.context);
       if (connection) { this.serverUrl = connection.origin; this.activeOrigin = connection.origin; }
@@ -186,6 +189,7 @@ struct MainPage {
   }
 
   aboutToDisappear(): void {
+    unregisterHostReauthentication(this.hostReauthentication);
     stopNetMonitor();
   }
 
