@@ -68,12 +68,17 @@ jobs:
       - name: Build metadata
         id: metadata
         shell: bash
-        run: echo "version=$(node -p "require('./apps/desktop/src-tauri/tauri.conf.json').version")" >> "$GITHUB_OUTPUT"
+        run: |
+          version=$(node -p "require('./apps/desktop/src-tauri/tauri.conf.json').version")
+          if [[ "$GITHUB_REF" == refs/tags/desktop-v* ]]; then version="${GITHUB_REF_NAME#desktop-v}"; fi
+          core=$(node -p "require('./apps/api/package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "core=$core" >> "$GITHUB_OUTPUT"
 
       # 自测用：无论触发方式都上传构件
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
-          name: desktop-${{ steps.metadata.outputs.version }}-${{ matrix.platform }}-core-1.1.0-${{ github.sha }}
+          name: desktop-${{ steps.metadata.outputs.version }}-${{ matrix.platform }}-core-${{ steps.metadata.outputs.core }}-${{ github.sha }}
           if-no-files-found: error
           path: |
             apps/desktop/src-tauri/target/release/bundle/dmg/*.dmg
@@ -101,7 +106,8 @@ jobs:
           ACTUAL=$(node -p "require('./apps/desktop/src-tauri/tauri.conf.json').version")
           [[ "${VER%%-*}" == "$ACTUAL" ]] || { echo "Tag and desktop version differ" >&2; exit 1; }
           node scripts/extract-changelog.mjs desktop "$VER" > release-notes.md
-          printf '\nBuild SHA: %s. Minimum core: 1.1.0.\n' "$GITHUB_SHA" >> release-notes.md
+          CORE=$(node -p "require('./apps/api/package.json').version")
+          printf '\nBuild SHA: %s. Paired core for this release: %s.\n' "$GITHUB_SHA" "$CORE" >> release-notes.md
           echo "version=$VER" >> "$GITHUB_OUTPUT"
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
