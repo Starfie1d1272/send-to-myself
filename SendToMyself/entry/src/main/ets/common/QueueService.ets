@@ -298,7 +298,7 @@ export async function listQueue(context: common.Context, includeSystem: boolean 
             state === request.agent.State.RETRYING || state === request.agent.State.INITIALIZED;
           paused = state === request.agent.State.PAUSED;
         }
-      } catch (_error) { statusKnown = true; status = '暂时无法读取传输状态'; }
+      } catch (_error) { statusKnown = false; status = '暂时无法读取传输状态'; }
     }
     if (item.cancelRequested) { status = '正在取消，内容将从本机移除'; active = false; }
     rows.push({ key: item.dedupeKey, content: item.content ?? '',

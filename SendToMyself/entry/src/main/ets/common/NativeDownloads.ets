@@ -207,7 +207,7 @@ export async function listDownloads(context: common.Context, includeSystem: bool
           active = [request.agent.State.RUNNING, request.agent.State.WAITING,
             request.agent.State.RETRYING, request.agent.State.INITIALIZED].includes(info.progress.state);
         }
-      } catch (_error) { statusKnown = true; status = '暂时无法读取下载状态'; }
+      } catch (_error) { statusKnown = false; status = '暂时无法读取下载状态'; }
     }
     rows.push({ id: item.id, filename: item.filename, status: status, ready: item.ready, active: active, statusKnown: statusKnown });
   }
