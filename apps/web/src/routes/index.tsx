@@ -10,6 +10,7 @@ import { ServerInfo } from "../components/ServerInfo";
 import { AppMenu } from "../components/AppMenu";
 import { canOpenNativeTransfers, openNativeTransfers } from "../lib/nativeTransfers";
 import { Composer } from "../components/Composer";
+import { EditDraftRecovery } from "../components/EditDraftRecovery";
 import { FilterBar } from "../components/FilterBar";
 import { Timeline } from "../components/Timeline";
 import { useAuth, useAuthAccess } from "../hooks/useAuth";
@@ -77,6 +78,7 @@ export function TimelinePage() {
         {realtime.status !== "connected" && <p role="status">{realtime.status === "connecting" ? "正在连接" : "实时连接中断，正在重连"} {realtime.status === "reconnecting" && <button onClick={() => void realtime.retry()}>重试</button>} {realtime.retryError}</p>}
         {toolsError && <p role="alert">{toolsError}</p>}
         <Composer />
+        <EditDraftRecovery />
         <FilterBar state={state} onChange={changeState} />
         {state.view === "trash" && <p>{info === undefined ? "暂时无法读取保留设置，请以各条目显示的到期时间为准" : info.trashRetentionDays > 0 ? `删除的内容保留 ${info.trashRetentionDays} 天，到期后永久删除。已有旧内容从自动清理启用时开始计时。` : "自动清理已关闭，内容保留到你手动永久删除。"}</p>}
         {isError && (
