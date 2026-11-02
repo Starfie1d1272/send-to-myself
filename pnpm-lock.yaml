@@ -320,7 +320,7 @@ importers:
   packages/shared:
     dependencies:
       chrono-node:
-        specifier: ^2.10.2
+        specifier: 2.10.2
         version: 2.10.2
       zod:
         specifier: ^4.6.6

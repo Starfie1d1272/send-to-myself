@@ -10,13 +10,16 @@ export interface DueSuggestion {
   matchedText: string;
 }
 
-// Chrono 2.10.2 zh casual config: Hant casual, common ISO, then Hant/Hans
-// date, relative weekday, weekday, time-expression and deadline parsers.
-// The Chinese parsers use the legacy host-local refDate/instant; ISO does not.
-// This clone leaves the original reference and refiners intact.
+// Chrono 2.10.2 includes the same common ISO parser in zh and en. Identify
+// common parsers by their shared prototype rather than configuration order.
+// The remaining zh parsers are Hant casual and Hant/Hans date, relative
+// weekday, weekday, time-expression and deadline parsers; these use the legacy
+// host-local refDate/instant. Pin Chrono until this adaptation is rechecked.
+// Only the clone is wrapped; the original reference and refiners stay intact.
+const commonParserPrototypes = new Set(chrono.en.casual.parsers.map(parser => Object.getPrototypeOf(parser)));
 const contextualZh = chrono.zh.casual.clone();
-contextualZh.parsers = contextualZh.parsers.map((parser, index) => {
-  if (index === 1) return parser; // common ISOFormatParser inserted by Chrono
+contextualZh.parsers = contextualZh.parsers.map((parser) => {
+  if (commonParserPrototypes.has(Object.getPrototypeOf(parser))) return parser;
   const view = (context: chrono.ParsingContext): chrono.ParsingContext => {
     const adjusted = context.reference.getDateWithAdjustedTimezone();
     const reference = Object.assign(Object.create(context.reference) as chrono.ReferenceWithTimezone, { instant: adjusted });
