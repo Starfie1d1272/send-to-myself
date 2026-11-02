@@ -23,10 +23,10 @@ export function AccessTokens({ onClose }: { onClose: () => void }) {
   } });
   return <Dialog onClose={onClose} labelledBy="device-title">
     <div className="device-dialog__header"><h2 id="device-title">接入令牌</h2><button onClick={onClose} aria-label="关闭接入令牌">关闭</button></div>
-    <p>供 Raycast 和 API 工具使用，每个工具单独创建。不是所有已登录设备的列表。</p>
+    <p>管理客户端和工具的接入令牌。</p>
     <a href="https://github.com/Starfie1d1272/send-to-myself/blob/main/apps/raycast/README.md" target="_blank" rel="noreferrer">Raycast 安装说明</a>
     <form onSubmit={event => { event.preventDefault(); if (name.trim() && !create.isPending) create.mutate(); }}>
-      <label>设备名称<input value={name} placeholder="例如：书房 Mac 的 Raycast" maxLength={40} onChange={event => setName(event.target.value)} autoFocus /></label>
+      <label>接入名称<input value={name} placeholder="例如：书房 Mac 的 Raycast" maxLength={40} onChange={event => setName(event.target.value)} autoFocus /></label>
       <button className="send" type="submit" disabled={!name.trim() || create.isPending || !!token}>{create.isPending ? "创建中…" : "创建接入令牌"}</button>
     </form>
     {token && <div className="device-dialog__token"><p>令牌仅显示这一次，请复制到 Raycast 的“接入令牌”设置。拥有此令牌即可访问全部内容。</p>
@@ -38,8 +38,8 @@ export function AccessTokens({ onClose }: { onClose: () => void }) {
     {create.error && <InlineStatus tone="error">{create.error instanceof ApiError && create.error.status === 401 ? "请在浏览器打开同一地址，用口令登录后管理接入令牌" : "创建令牌失败，请重试。"}</InlineStatus>}
     {revoke.error && <InlineStatus tone="error">{revoke.error instanceof ApiError && revoke.error.status === 401 ? "请在浏览器打开同一地址，用口令登录后管理接入令牌" : "吊销令牌失败，请重试。"}</InlineStatus>}
     {message && <InlineStatus>{message}</InlineStatus>}
-    {devices.isLoading ? <p>加载设备…</p> : <ul>{devices.data?.devices.map(device => <li key={device.tail}>
-      <span>{device.name} · 尾号 {device.tail} · 创建于 {new Date(device.createdAt * 1000).toLocaleString()} · 最近使用 {device.lastUsedAt === null ? "尚未使用" : new Date(device.lastUsedAt * 1000).toLocaleString()}</span><button disabled={revoke.isPending} onClick={() => revoke.mutate(device.tail)}>吊销</button>
-    </li>)}</ul>}
+    {devices.isLoading ? <p>加载令牌…</p> : devices.data && (devices.data.devices.length === 0 ? <p>暂无接入令牌</p> : <ul className="detail-list">{devices.data?.devices.map(device => <li key={device.tail}>
+      <div className="detail-list__body"><strong>{device.name}</strong><span>标识 {device.tail}</span><span>创建于 {new Date(device.createdAt * 1000).toLocaleString()}</span><span>最近使用 {device.lastUsedAt === null ? "尚未使用" : new Date(device.lastUsedAt * 1000).toLocaleString()}</span></div><button disabled={revoke.isPending} onClick={() => revoke.mutate(device.tail)}>吊销</button>
+    </li>)}</ul>)}
   </Dialog>;
 }
