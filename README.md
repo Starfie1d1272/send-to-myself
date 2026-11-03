@@ -29,15 +29,15 @@
 
 | 设备 | 正式版 | 最新候选版 |
 | --- | --- | --- |
-| NAS 核心与 Web | [1.1.0](https://github.com/Starfie1d1272/send-to-myself/releases/tag/v1.1.0) · [GHCR 镜像](https://github.com/Starfie1d1272/send-to-myself/pkgs/container/send-to-myself) | [1.1.0 RC4](https://github.com/Starfie1d1272/send-to-myself/releases/tag/v1.1.0-rc.4)，含 NAS 运维包 |
-| Windows / macOS | [桌面 1.1.0](https://github.com/Starfie1d1272/send-to-myself/releases/tag/desktop-v1.1.0) | [桌面 1.1.0 RC4](https://github.com/Starfie1d1272/send-to-myself/releases/tag/desktop-v1.1.0-rc.4)，配套核心 RC4 |
-| HarmonyOS | [1.2.0](https://github.com/Starfie1d1272/send-to-myself/releases/tag/harmony-v1.2.0) | [1.2.0 RC2](https://github.com/Starfie1d1272/send-to-myself/releases/tag/harmony-v1.2.0-rc.2)，配套核心 RC4 |
+| NAS 核心与 Web | [1.0.2](https://github.com/Starfie1d1272/send-to-myself/releases/tag/v1.0.2) · [GHCR 镜像](https://github.com/Starfie1d1272/send-to-myself/pkgs/container/send-to-myself) | [1.1.0 RC4](https://github.com/Starfie1d1272/send-to-myself/releases/tag/v1.1.0-rc.4)，含 NAS 运维包 |
+| Windows / macOS | [桌面 1.0.0](https://github.com/Starfie1d1272/send-to-myself/releases/tag/desktop-v1.0.0) | [桌面 1.1.0 RC4](https://github.com/Starfie1d1272/send-to-myself/releases/tag/desktop-v1.1.0-rc.4)，配套核心 RC4 |
+| HarmonyOS | — | [1.2.0 RC2](https://github.com/Starfie1d1272/send-to-myself/releases/tag/harmony-v1.2.0-rc.2)，配套核心 RC4 |
 
 桌面安装包支持 Windows x64 和 Apple Silicon Mac；Android、iPhone 和 Intel Mac 可使用浏览器。候选版供试用，鸿蒙 HAP 未签名，需自行签名后安装；后台传输和完整设备旅程仍待验收。各版本的详细说明见发布页与[交付表](docs/RELEASES.md)。
 
 ## 开始使用
 
-1. 在支持 Docker Compose 的 NAS 上创建数据目录，使用 [Compose 模板](deploy/docker-compose.yml)，填写强口令和数据目录的真实绝对路径，然后启动服务。模板使用正式核心 1.0.2；试用候选版请使用其发布页的 NAS 运维包。
+1. 在支持 Docker Compose 的 NAS 上创建数据目录，使用 [Compose 模板](deploy/docker-compose.yml)，填写强口令和数据目录的真实绝对路径，然后启动服务。模板固定使用核心 1.0.2；其他核心版本请使用对应发布页的 NAS 运维包，并按发布说明搭配客户端。
 2. 在浏览器打开 `http://NAS_IP:8787` 并登录；如果修改了宿主端口，请使用修改后的端口。
 3. 在其他设备打开同一可达地址，或在客户端填写该地址并登录。发一条文字或一个文件，再换台设备打开看看。
 
