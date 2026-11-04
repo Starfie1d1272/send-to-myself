@@ -29,8 +29,8 @@
 
 | 设备 | 正式版 | 最新候选版 |
 | --- | --- | --- |
-| NAS 核心与 Web | [正式版发布页](https://github.com/Starfie1d1272/send-to-myself/releases) · [GHCR 镜像](https://github.com/Starfie1d1272/send-to-myself/pkgs/container/send-to-myself) | [1.1.0 RC4](https://github.com/Starfie1d1272/send-to-myself/releases/tag/v1.1.0-rc.4)，含 NAS 运维包 |
-| Windows / macOS | [桌面 1.0.0](https://github.com/Starfie1d1272/send-to-myself/releases/tag/desktop-v1.0.0) | [桌面 1.1.0 RC4](https://github.com/Starfie1d1272/send-to-myself/releases/tag/desktop-v1.1.0-rc.4)，配套核心 RC4 |
+| NAS 核心与 Web | [1.1.0](https://github.com/Starfie1d1272/send-to-myself/releases/tag/v1.1.0) · [GHCR 镜像](https://github.com/Starfie1d1272/send-to-myself/pkgs/container/send-to-myself) | [1.1.0 RC4](https://github.com/Starfie1d1272/send-to-myself/releases/tag/v1.1.0-rc.4)，含 NAS 运维包 |
+| Windows / macOS | [桌面 1.1.0](https://github.com/Starfie1d1272/send-to-myself/releases/tag/desktop-v1.1.0) | [桌面 1.1.0 RC4](https://github.com/Starfie1d1272/send-to-myself/releases/tag/desktop-v1.1.0-rc.4)，配套核心 RC4 |
 | HarmonyOS | — | [1.2.0 RC2](https://github.com/Starfie1d1272/send-to-myself/releases/tag/harmony-v1.2.0-rc.2)，配套核心 RC4 |
 
 桌面安装包支持 Windows x64 和 Apple Silicon Mac；Android、iPhone 和 Intel Mac 可使用浏览器。候选版供试用，鸿蒙 HAP 未签名，需自行签名后安装；后台传输和完整设备旅程仍待验收。各版本的详细说明见发布页与[交付表](docs/RELEASES.md)。
