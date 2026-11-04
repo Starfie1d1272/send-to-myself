@@ -108,7 +108,7 @@ jobs:
           hap=entry/build/default/outputs/default/entry-default-unsigned.hap
           test -f "$hap"
           python3 - "$hap" <<'PY'
-          import pathlib, sys, zipfile
+          import json, pathlib, sys, zipfile
           with zipfile.ZipFile(sys.argv[1]) as z:
               names = z.namelist()
               if len(names) != len(set(names)) or z.testzip() is not None:
@@ -121,6 +121,17 @@ jobs:
                       raise SystemExit('unexpected signature entry')
               if not names:
                   raise SystemExit('empty HAP')
+              pack = json.loads(z.read('pack.info'))
+              app = pack['summary']['app']
+              modules = pack['summary']['modules']
+              if app['bundleName'] != 'com.sendtomyself.harmony' or len(modules) != 1:
+                  raise SystemExit('unexpected HAP identity')
+              api = modules[0]['apiVersion']
+              if api['target'] != 26 or api['compatible'] != 22:
+                  raise SystemExit('unexpected HAP API versions')
+              module = json.loads(z.read('module.json'))
+              if module['app']['compileSdkVersion'] != '26.0.0.105':
+                  raise SystemExit('unexpected SDK version in HAP')
           PY
           mkdir -p "$RUNNER_TEMP/harmony-artifact"
           cp "$hap" "$RUNNER_TEMP/harmony-artifact/"
