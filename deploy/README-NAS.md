@@ -1,6 +1,6 @@
 # NAS 运维包快速入口
 
-本包的 Compose 已锁定为 `VERSION.json` 中的核心镜像 tag。先核验下载页提供的 ZIP SHA256，解压后在包根目录运行 `sha256sum -c SHA256SUMS`（macOS 可用 `shasum -a 256 -c SHA256SUMS`），对照 `VERSION.json` 的版本、源码 SHA、镜像 tag 和 digest 与发布记录。候选包仅供测试；当前公开核心 1.0.2 没有此 ZIP。完整步骤见[部署指南](https://github.com/Starfie1d1272/send-to-myself/blob/main/docs/DEPLOY.md)。
+本包的 Compose 已锁定为 `VERSION.json` 中的核心镜像 tag。先核验下载页提供的 ZIP SHA256，解压后在包根目录运行 `sha256sum -c SHA256SUMS`（macOS 可用 `shasum -a 256 -c SHA256SUMS`），对照 `VERSION.json` 的版本、源码 SHA、镜像 tag 和 digest 与发布记录。候选包仅供测试；各版本是否提供 NAS 运维 ZIP，请查看对应发布页。完整步骤见[部署指南](https://github.com/Starfie1d1272/send-to-myself/blob/main/docs/DEPLOY.md)。
 
 在解压目录编辑 `docker-compose.yml`：先创建专用 data 目录，填写 `AUTH_PASSWORD` 和该目录的真实绝对 `source`。Compose 口令中的 `$` 写为 `$$`；端口冲突时修改左侧宿主端口。局域网 HTTP 使用 `SECURE_COOKIE: "false"`；远程使用 HTTPS，按完整指南配置 `docker-compose.caddy.yml`、`Caddyfile` 和安全 Cookie。记录项目名、镜像版本及数据路径。
 
