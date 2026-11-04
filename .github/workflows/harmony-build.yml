@@ -1,0 +1,75 @@
+name: Harmony API 26 draft build
+on:
+  workflow_dispatch:
+    inputs:
+      reviewed_sha:
+        description: Full commit SHA of the selected branch, reviewed for this run
+        required: true
+        type: string
+      authorized_sdk:
+        description: SDK license accepted for this runner environment
+        required: true
+        default: false
+        type: boolean
+permissions:
+  contents: read
+jobs:
+  build:
+    if: github.repository == 'Starfie1d1272/send-to-myself' && startsWith(github.ref, 'refs/heads/')
+    runs-on: [self-hosted, linux, x64, harmonyos-ci]
+    timeout-minutes: 60
+    steps:
+      - name: Require reviewed source and authorized SDK
+        env:
+          REVIEWED_SHA: ${{ inputs.reviewed_sha }}
+          AUTHORIZED_SDK: ${{ inputs.authorized_sdk }}
+        run: |
+          [[ "$REVIEWED_SHA" =~ ^[0-9a-f]{40}$ && "$REVIEWED_SHA" == "$GITHUB_SHA" ]]
+          [[ "$AUTHORIZED_SDK" == true ]]
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.reviewed_sha }}
+      - name: Verify locally provisioned toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${HARMONYOS_CLT_ROOT:?Preinstall the authorized HarmonyOS CLT on the trusted runner}"
+          grep -F 'Version: 26.0.0.851' "$HARMONYOS_CLT_ROOT/version.txt"
+          for component in ets native toolchains; do
+            python3 - "$HARMONYOS_CLT_ROOT/sdk/default/openharmony/$component/oh-uni-package.json" <<'PY'
+          import json, sys
+          with open(sys.argv[1]) as f:
+              p = json.load(f)
+          assert p['version'] == '26.0.0.105' and str(p['apiVersion']) == '26'
+          PY
+          done
+          test -x "$HARMONYOS_CLT_ROOT/bin/hvigorw"
+          test -x "$HARMONYOS_CLT_ROOT/ohpm/bin/ohpm"
+          node --version
+          java -version
+      - name: Build unsigned HAP
+        shell: bash
+        run: |
+          set -euo pipefail
+          export DEVECO_SDK_HOME="$HARMONYOS_CLT_ROOT/sdk"
+          export OHOS_SDK_HOME="$HARMONYOS_CLT_ROOT/sdk/default/openharmony"
+          export OHOS_BASE_SDK_HOME="$OHOS_SDK_HOME"
+          export PATH="$HARMONYOS_CLT_ROOT/bin:$OHOS_SDK_HOME/toolchains:$PATH"
+          cd SendToMyself
+          rm -rf entry/build
+          "$HARMONYOS_CLT_ROOT/ohpm/bin/ohpm" install
+          hvigorw clean --no-daemon
+          hvigorw assembleHap --no-daemon
+          test -f entry/build/default/outputs/default/entry-default-unsigned.hap
+          mkdir -p "$RUNNER_TEMP/harmony-artifact"
+          cp entry/build/default/outputs/default/entry-default-unsigned.hap "$RUNNER_TEMP/harmony-artifact/"
+          cd "$RUNNER_TEMP/harmony-artifact"
+          sha256sum entry-default-unsigned.hap > SHA256SUMS
+          printf '%s\n' "$GITHUB_SHA" > SOURCE_SHA
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: harmony-unsigned-${{ github.sha }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/harmony-artifact/
+          if-no-files-found: error
+          retention-days: 7
