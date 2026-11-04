@@ -17,7 +17,7 @@
 1. 将 `AUTH_PASSWORD` 替换为自己的强口令；将 `source` 替换成刚记录的已有目录的绝对路径。只有这两项必须填写。
 2. Compose 会插值 `$`，口令中的每个 `$` 写成 `$$`。例如配置 `pa$$word` 对应实际口令 `pa$word`。
 3. 默认映射 `"8787:8787"`。端口冲突时只改左侧宿主端口（如 `"18787:8787"`），右侧保持 8787。
-4. 在 NAS 界面点击部署或启动项目。首次部署且本地没有该镜像时，Docker 会自动拉取并启动，无需先手动拉取；如果已有缓存镜像，可能使用缓存。服务名为 `app`，镜像为 `ghcr.io/starfie1d1272/send-to-myself:latest`，容器 `/data` 映射到上述目录。默认 `SECURE_COOKIE: "false"` 用于 HTTP，单文件上限 `52428800` 字节（50 MiB）。
+4. 在 NAS 界面点击部署或启动项目。首次部署时，Docker 会拉取所需镜像并启动服务。服务名为 `app`，镜像为 `ghcr.io/starfie1d1272/send-to-myself:latest`，容器 `/data` 映射到上述目录。默认 `SECURE_COOKIE: "false"` 用于 HTTP，单文件上限 `52428800` 字节（50 MiB）。
 
 ## 3. 登录与第二台设备
 
