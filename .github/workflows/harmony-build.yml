@@ -1,7 +1,5 @@
 name: Harmony API 26 build
 on:
-  push:
-    branches: [draft/harmony-api26-ci]
   workflow_dispatch:
     inputs:
       reviewed_sha:
@@ -12,7 +10,7 @@ permissions:
   contents: read
 jobs:
   build:
-    if: github.repository == 'Starfie1d1272/send-to-myself' && (github.event_name == 'push' || inputs.reviewed_sha == github.sha)
+    if: github.repository == 'Starfie1d1272/send-to-myself' && inputs.reviewed_sha == github.sha
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
