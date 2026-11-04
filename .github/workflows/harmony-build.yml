@@ -130,6 +130,12 @@ jobs:
               if api['target'] != 26 or api['compatible'] != 22:
                   raise SystemExit('unexpected HAP API versions')
               module = json.loads(z.read('module.json'))
+              source = json.loads(pathlib.Path('AppScope/app.json5').read_text())['app']
+              for field in ('bundleName', 'versionName', 'versionCode'):
+                  if module['app'][field] != source[field]:
+                      raise SystemExit('HAP does not match source ' + field)
+              if app['version']['name'] != source['versionName'] or app['version']['code'] != source['versionCode']:
+                  raise SystemExit('pack.info version does not match source')
               if module['app'].get('debug') is not False or module['app'].get('buildMode') != 'release':
                   raise SystemExit('HAP must use release mode')
               if module['app']['compileSdkVersion'] != '26.0.0.105':
