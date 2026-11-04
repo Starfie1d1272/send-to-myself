@@ -1,54 +1,92 @@
-name: Harmony API 26 draft build
+name: Harmony API 26 build
 on:
+  push:
+    branches: [draft/harmony-api26-ci]
   workflow_dispatch:
     inputs:
       reviewed_sha:
         description: Full commit SHA of the selected branch, reviewed for this run
-        required: true
         type: string
-      authorized_sdk:
-        description: SDK license accepted for this runner environment
         required: true
-        default: false
-        type: boolean
 permissions:
   contents: read
 jobs:
   build:
-    if: github.repository == 'Starfie1d1272/send-to-myself' && startsWith(github.ref, 'refs/heads/')
-    runs-on: [self-hosted, linux, x64, harmonyos-ci]
+    if: github.repository == 'Starfie1d1272/send-to-myself' && (github.event_name == 'push' || inputs.reviewed_sha == github.sha)
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
-      - name: Require reviewed source and authorized SDK
-        env:
-          REVIEWED_SHA: ${{ inputs.reviewed_sha }}
-          AUTHORIZED_SDK: ${{ inputs.authorized_sdk }}
-        run: |
-          [[ "$REVIEWED_SHA" =~ ^[0-9a-f]{40}$ && "$REVIEWED_SHA" == "$GITHUB_SHA" ]]
-          [[ "$AUTHORIZED_SDK" == true ]]
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          ref: ${{ inputs.reviewed_sha }}
-      - name: Verify locally provisioned toolchain
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '26.11.1'
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '27'
+      - name: Install SDK runtime dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends unzip libgl1 libegl1 libgles2 libglib2.0-0t64 libx11-6 libxext6 libxrender1 libxi6 libxrandr2 libgbm1 fontconfig
+      - name: Download and verify the Cexing CLT archive
         shell: bash
         run: |
           set -euo pipefail
-          : "${HARMONYOS_CLT_ROOT:?Preinstall the authorized HarmonyOS CLT on the trusted runner}"
-          grep -F 'Version: 26.0.0.851' "$HARMONYOS_CLT_ROOT/version.txt"
-          for component in ets native toolchains; do
-            python3 - "$HARMONYOS_CLT_ROOT/sdk/default/openharmony/$component/oh-uni-package.json" <<'PY'
-          import json, sys
-          with open(sys.argv[1]) as f:
-              p = json.load(f)
-          assert p['version'] == '26.0.0.105' and str(p['apiVersion']) == '26'
+          archive="$RUNNER_TEMP/clt.zip"
+          # Third-party mirror used by Cexing, not a Huawei download or independently sourced Huawei digest.
+          curl --proto '=https' --silent --show-error --fail --retry 3 --connect-timeout 30 --max-time 1200 'https://box.nju.edu.cn/seafhttp/f/7c42b6daf0df40fa8d93/?op=view' --output "$archive"
+          test "$(stat -c %s "$archive")" = 2348063309
+          echo 'ab604bd92721d5cbcafd154e6461d46b9f1b105e7b89eab04a9d046681198082  '"$archive" | sha256sum -c -
+          python3 - "$archive" <<'PY'
+          import pathlib, posixpath, sys, zipfile
+          with zipfile.ZipFile(sys.argv[1]) as z:
+              names = z.namelist()
+              if len(names) != len(set(names)):
+                  raise SystemExit('duplicate archive paths')
+              for item in z.infolist():
+                  p = pathlib.PurePosixPath(item.filename)
+                  if not p.parts or p.parts[0] != 'command-line-tools' or p.is_absolute() or '..' in p.parts or chr(92) in item.filename:
+                      raise SystemExit('unsafe archive path')
+                  if (item.external_attr >> 16) & 0o170000 == 0o120000:
+                      target = z.read(item).decode('utf-8')
+                      resolved = posixpath.normpath(posixpath.join(posixpath.dirname(item.filename), target))
+                      if target.startswith('/') or chr(92) in target or not resolved.startswith('command-line-tools/'):
+                          raise SystemExit('unsafe archive symlink')
+              if z.testzip() is not None:
+                  raise SystemExit('archive CRC failure')
           PY
-          done
-          test -x "$HARMONYOS_CLT_ROOT/bin/hvigorw"
-          test -x "$HARMONYOS_CLT_ROOT/ohpm/bin/ohpm"
-          node --version
-          java -version
-      - name: Build unsigned HAP
+          unzip -q "$archive" -d "$RUNNER_TEMP/harmony-sdk"
+          rm "$archive"
+          echo "HARMONYOS_CLT_ROOT=$RUNNER_TEMP/harmony-sdk/command-line-tools" >> "$GITHUB_ENV"
+      - name: Check toolchain and seed isolated wrapper
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F 'Version: 26.0.0.851' "$HARMONYOS_CLT_ROOT/version.txt"
+          python3 - "$HARMONYOS_CLT_ROOT" <<'PY'
+          import json, pathlib, sys
+          clt = pathlib.Path(sys.argv[1])
+          for component in ('ets', 'native', 'toolchains'):
+              p = json.loads((clt / 'sdk/default/openharmony' / component / 'oh-uni-package.json').read_text())
+              if p['version'] != '26.0.0.105' or str(p['apiVersion']) != '26':
+                  raise SystemExit('unexpected SDK version: ' + component)
+          for component in ('hvigor', 'hvigor-ohos-plugin'):
+              p = json.loads((clt / 'hvigor' / component / 'package.json').read_text())
+              if p['version'] != '6.26.8':
+                  raise SystemExit('unexpected Hvigor version: ' + component)
+          p = json.loads((clt / 'ohpm/package.json').read_text())
+          if p['version'] != '26.0.0.630':
+              raise SystemExit('unexpected ohpm version')
+          PY
+          echo "HVIGOR_USER_HOME=$RUNNER_TEMP/hvigor-home" >> "$GITHUB_ENV"
+          dest="$RUNNER_TEMP/hvigor-home/wrapper/tools/10.28.2"
+          mkdir -p "$dest"
+          cp scripts/harmony-ci/wrapper/package*.json "$dest/"
+          npm ci --prefix "$dest" --ignore-scripts --no-audit --no-fund
+          test "$("$dest/node_modules/.bin/pnpm" --version)" = 10.28.2
+      - name: Build and validate unsigned HAP
         shell: bash
         run: |
           set -euo pipefail
@@ -56,20 +94,40 @@ jobs:
           export OHOS_SDK_HOME="$HARMONYOS_CLT_ROOT/sdk/default/openharmony"
           export OHOS_BASE_SDK_HOME="$OHOS_SDK_HOME"
           export PATH="$HARMONYOS_CLT_ROOT/bin:$OHOS_SDK_HOME/toolchains:$PATH"
+          export NODE_HOME="$(dirname "$(dirname "$(command -v node)")")"
+          export DEVECO_NODE_HOME="$NODE_HOME"
+          export npm_config_registry=https://registry.npmjs.org
+          test ! -e .signing
           cd SendToMyself
           rm -rf entry/build
           "$HARMONYOS_CLT_ROOT/ohpm/bin/ohpm" install
           hvigorw clean --no-daemon
           hvigorw assembleHap --no-daemon
-          test -f entry/build/default/outputs/default/entry-default-unsigned.hap
+          hap=entry/build/default/outputs/default/entry-default-unsigned.hap
+          test -f "$hap"
+          python3 - "$hap" <<'PY'
+          import pathlib, sys, zipfile
+          with zipfile.ZipFile(sys.argv[1]) as z:
+              names = z.namelist()
+              if len(names) != len(set(names)) or z.testzip() is not None:
+                  raise SystemExit('invalid HAP archive')
+              for name in names:
+                  p = pathlib.PurePosixPath(name)
+                  if p.is_absolute() or '..' in p.parts or chr(92) in name:
+                      raise SystemExit('unsafe HAP path')
+                  if name.upper().startswith('META-INF/') and name.upper().endswith(('.P7B', '.RSA', '.SF', '.DSA')):
+                      raise SystemExit('unexpected signature entry')
+              if not names:
+                  raise SystemExit('empty HAP')
+          PY
           mkdir -p "$RUNNER_TEMP/harmony-artifact"
-          cp entry/build/default/outputs/default/entry-default-unsigned.hap "$RUNNER_TEMP/harmony-artifact/"
+          cp "$hap" "$RUNNER_TEMP/harmony-artifact/"
           cd "$RUNNER_TEMP/harmony-artifact"
           sha256sum entry-default-unsigned.hap > SHA256SUMS
           printf '%s\n' "$GITHUB_SHA" > SOURCE_SHA
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: harmony-unsigned-${{ github.sha }}-${{ github.run_id }}
+          name: harmony-unsigned-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/harmony-artifact/
           if-no-files-found: error
           retention-days: 7
