@@ -104,7 +104,7 @@ jobs:
           rm -rf entry/build
           "$HARMONYOS_CLT_ROOT/ohpm/bin/ohpm" install
           hvigorw clean --no-daemon
-          hvigorw assembleHap --no-daemon
+          hvigorw assembleHap -p buildMode=release --no-daemon
           hap=entry/build/default/outputs/default/entry-default-unsigned.hap
           test -f "$hap"
           python3 - "$hap" <<'PY'
@@ -130,6 +130,8 @@ jobs:
               if api['target'] != 26 or api['compatible'] != 22:
                   raise SystemExit('unexpected HAP API versions')
               module = json.loads(z.read('module.json'))
+              if module['app'].get('debug') is not False or module['app'].get('buildMode') != 'release':
+                  raise SystemExit('HAP must use release mode')
               if module['app']['compileSdkVersion'] != '26.0.0.105':
                   raise SystemExit('unexpected SDK version in HAP')
           PY
