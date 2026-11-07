@@ -11,9 +11,11 @@ pnpm quality:audit
 pnpm format
 ```
 
-The private `scripts/quality` package keeps the formatting/lint dependencies and its
-lockfile separate from the product workspaces. It uses the same pnpm version and
-normal frozen-lockfile installation; it does not change dependency safety policies.
+The private `scripts/quality` package is a single-package workspace with its own
+`pnpm-workspace.yaml` and lockfile, separate from the product workspaces. Run the
+root `quality:install` and `quality:audit` scripts so pnpm loads that workspace and
+its scoped overrides. It uses the same pnpm version and normal frozen-lockfile
+installation; it does not change dependency safety policies.
 Installing these tools does not require building native product dependencies.
 The isolated lockfile is audited separately with `pnpm quality:audit`, using the
 same `high` failure threshold as the existing product dependency audit.
@@ -51,3 +53,6 @@ triggers, signing, toolchains used to build releases, or security settings.
 The tools are development-only and are not bundled with the product. Prettier,
 ESLint and typescript-eslint use MIT licenses, rustfmt uses MIT/Apache-2.0, shfmt
 uses BSD-3-Clause, and ShellCheck uses GPL-3.0. The product's MIT license is unchanged.
+
+See [Dependency audit](DEPENDENCY_AUDIT.md) for the scoped transitive fixes,
+compatibility checks and the remaining upstream advisory.
