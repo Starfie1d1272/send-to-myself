@@ -26,6 +26,12 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - run: pnpm quality:install
+
+      - run: pnpm format:check
+
+      - run: pnpm lint
+
       - run: pnpm typecheck
 
       - run: pnpm test
@@ -53,3 +59,29 @@ jobs:
         run: pnpm test:recovery
         env:
           RECOVERY_IMAGE: send-to-myself:ci
+
+  native-style:
+    name: Rust and shell style
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c
+        with:
+          toolchain: 1.99.1
+          components: rustfmt
+
+      - name: Check Rust formatting without building Tauri
+        run: cargo +1.99.1 fmt --manifest-path apps/desktop/src-tauri/Cargo.toml --all -- --check
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.12"
+
+      - name: Install pinned shell tooling
+        run: python -m pip install shellcheck-py==0.11.0.1 shfmt-py==3.12.0.2
+
+      - name: Check shell formatting and lint
+        run: |
+          git ls-files -z -- '*.sh' | xargs -0 shfmt -d -i 2 -ci
+          git ls-files -z -- '*.sh' | xargs -0 shellcheck

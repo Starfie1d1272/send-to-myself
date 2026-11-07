@@ -7,13 +7,18 @@ export async function sendClipboard(intent: "retry" | "new") {
   try {
     const value = await Clipboard.read();
     const path = value.file?.startsWith("file:") ? fileURLToPath(value.file) : value.file;
-    if (!path && !value.text?.trim()) throw new Error("剪贴板没有文字或文件。截图请保存为文件后用“随手记录”发送。");
-    await send(path ? "" : value.text ?? "", path ? [path] : [], undefined, intent);
-    toast.style = Toast.Style.Success; toast.title = "已发送到自己";
+    if (!path && !value.text?.trim())
+      throw new Error("剪贴板没有文字或文件。截图请保存为文件后用“随手记录”发送。");
+    await send(path ? "" : (value.text ?? ""), path ? [path] : [], undefined, intent);
+    toast.style = Toast.Style.Success;
+    toast.title = "已发送到自己";
   } catch (error) {
-    toast.style = Toast.Style.Failure; toast.title = "发送失败";
+    toast.style = Toast.Style.Failure;
+    toast.title = "发送失败";
     toast.message = error instanceof Error ? error.message : "请重试";
   }
 }
 
-export default async function Command() { await sendClipboard("retry"); }
+export default async function Command() {
+  await sendClipboard("retry");
+}

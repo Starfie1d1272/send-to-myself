@@ -12,7 +12,13 @@ import type {
 } from "@sendtomyself/shared";
 import { env } from "../env.js";
 import { db } from "../db/client.js";
-import { attachments, deletedDedupeKeys, type AttachmentInsert, type ItemInsert, items } from "../db/schema.js";
+import {
+  attachments,
+  deletedDedupeKeys,
+  type AttachmentInsert,
+  type ItemInsert,
+  items,
+} from "../db/schema.js";
 import { decodeCursor, encodeCursor } from "../lib/cursor.js";
 import { newId } from "../lib/id.js";
 import { isoToSec, rowToItem } from "../lib/mapper.js";
@@ -29,14 +35,28 @@ export type ListResult = ItemPage;
 export class ItemError extends Error {}
 
 /** Compute automatic fields only on creation or an actual content change. */
-function computeContent(content: string, files: Array<{ mimeType: string }>, currentMeta: ItemMeta,
-  override: boolean | null, previousContent?: string, context?: DetectionContext) {
+function computeContent(
+  content: string,
+  files: Array<{ mimeType: string }>,
+  currentMeta: ItemMeta,
+  override: boolean | null,
+  previousContent?: string,
+  context?: DetectionContext,
+) {
   const det = detect(content, undefined, context);
   const kind: ItemKind = files.some((file) => file.mimeType.startsWith("image/"))
-    ? "image" : files.length ? "file" : det.kind;
+    ? "image"
+    : files.length
+      ? "file"
+      : det.kind;
   const meta: ItemMeta = {
     ...currentMeta,
-    suggestions: { todo: det.todo, urls: det.urls, due: det.due, secretHint: det.secret.hint ?? null },
+    suggestions: {
+      todo: det.todo,
+      urls: det.urls,
+      due: det.due,
+      secretHint: det.secret.hint ?? null,
+    },
   };
   const first = det.urls[0];
   const oldFirst = previousContent === undefined ? undefined : detectUrls(previousContent)[0];
@@ -56,7 +76,11 @@ function computeContent(content: string, files: Array<{ mimeType: string }>, cur
 function findByDedupeKey(dedupeKey: string | undefined): Item | null {
   if (!dedupeKey) return null;
   const row = db.select().from(items).where(eq(items.dedupeKey, dedupeKey)).get();
-  if ((row && row.purgeStartedAt !== null) || db.select().from(deletedDedupeKeys).where(eq(deletedDedupeKeys.dedupeKey, dedupeKey)).get()) throw new ItemError("already_deleted");
+  if (
+    (row && row.purgeStartedAt !== null) ||
+    db.select().from(deletedDedupeKeys).where(eq(deletedDedupeKeys.dedupeKey, dedupeKey)).get()
+  )
+    throw new ItemError("already_deleted");
   return row ? rowToItem(row, attachmentSvc.listByItem(row.id)) : null;
 }
 
@@ -118,7 +142,7 @@ export async function createItemWithFiles(
   const row = buildRow(content, computed, dedupeKey);
   const prepared: AttachmentInsert[] = [];
   let dto: Item;
-  let created = false;
+  let created: boolean;
   try {
     // await 文件 I/O 期间不持有 SQLite 事务，也不暴露半成品记录。
     for (const file of files) {
@@ -167,26 +191,32 @@ function schedulePreview(item: Item, urls: string[], attempt = 0): void {
   const first = urls[0];
   if (!first) return;
   queueMicrotask(() => {
-    void Promise.resolve().then(() => {
-    const current = db.select().from(items).where(eq(items.id, item.id)).get();
-    if (!current || current.deletedAt !== null || current.content !== item.content || detectUrls(current.content)[0] !== first) return;
-    return fetchPreviewInto(item.id, first, item.content).then((updated) => {
-      if (!updated) return;
-      bus.publish({ type: "item.updated", payload: { id: updated.id } });
-      const status = updated.meta?.preview?.status;
-      if (status === "error" && attempt < 1) {
-        setTimeout(() => schedulePreview(item, urls, attempt + 1), 4000);
-      }
-    });
-    }).catch(() => console.error("Preview update failed"));
+    void Promise.resolve()
+      .then(() => {
+        const current = db.select().from(items).where(eq(items.id, item.id)).get();
+        if (
+          !current ||
+          current.deletedAt !== null ||
+          current.content !== item.content ||
+          detectUrls(current.content)[0] !== first
+        )
+          return;
+        return fetchPreviewInto(item.id, first, item.content).then((updated) => {
+          if (!updated) return;
+          bus.publish({ type: "item.updated", payload: { id: updated.id } });
+          const status = updated.meta?.preview?.status;
+          if (status === "error" && attempt < 1) {
+            setTimeout(() => schedulePreview(item, urls, attempt + 1), 4000);
+          }
+        });
+      })
+      .catch(() => console.error("Preview update failed"));
   });
 }
 
 export function listItems(f: ListFilter): ListResult {
   const limit = f.limit ?? 30;
-  const cond = [
-    f.deleted ? isNotNull(items.deletedAt) : isNull(items.deletedAt),
-  ];
+  const cond = [f.deleted ? isNotNull(items.deletedAt) : isNull(items.deletedAt)];
   if (f.kind) cond.push(eq(items.kind, f.kind));
   if (f.category) cond.push(eq(items.category, f.category));
   if (f.isTodo !== undefined) cond.push(eq(items.isTodo, f.isTodo));
@@ -197,31 +227,57 @@ export function listItems(f: ListFilter): ListResult {
     const count = sql<number>`coalesce(json_array_length(${items.meta}, '$.suggestions.urls'), 0)`;
     cond.push(f.hasLinks ? sql`${count} > 0` : sql`${count} = 0`);
   }
-  for (const [value, image] of [[f.hasImages, true], [f.hasFiles, false]] as const) {
+  for (const [value, image] of [
+    [f.hasImages, true],
+    [f.hasFiles, false],
+  ] as const) {
     if (value === undefined) continue;
-    const present = exists(db.select({ x: attachments.itemId }).from(attachments).where(and(
-      eq(attachments.itemId, items.id), image ? like(attachments.mimeType, "image/%") : sql`${attachments.mimeType} NOT LIKE 'image/%'`,
-    )));
+    const present = exists(
+      db
+        .select({ x: attachments.itemId })
+        .from(attachments)
+        .where(
+          and(
+            eq(attachments.itemId, items.id),
+            image
+              ? like(attachments.mimeType, "image/%")
+              : sql`${attachments.mimeType} NOT LIKE 'image/%'`,
+          ),
+        ),
+    );
     cond.push(value ? present : sql`NOT ${present}`);
   }
   if (f.dueFrom) cond.push(gte(items.dueAt, Math.ceil(Date.parse(f.dueFrom) / 1000)));
   if (f.dueBefore) cond.push(lt(items.dueAt, Math.ceil(Date.parse(f.dueBefore) / 1000)));
   if (f.q) {
     const kw = `%${f.q.replace(/[\\%_]/g, "\\$&")}%`;
-    const match = (value: ReturnType<typeof sql>) => sql`${value} LIKE ${kw} ESCAPE ${'\\'}`;
-    cond.push(or(
-      match(sql`${items.content}`),
-      ...["title", "description", "url", "domain"].map((field) => match(sql`json_extract(${items.meta}, ${`$.preview.${field}`})`)),
-      sql`EXISTS (SELECT 1 FROM json_each(${items.meta}, '$.suggestions.urls') WHERE value LIKE ${kw} ESCAPE ${'\\'})`,
-      exists(db.select({ x: attachments.itemId }).from(attachments).where(and(eq(attachments.itemId, items.id), match(sql`${attachments.filename}`)))),
-    )!);
+    const match = (value: ReturnType<typeof sql>) => sql`${value} LIKE ${kw} ESCAPE ${"\\"}`;
+    cond.push(
+      or(
+        match(sql`${items.content}`),
+        ...["title", "description", "url", "domain"].map((field) =>
+          match(sql`json_extract(${items.meta}, ${`$.preview.${field}`})`),
+        ),
+        sql`EXISTS (SELECT 1 FROM json_each(${items.meta}, '$.suggestions.urls') WHERE value LIKE ${kw} ESCAPE ${"\\"})`,
+        exists(
+          db
+            .select({ x: attachments.itemId })
+            .from(attachments)
+            .where(and(eq(attachments.itemId, items.id), match(sql`${attachments.filename}`))),
+        ),
+      )!,
+    );
   }
   if (f.cursor) {
     const cursor = decodeCursor(f.cursor);
-    cond.push(cursor.id === undefined
-      ? lt(items.createdAt, cursor.createdAt)
-      : or(lt(items.createdAt, cursor.createdAt),
-        and(eq(items.createdAt, cursor.createdAt), lt(items.id, cursor.id)))!);
+    cond.push(
+      cursor.id === undefined
+        ? lt(items.createdAt, cursor.createdAt)
+        : or(
+            lt(items.createdAt, cursor.createdAt),
+            and(eq(items.createdAt, cursor.createdAt), lt(items.id, cursor.id)),
+          )!,
+    );
   }
 
   const rows = db
@@ -256,31 +312,66 @@ export function updateItem(id: string, patch: UpdateItemInput): Item | null {
   const atts = attachmentSvc.listByItem(id);
   const content = patch.content ?? existing.content;
   if (!content.trim() && !atts.length) throw new ItemError("empty");
-  if (patch.isTodo === false && (patch.completed === true || patch.dueAt != null)) throw new ItemError("invalid_todo_state");
+  if (patch.isTodo === false && (patch.completed === true || patch.dueAt != null))
+    throw new ItemError("invalid_todo_state");
   const set: Partial<ItemInsert> = { updatedAt: nowSec() };
   if (patch.content !== undefined) set.content = content;
   if (patch.category !== undefined) set.category = patch.category;
   if (patch.pinned !== undefined) set.pinned = patch.pinned;
   let isTodo = patch.isTodo ?? existing.isTodo;
   let completed = patch.completed ?? existing.completed;
-  let completedAt = patch.completed === undefined ? existing.completedAt : patch.completed ? (existing.completed ? existing.completedAt : nowSec()) : null;
-  let dueAt = patch.dueAt === undefined ? existing.dueAt : patch.dueAt === null ? null : isoToSec(patch.dueAt);
-  if (patch.isTodo === false) { isTodo = false; completed = false; completedAt = null; dueAt = null; }
-  else if (patch.completed === true || patch.dueAt != null) isTodo = true;
-  if (!isTodo) { completed = false; completedAt = null; dueAt = null; }
-  set.isTodo = isTodo; set.completed = completed; set.completedAt = completedAt; set.dueAt = dueAt;
+  let completedAt =
+    patch.completed === undefined
+      ? existing.completedAt
+      : patch.completed
+        ? existing.completed
+          ? existing.completedAt
+          : nowSec()
+        : null;
+  let dueAt =
+    patch.dueAt === undefined
+      ? existing.dueAt
+      : patch.dueAt === null
+        ? null
+        : isoToSec(patch.dueAt);
+  if (patch.isTodo === false) {
+    isTodo = false;
+    completed = false;
+    completedAt = null;
+    dueAt = null;
+  } else if (patch.completed === true || patch.dueAt != null) isTodo = true;
+  if (!isTodo) {
+    completed = false;
+    completedAt = null;
+    dueAt = null;
+  }
+  set.isTodo = isTodo;
+  set.completed = completed;
+  set.completedAt = completedAt;
+  set.dueAt = dueAt;
   const override = patch.sensitive === undefined ? existing.sensitiveOverride : patch.sensitive;
   set.sensitiveOverride = override;
   let urls: string[] | undefined;
   if (content !== existing.content) {
     const currentMeta: ItemMeta = existing.meta ? JSON.parse(existing.meta) : {};
-    const computed = computeContent(content, atts, currentMeta, override, existing.content, patch.detectionContext);
+    const computed = computeContent(
+      content,
+      atts,
+      currentMeta,
+      override,
+      existing.content,
+      patch.detectionContext,
+    );
     urls = computed.fetchUrls;
     set.meta = JSON.stringify(computed.meta);
     set.kind = computed.kind;
     set.sensitive = computed.sensitive;
-  } else if (patch.sensitive !== undefined) set.sensitive = override ?? detectSecret(content).sensitive;
-  db.update(items).set(set).where(and(eq(items.id, id), isNull(items.purgeStartedAt))).run();
+  } else if (patch.sensitive !== undefined)
+    set.sensitive = override ?? detectSecret(content).sensitive;
+  db.update(items)
+    .set(set)
+    .where(and(eq(items.id, id), isNull(items.purgeStartedAt)))
+    .run();
   const row = db.select().from(items).where(eq(items.id, id)).get()!;
   const dto = rowToItem(row, atts);
   if (urls) schedulePreview(dto, urls);
@@ -295,7 +386,14 @@ export function softDeleteItem(id: string): boolean {
   if (!existing) return false;
   if (existing.deletedAt !== null) return true;
   const now = nowSec();
-  db.update(items).set({ deletedAt: now, trashRetentionStartedAt: env.trashRetentionDays > 0 ? now : null, updatedAt: now }).where(eq(items.id, id)).run();
+  db.update(items)
+    .set({
+      deletedAt: now,
+      trashRetentionStartedAt: env.trashRetentionDays > 0 ? now : null,
+      updatedAt: now,
+    })
+    .where(eq(items.id, id))
+    .run();
   bus.publish({ type: "item.deleted", payload: { id } });
   return true;
 }
@@ -305,7 +403,10 @@ export function restoreItem(id: string): Item | null {
   const existing = db.select().from(items).where(eq(items.id, id)).get();
   if (!existing) return null;
   if (existing.purgeStartedAt !== null) throw new ItemError("purge_in_progress");
-  db.update(items).set({ deletedAt: null, trashRetentionStartedAt: null, updatedAt: nowSec() }).where(and(eq(items.id, id), isNull(items.purgeStartedAt))).run();
+  db.update(items)
+    .set({ deletedAt: null, trashRetentionStartedAt: null, updatedAt: nowSec() })
+    .where(and(eq(items.id, id), isNull(items.purgeStartedAt)))
+    .run();
   const row = db.select().from(items).where(eq(items.id, id)).get()!;
   const dto = rowToItem(row, attachmentSvc.listByItem(id));
   bus.publish({ type: "item.updated", payload: { id: dto.id } });

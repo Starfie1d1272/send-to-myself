@@ -13,19 +13,41 @@ type Attempts = { attempts: Attempt[] };
 function parseAttempt(value: unknown): Attempt {
   if (!value || typeof value !== "object") throw new Error("invalid cache");
   const record = value as Partial<Attempt>;
-  if (typeof record.key !== "string" || !record.key || typeof record.createdAt !== "number") throw new Error("invalid cache");
+  if (typeof record.key !== "string" || !record.key || typeof record.createdAt !== "number")
+    throw new Error("invalid cache");
   if (record.detectionContext !== undefined) {
     const c = record.detectionContext;
-    if (!c || typeof c.capturedAt !== "string" || c.capturedAt.length > 64 || !/^\d{4}-\d\d-\d\dT.*(?:Z|[+-]\d\d:\d\d)$/.test(c.capturedAt) || !Number.isFinite(Date.parse(c.capturedAt)) || !Number.isInteger(c.utcOffsetMinutes) || Math.abs(c.utcOffsetMinutes) > 840) throw new Error("invalid context");
+    if (
+      !c ||
+      typeof c.capturedAt !== "string" ||
+      c.capturedAt.length > 64 ||
+      !/^\d{4}-\d\d-\d\dT.*(?:Z|[+-]\d\d:\d\d)$/.test(c.capturedAt) ||
+      !Number.isFinite(Date.parse(c.capturedAt)) ||
+      !Number.isInteger(c.utcOffsetMinutes) ||
+      Math.abs(c.utcOffsetMinutes) > 840
+    )
+      throw new Error("invalid context");
   }
   return record as Attempt;
 }
 /** Default retries the most recent unresolved attempt; explicit new preserves older attempts. */
-export async function sendWithRetryKey(api: InboxClient, content: string, files: File[], store: PendingStore, onConfirmed?: () => Promise<void>, candidate?: DetectionContext, intent: "retry" | "new" = "retry") {
+export async function sendWithRetryKey(
+  api: InboxClient,
+  content: string,
+  files: File[],
+  store: PendingStore,
+  onConfirmed?: () => Promise<void>,
+  candidate?: DetectionContext,
+  intent: "retry" | "new" = "retry",
+) {
   const hash = createHash("sha256").update(JSON.stringify([api.server, content]));
   for (const file of files) {
     hash.update(JSON.stringify([file.name, file.type, file.size]));
-    hash.update(createHash("sha256").update(new Uint8Array(await file.arrayBuffer())).digest());
+    hash.update(
+      createHash("sha256")
+        .update(new Uint8Array(await file.arrayBuffer()))
+        .digest(),
+    );
   }
   const storageKey = `pending-send:${hash.digest("hex")}`;
   const prefix = `${storageKey}:attempt:`;
@@ -36,7 +58,10 @@ export async function sendWithRetryKey(api: InboxClient, content: string, files:
   try {
     if (legacy) {
       const cached: unknown = JSON.parse(legacy);
-      const entries = cached && typeof cached === "object" && "attempts" in cached ? (cached as Attempts).attempts : [cached];
+      const entries =
+        cached && typeof cached === "object" && "attempts" in cached
+          ? (cached as Attempts).attempts
+          : [cached];
       if (!Array.isArray(entries) || !entries.length) throw new Error("invalid cache");
       for (const value of entries) {
         const attempt = parseAttempt(value);
@@ -50,8 +75,13 @@ export async function sendWithRetryKey(api: InboxClient, content: string, files:
       if (key !== prefix + attempt.key) throw new Error("invalid cache");
       attempts.push({ attempt, legacy: false });
     }
-  } catch { throw new Error("重试记录损坏，请先检查最近记录是否已收到，再修改内容发送。"); }
-  attempts.sort((a, b) => a.attempt.createdAt - b.attempt.createdAt || a.attempt.key.localeCompare(b.attempt.key));
+  } catch {
+    throw new Error("重试记录损坏，请先检查最近记录是否已收到，再修改内容发送。");
+  }
+  attempts.sort(
+    (a, b) =>
+      a.attempt.createdAt - b.attempt.createdAt || a.attempt.key.localeCompare(b.attempt.key),
+  );
   let selected = intent === "retry" ? attempts.at(-1) : undefined;
   if (!selected) {
     const attempt = { key: randomUUID(), createdAt: Date.now(), detectionContext: candidate };

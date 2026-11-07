@@ -14,48 +14,85 @@ const bool = (v: string | undefined): boolean | undefined =>
   v === undefined ? undefined : v === "true" || v === "1";
 
 // 发送（不分类，仅正文；附件走 /upload）
-itemsRoute.post("/", zValidator("json", createItemInput, (result, c) => { if (!result.success) return c.json({ error: "invalid_input" }, 400); }), (c) => {
-  try { return c.json(svc.createItem(c.req.valid("json")), 201); }
-  catch (error) { if (error instanceof svc.ItemError) return error.message === "already_deleted" || error.message === "purge_in_progress" ? c.json({ error: error.message }, 409) : c.json({ error: error.message }, 400); throw error; }
-});
+itemsRoute.post(
+  "/",
+  zValidator("json", createItemInput, (result, c) => {
+    if (!result.success) return c.json({ error: "invalid_input" }, 400);
+  }),
+  (c) => {
+    try {
+      return c.json(svc.createItem(c.req.valid("json")), 201);
+    } catch (error) {
+      if (error instanceof svc.ItemError)
+        return error.message === "already_deleted" || error.message === "purge_in_progress"
+          ? c.json({ error: error.message }, 409)
+          : c.json({ error: error.message }, 400);
+      throw error;
+    }
+  },
+);
 
 let activeUploads = 0;
 itemsRoute.use("/upload", async (c, next) => {
-  if (activeUploads >= 2) { c.header("Retry-After", "5"); return c.json({ error: "upload_busy" }, 429); }
+  if (activeUploads >= 2) {
+    c.header("Retry-After", "5");
+    return c.json({ error: "upload_busy" }, 429);
+  }
   activeUploads++;
-  try { await next(); } finally { activeUploads--; }
+  try {
+    await next();
+  } finally {
+    activeUploads--;
+  }
 });
-itemsRoute.use("/upload", bodyLimit({
-  maxSize: env.maxUploadTotalBytes + 1024 * 1024,
-  onError: (c) => c.json({ error: "upload_total_too_large", limit: env.maxUploadTotalBytes }, 413),
-}));
+itemsRoute.use(
+  "/upload",
+  bodyLimit({
+    maxSize: env.maxUploadTotalBytes + 1024 * 1024,
+    onError: (c) =>
+      c.json({ error: "upload_total_too_large", limit: env.maxUploadTotalBytes }, 413),
+  }),
+);
 
 // 带附件发送（multipart：content 文本 + 一个或多个 files，SPEC §8, §10）
 itemsRoute.post("/upload", async (c) => {
-  if (!/^multipart\/form-data(?:;|$)/i.test(c.req.header("content-type") ?? "")) return c.json({ error: "invalid_multipart" }, 400);
+  if (!/^multipart\/form-data(?:;|$)/i.test(c.req.header("content-type") ?? ""))
+    return c.json({ error: "invalid_multipart" }, 400);
   let body;
-  try { body = await c.req.parseBody({ all: true }); }
-  catch { return c.json({ error: "invalid_multipart" }, 400); }
+  try {
+    body = await c.req.parseBody({ all: true });
+  } catch {
+    return c.json({ error: "invalid_multipart" }, 400);
+  }
   const content = typeof body.content === "string" ? body.content : "";
   let detectionContext: unknown;
   if (body.detectionContext !== undefined) {
-    if (typeof body.detectionContext !== "string" || !body.detectionContext || body.detectionContext.length > 256) return c.json({ error: "invalid_input" }, 400);
-    try { detectionContext = JSON.parse(body.detectionContext); } catch { return c.json({ error: "invalid_input" }, 400); }
+    if (
+      typeof body.detectionContext !== "string" ||
+      !body.detectionContext ||
+      body.detectionContext.length > 256
+    )
+      return c.json({ error: "invalid_input" }, 400);
+    try {
+      detectionContext = JSON.parse(body.detectionContext);
+    } catch {
+      return c.json({ error: "invalid_input" }, 400);
+    }
   }
   const input = createItemInput.safeParse({ content, dedupeKey: body.dedupeKey, detectionContext });
   if (!input.success) return c.json({ error: "invalid_input" }, 400);
   const { dedupeKey } = input.data;
 
   const raw = body.files ?? body["files[]"] ?? body.file;
-  const blobs = (Array.isArray(raw) ? raw : [raw]).filter(
-    (f): f is File => f instanceof File,
-  );
+  const blobs = (Array.isArray(raw) ? raw : [raw]).filter((f): f is File => f instanceof File);
   if (blobs.length === 0 && !content.trim()) {
     return c.json({ error: "empty" }, 400);
   }
 
-  if (blobs.length > env.maxUploadFiles) return c.json({ error: "too_many_files", limit: env.maxUploadFiles }, 413);
-  if (blobs.reduce((sum, file) => sum + file.size, 0) > env.maxUploadTotalBytes) return c.json({ error: "upload_total_too_large", limit: env.maxUploadTotalBytes }, 413);
+  if (blobs.length > env.maxUploadFiles)
+    return c.json({ error: "too_many_files", limit: env.maxUploadFiles }, 413);
+  if (blobs.reduce((sum, file) => sum + file.size, 0) > env.maxUploadTotalBytes)
+    return c.json({ error: "upload_total_too_large", limit: env.maxUploadTotalBytes }, 413);
   const files: IncomingFile[] = [];
   for (const b of blobs) {
     if (b.size > env.maxUploadBytes) {
@@ -69,14 +106,31 @@ itemsRoute.post("/upload", async (c) => {
     });
   }
 
-  try { return c.json(await svc.createItemWithFiles(content, files, dedupeKey, input.data.detectionContext), 201); }
-  catch (error) { if (error instanceof svc.ItemError && error.message === "already_deleted") return c.json({ error: error.message }, 409); throw error; }
+  try {
+    return c.json(
+      await svc.createItemWithFiles(content, files, dedupeKey, input.data.detectionContext),
+      201,
+    );
+  } catch (error) {
+    if (error instanceof svc.ItemError && error.message === "already_deleted")
+      return c.json({ error: error.message }, 409);
+    throw error;
+  }
 });
 
 // 时间线 / 搜索 / 筛选（游标分页）
 itemsRoute.get("/", (c) => {
   const q = c.req.query();
-  for (const key of ["isTodo", "completed", "pinned", "sensitive", "deleted", "hasLinks", "hasImages", "hasFiles"]) {
+  for (const key of [
+    "isTodo",
+    "completed",
+    "pinned",
+    "sensitive",
+    "deleted",
+    "hasLinks",
+    "hasImages",
+    "hasFiles",
+  ]) {
     if (q[key] !== undefined && !["true", "false", "1", "0"].includes(q[key]!)) {
       return c.json({ error: "invalid_query" }, 400);
     }
@@ -84,14 +138,22 @@ itemsRoute.get("/", (c) => {
   const parsed = timelineFilter.safeParse({
     ...q,
     limit: q.limit === undefined ? undefined : Number(q.limit),
-    isTodo: bool(q.isTodo), completed: bool(q.completed), pinned: bool(q.pinned),
-    hasLinks: bool(q.hasLinks), hasImages: bool(q.hasImages), hasFiles: bool(q.hasFiles),
-    sensitive: bool(q.sensitive), deleted: bool(q.deleted),
+    isTodo: bool(q.isTodo),
+    completed: bool(q.completed),
+    pinned: bool(q.pinned),
+    hasLinks: bool(q.hasLinks),
+    hasImages: bool(q.hasImages),
+    hasFiles: bool(q.hasFiles),
+    sensitive: bool(q.sensitive),
+    deleted: bool(q.deleted),
   });
   if (!parsed.success) return c.json({ error: "invalid_query" }, 400);
   if (q.cursor) {
-    try { decodeCursor(q.cursor); }
-    catch { return c.json({ error: "invalid_cursor" }, 400); }
+    try {
+      decodeCursor(q.cursor);
+    } catch {
+      return c.json({ error: "invalid_cursor" }, 400);
+    }
   }
   return c.json(svc.listItems(parsed.data));
 });
@@ -101,18 +163,28 @@ itemsRoute.get("/:id", (c) => {
   return item ? c.json(item) : c.json({ error: "not_found" }, 404);
 });
 
-itemsRoute.patch("/:id", zValidator("json", updateItemInput, (result, c) => { if (!result.success) return c.json({ error: "invalid_input" }, 400); }), (c) => {
-  try {
-    const item = svc.updateItem(c.req.param("id"), c.req.valid("json"));
-    return item ? c.json(item) : c.json({ error: "not_found" }, 404);
-  } catch (error) { if (error instanceof svc.ItemError) return error.message === "already_deleted" || error.message === "purge_in_progress" ? c.json({ error: error.message }, 409) : c.json({ error: error.message }, 400); throw error; }
-});
+itemsRoute.patch(
+  "/:id",
+  zValidator("json", updateItemInput, (result, c) => {
+    if (!result.success) return c.json({ error: "invalid_input" }, 400);
+  }),
+  (c) => {
+    try {
+      const item = svc.updateItem(c.req.param("id"), c.req.valid("json"));
+      return item ? c.json(item) : c.json({ error: "not_found" }, 404);
+    } catch (error) {
+      if (error instanceof svc.ItemError)
+        return error.message === "already_deleted" || error.message === "purge_in_progress"
+          ? c.json({ error: error.message }, 409)
+          : c.json({ error: error.message }, 400);
+      throw error;
+    }
+  },
+);
 
 // 软删除
 itemsRoute.delete("/:id", (c) =>
-  svc.softDeleteItem(c.req.param("id"))
-    ? c.body(null, 204)
-    : c.json({ error: "not_found" }, 404),
+  svc.softDeleteItem(c.req.param("id")) ? c.body(null, 204) : c.json({ error: "not_found" }, 404),
 );
 
 itemsRoute.delete("/:id/permanent", async (c) => {
@@ -127,7 +199,11 @@ itemsRoute.post("/:id/restore", (c) => {
   try {
     const item = svc.restoreItem(c.req.param("id"));
     return item ? c.json(item) : c.json({ error: "not_found" }, 404);
-  } catch (error) { if (error instanceof svc.ItemError && error.message === "purge_in_progress") return c.json({ error: error.message }, 409); throw error; }
+  } catch (error) {
+    if (error instanceof svc.ItemError && error.message === "purge_in_progress")
+      return c.json({ error: error.message }, 409);
+    throw error;
+  }
 });
 
 // 手动重抓链接预览

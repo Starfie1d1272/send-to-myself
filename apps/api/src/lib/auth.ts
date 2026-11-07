@@ -68,7 +68,9 @@ export function purgeExpiredSessions(): void {
 export function createDeviceToken(name: string): { token: string; createdAt: number } {
   const token = randomBytes(32).toString("base64url");
   const createdAt = nowSec();
-  db.insert(deviceTokens).values({ token, name, createdAt, lastUsedAt: null, expiresAt: null }).run();
+  db.insert(deviceTokens)
+    .values({ token, name, createdAt, lastUsedAt: null, expiresAt: null })
+    .run();
   return { token, createdAt };
 }
 
@@ -81,7 +83,11 @@ export function deviceTokenValid(token: string | undefined, readOnly = false): b
     if (!readOnly) db.delete(deviceTokens).where(eq(deviceTokens.token, token)).run();
     return false;
   }
-  if (!readOnly) db.update(deviceTokens).set({ lastUsedAt: nowSec() }).where(eq(deviceTokens.token, token)).run();
+  if (!readOnly)
+    db.update(deviceTokens)
+      .set({ lastUsedAt: nowSec() })
+      .where(eq(deviceTokens.token, token))
+      .run();
   return true;
 }
 
@@ -94,12 +100,21 @@ export function listDeviceTokens(): Array<
     .from(deviceTokens)
     .orderBy(desc(deviceTokens.createdAt))
     .all()
-    .map((r) => ({ name: r.name, createdAt: r.createdAt, lastUsedAt: r.lastUsedAt, tail: r.token.slice(-6) }));
+    .map((r) => ({
+      name: r.name,
+      createdAt: r.createdAt,
+      lastUsedAt: r.lastUsedAt,
+      tail: r.token.slice(-6),
+    }));
 }
 
 /** 按尾 6 位吊销设备令牌（列表里展示的就是尾号）。返回是否命中。 */
 export function revokeDeviceToken(tail: string): boolean {
-  const row = db.select().from(deviceTokens).all().find((r) => r.token.slice(-6) === tail);
+  const row = db
+    .select()
+    .from(deviceTokens)
+    .all()
+    .find((r) => r.token.slice(-6) === tail);
   if (!row) return false;
   db.delete(deviceTokens).where(eq(deviceTokens.token, row.token)).run();
   return true;
@@ -136,7 +151,9 @@ export function recordSuccess(ip: string): void {
 export type Credential = { kind: "disabled" } | { kind: "session" | "device"; token: string };
 export function credentialValid(credential: Credential, readOnly = false): boolean {
   if (credential.kind === "disabled") return !authEnabled;
-  return credential.kind === "session" ? sessionValid(credential.token, readOnly) : deviceTokenValid(credential.token, readOnly);
+  return credential.kind === "session"
+    ? sessionValid(credential.token, readOnly)
+    : deviceTokenValid(credential.token, readOnly);
 }
 export function resolveCredential(c: Context): Credential | null {
   if (!authEnabled) return { kind: "disabled" };

@@ -1,35 +1,43 @@
 <!doctype html>
 <html lang="zh">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>发给自己</title>
-  <link rel="stylesheet" href="/src/styles.css" />
-  <script type="module" src="/src/main.ts" defer></script>
-</head>
-<body>
-  <main class="launcher" id="launcher" hidden>
-    <h1 class="brand" id="title">连接你的 NAS</h1>
-    <p class="sub">粘贴 NAS 网页里“连接手机/电脑”提供的地址，用同一个口令登录。</p>
-    <form id="form">
-      <label for="url">服务器地址</label>
-      <input id="url" type="text" inputmode="url" autocomplete="off" spellcheck="false" placeholder="http://192.168.1.2:8787" required />
-      <p class="hint">未填写协议时按局域网 HTTP 连接</p>
-      <button id="connect" type="submit">连接</button>
-    </form>
-    <p class="err" id="err" role="alert" hidden></p>
-    <section id="settings" hidden>
-      <h2>唤起快捷键</h2>
-      <button type="button" id="record" class="secondary">点击后按下快捷键</button>
-      <p class="hint" id="shortcut-status"></p>
-      <div class="actions">
-        <button type="button" id="save-shortcut">保存快捷键</button>
-        <button type="button" id="reset-shortcut" class="secondary">恢复默认</button>
-      </div>
-      <p class="err" id="shortcut-error" role="alert" hidden></p>
-      <p class="hint" id="clipboard-status"></p>
-      <button type="button" id="back" class="secondary" hidden>返回收件箱</button>
-    </section>
-  </main>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>发给自己</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+    <script type="module" src="/src/main.ts" defer></script>
+  </head>
+  <body>
+    <main class="launcher" id="launcher" hidden>
+      <h1 class="brand" id="title">连接你的 NAS</h1>
+      <p class="sub">粘贴 NAS 网页里“连接手机/电脑”提供的地址，用同一个口令登录。</p>
+      <form id="form">
+        <label for="url">服务器地址</label>
+        <input
+          id="url"
+          type="text"
+          inputmode="url"
+          autocomplete="off"
+          spellcheck="false"
+          placeholder="http://192.168.1.2:8787"
+          required
+        />
+        <p class="hint">未填写协议时按局域网 HTTP 连接</p>
+        <button id="connect" type="submit">连接</button>
+      </form>
+      <p class="err" id="err" role="alert" hidden></p>
+      <section id="settings" hidden>
+        <h2>唤起快捷键</h2>
+        <button type="button" id="record" class="secondary">点击后按下快捷键</button>
+        <p class="hint" id="shortcut-status"></p>
+        <div class="actions">
+          <button type="button" id="save-shortcut">保存快捷键</button>
+          <button type="button" id="reset-shortcut" class="secondary">恢复默认</button>
+        </div>
+        <p class="err" id="shortcut-error" role="alert" hidden></p>
+        <p class="hint" id="clipboard-status"></p>
+        <button type="button" id="back" class="secondary" hidden>返回收件箱</button>
+      </section>
+    </main>
+  </body>
 </html>

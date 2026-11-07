@@ -20,10 +20,7 @@ export function thumbKey(storageKey: string): string {
  * 为图片生成缩略图并写入 thumbKey(storageKey)。
  * 成功返回缩略图键，失败/不支持返回 null（调用方回退原图）。
  */
-export async function makeThumbnail(
-  storageKey: string,
-  data: Buffer,
-): Promise<string | null> {
+export async function makeThumbnail(storageKey: string, data: Buffer): Promise<string | null> {
   try {
     const { default: sharp } = await import("sharp");
     const out = await sharp(data, { failOn: "none", animated: false, limitInputPixels: 40_000_000 })

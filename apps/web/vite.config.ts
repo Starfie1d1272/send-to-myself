@@ -7,7 +7,9 @@ const API = process.env.VITE_API_TARGET ?? "http://localhost:8787";
 
 export default defineConfig({
   define: {
-    __WEB_VERSION__: JSON.stringify(JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")).version),
+    __WEB_VERSION__: JSON.stringify(
+      JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")).version,
+    ),
     __BUILD_REVISION__: JSON.stringify(process.env.BUILD_REVISION || null),
   },
   plugins: [

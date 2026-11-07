@@ -6,11 +6,19 @@ test("refreshes on initial connect, reconnect and item events; cleanup closes SS
   const source = new EventTarget();
   let closed = false;
   const previous = globalThis.EventSource;
-  t.after(() => { if (previous === undefined) delete globalThis.EventSource; else globalThis.EventSource = previous; });
+  t.after(() => {
+    if (previous === undefined) delete globalThis.EventSource;
+    else globalThis.EventSource = previous;
+  });
   globalThis.EventSource = class {
-    constructor(url) { assert.equal(url, "/api/realtime"); return source; }
+    constructor(url) {
+      assert.equal(url, "/api/realtime");
+      return source;
+    }
   };
-  source.close = () => { closed = true; };
+  source.close = () => {
+    closed = true;
+  };
   let refreshes = 0;
   const close = subscribeRealtime(() => refreshes++);
   for (const event of ["open", "item.created", "item.updated", "item.deleted", "open"]) {

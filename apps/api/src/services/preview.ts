@@ -30,19 +30,35 @@ export async function fetchPreview(rawUrl: string): Promise<LinkPreview> {
 }
 
 /** 抓取预览并写回 item.meta.preview，返回更新后的 DTO（供广播）。 */
-export async function fetchPreviewInto(itemId: string, rawUrl: string, expectedContent: string): Promise<Item | null> {
+export async function fetchPreviewInto(
+  itemId: string,
+  rawUrl: string,
+  expectedContent: string,
+): Promise<Item | null> {
   const preview = await fetchPreview(rawUrl);
   const row = db.select().from(items).where(eq(items.id, itemId)).get();
-  if (!row || row.deletedAt !== null || row.purgeStartedAt !== null || row.content !== expectedContent || detectUrls(row.content)[0] !== rawUrl) return null;
+  if (
+    !row ||
+    row.deletedAt !== null ||
+    row.purgeStartedAt !== null ||
+    row.content !== expectedContent ||
+    detectUrls(row.content)[0] !== rawUrl
+  )
+    return null;
   const meta = row.meta ? JSON.parse(row.meta) : {};
   meta.preview = preview;
-  db.update(items).set({ meta: JSON.stringify(meta) }).where(eq(items.id, itemId)).run();
+  db.update(items)
+    .set({ meta: JSON.stringify(meta) })
+    .where(eq(items.id, itemId))
+    .run();
   const updated = db.select().from(items).where(eq(items.id, itemId)).get()!;
   return rowToItem(updated, listByItem(itemId));
 }
 
 /** Fetch a complete image through the controlled preview transport. */
-export async function fetchImage(rawUrl: string): Promise<{ data: Buffer; contentType: string } | null> {
+export async function fetchImage(
+  rawUrl: string,
+): Promise<{ data: Buffer; contentType: string } | null> {
   try {
     const { data, contentType } = await readPreviewResource(rawUrl, "image");
     return { data, contentType };
@@ -56,13 +72,9 @@ export async function fetchImage(rawUrl: string): Promise<{ data: Buffer; conten
 function parseHtml(html: string, baseUrl: string): Partial<LinkPreview> {
   const head = html.slice(0, 100_000); // 只看头部，预览元数据都在 <head>
   const og = (prop: string) =>
-    matchAttr(head, new RegExp(
-      `<meta[^>]+(?:property|name)=["']${prop}["'][^>]*>`,
-      "i",
-    ));
+    matchAttr(head, new RegExp(`<meta[^>]+(?:property|name)=["']${prop}["'][^>]*>`, "i"));
   const title =
-    og("og:title") ??
-    decode(head.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.trim());
+    og("og:title") ?? decode(head.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.trim());
   const description = og("og:description") ?? metaName(head, "description");
   const image = abs(og("og:image"), baseUrl);
   const favicon = abs(findFavicon(head), baseUrl) ?? abs("/favicon.ico", baseUrl);
@@ -105,15 +117,17 @@ function safeDomain(u: string): string | undefined {
 
 function decode(s: string | undefined): string | undefined {
   if (!s) return undefined;
-  return s
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;|&apos;/g, "'")
-    .replace(/&nbsp;/g, " ")
-    .trim()
-    .slice(0, 500) || undefined;
+  return (
+    s
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;|&apos;/g, "'")
+      .replace(/&nbsp;/g, " ")
+      .trim()
+      .slice(0, 500) || undefined
+  );
 }
 
 function clean<T extends Record<string, unknown>>(o: T): Partial<T> {

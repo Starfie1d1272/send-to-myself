@@ -15,15 +15,11 @@ export function LinkPreviewCard({ preview }: { preview: LinkPreview }) {
       )}
       <div className="preview__body">
         <span className="preview__domain">
-          {favicon && (
-            <img className="preview__favicon" src={previewImageUrl(favicon)} alt="" />
-          )}
+          {favicon && <img className="preview__favicon" src={previewImageUrl(favicon)} alt="" />}
           {preview.domain ?? preview.url}
         </span>
         {preview.title && <span className="preview__title">{preview.title}</span>}
-        {preview.description && (
-          <span className="preview__desc">{preview.description}</span>
-        )}
+        {preview.description && <span className="preview__desc">{preview.description}</span>}
       </div>
     </a>
   );

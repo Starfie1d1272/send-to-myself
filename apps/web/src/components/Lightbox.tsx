@@ -22,13 +22,26 @@ export function Lightbox({
   }, []);
 
   return (
-    <Dialog className="lightbox" label="图片预览" onClose={onClose} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }} onKeyDown={(e) => {
-      if (e.key !== "Tab") return;
-      const close = e.currentTarget.querySelector<HTMLButtonElement>(".lightbox__close");
-      const scroll = e.currentTarget.querySelector<HTMLDivElement>(".lightbox__scroll");
-      if (e.shiftKey && document.activeElement === close) { e.preventDefault(); scroll?.focus(); }
-      else if (!e.shiftKey && document.activeElement === scroll) { e.preventDefault(); close?.focus(); }
-    }}>
+    <Dialog
+      className="lightbox"
+      label="图片预览"
+      onClose={onClose}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      onKeyDown={(e) => {
+        if (e.key !== "Tab") return;
+        const close = e.currentTarget.querySelector<HTMLButtonElement>(".lightbox__close");
+        const scroll = e.currentTarget.querySelector<HTMLDivElement>(".lightbox__scroll");
+        if (e.shiftKey && document.activeElement === close) {
+          e.preventDefault();
+          scroll?.focus();
+        } else if (!e.shiftKey && document.activeElement === scroll) {
+          e.preventDefault();
+          close?.focus();
+        }
+      }}
+    >
       <button className="lightbox__close" onClick={onClose} aria-label="关闭">
         <IconX width={22} height={22} />
       </button>

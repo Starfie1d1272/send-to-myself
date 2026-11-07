@@ -18,19 +18,21 @@ import { extractUrlSpans } from "@sendtomyself/shared/detect";
 import { findSecretSpans } from "@sendtomyself/shared/detect/secret";
 import { copyText } from "../lib/clipboard";
 import { ApiError } from "../lib/api";
-import { clearEditDraft, draftGeneration, draftIsWritable, loadEditDraft, prepareEditDraft, saveEditDraft, type EditSnapshot } from "../lib/draft";
+import {
+  clearEditDraft,
+  draftGeneration,
+  draftIsWritable,
+  loadEditDraft,
+  prepareEditDraft,
+  saveEditDraft,
+  type EditSnapshot,
+} from "../lib/draft";
 import { mutationErrorMessage } from "../lib/mutation-error";
 import { useItemMutations } from "../hooks/useItems";
 import { Attachments } from "./Attachments";
 import { LinkPreviewCard } from "./LinkPreviewCard";
 import { SensitiveText } from "./SensitiveText";
-import {
-  IconCheck,
-  IconClock,
-  IconCopy,
-  IconEye,
-  IconRestore,
-} from "./icons";
+import { IconCheck, IconClock, IconCopy, IconEye, IconRestore } from "./icons";
 
 class EditDraftFrozen extends Error {}
 
@@ -39,9 +41,21 @@ function LinkifiedText({ text }: { text: string }) {
   const parts = extractUrlSpans(text).map((span) => {
     const before = text.slice(offset, span.start);
     offset = span.end;
-    return <span key={span.start}>{before}<a href={span.url} target="_blank" rel="noreferrer" className="inline-link">{span.url}</a></span>;
+    return (
+      <span key={span.start}>
+        {before}
+        <a href={span.url} target="_blank" rel="noreferrer" className="inline-link">
+          {span.url}
+        </a>
+      </span>
+    );
   });
-  return <>{parts}{text.slice(offset)}</>;
+  return (
+    <>
+      {parts}
+      {text.slice(offset)}
+    </>
+  );
 }
 
 export function ItemCard({
@@ -69,9 +83,34 @@ export function ItemCard({
   const menuRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const editRef = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => { setRevealed(false); }, [item.content, item.sensitive, revealEpoch]);
-  useEffect(() => { const hide = () => { if (document.visibilityState === "hidden") setRevealed(false); }; document.addEventListener("visibilitychange", hide); return () => document.removeEventListener("visibilitychange", hide); }, []);
-  useEffect(() => { if (!menuOpen) return; const key = (e: KeyboardEvent) => { if (e.key === "Escape") { setMenuOpen(false); triggerRef.current?.focus(); } }; const outside = (e: MouseEvent) => { if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false); }; document.addEventListener("keydown", key); document.addEventListener("mousedown", outside); return () => { document.removeEventListener("keydown", key); document.removeEventListener("mousedown", outside); }; }, [menuOpen]);
+  useEffect(() => {
+    setRevealed(false);
+  }, [item.content, item.sensitive, revealEpoch]);
+  useEffect(() => {
+    const hide = () => {
+      if (document.visibilityState === "hidden") setRevealed(false);
+    };
+    document.addEventListener("visibilitychange", hide);
+    return () => document.removeEventListener("visibilitychange", hide);
+  }, []);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const key = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setMenuOpen(false);
+        triggerRef.current?.focus();
+      }
+    };
+    const outside = (e: MouseEvent) => {
+      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener("keydown", key);
+    document.addEventListener("mousedown", outside);
+    return () => {
+      document.removeEventListener("keydown", key);
+      document.removeEventListener("mousedown", outside);
+    };
+  }, [menuOpen]);
   const [editing, setEditing] = useState(false);
   const wasEditing = useRef(false);
   const [draft, setDraft] = useState("");
@@ -82,29 +121,65 @@ export function ItemCard({
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     if (editing) wasEditing.current = true;
-    else if (wasEditing.current && !busy) { wasEditing.current = false; triggerRef.current?.focus(); }
+    else if (wasEditing.current && !busy) {
+      wasEditing.current = false;
+      triggerRef.current?.focus();
+    }
   }, [editing, busy]);
   const lock = useRef(false);
   const snapshot = useRef<EditSnapshot | undefined>(undefined);
-  const memoryAttempt = useRef<{ content: string; detectionContext: ReturnType<typeof captureDetectionContext> } | undefined>(undefined);
+  const memoryAttempt = useRef<
+    { content: string; detectionContext: ReturnType<typeof captureDetectionContext> } | undefined
+  >(undefined);
   const lastWrite = useRef<Promise<void>>(Promise.resolve());
-  const retry = useRef<{ operation: () => Promise<unknown>; preview: boolean; successMessage?: () => string } | null>(null);
-  const run = async (operation: () => Promise<unknown>, preview = false, successMessage?: () => string) => {
+  const retry = useRef<{
+    operation: () => Promise<unknown>;
+    preview: boolean;
+    successMessage?: () => string;
+  } | null>(null);
+  const run = async (
+    operation: () => Promise<unknown>,
+    preview = false,
+    successMessage?: () => string,
+  ) => {
     if (lock.current) return false;
-    lock.current = true; setBusy(true); setError(""); setNotice(""); retry.current = { operation, preview, successMessage };
-    try { await operation(); retry.current = null; setNotice(successMessage?.() ?? "已保存"); return true; }
-    catch (err) {
-      setError(err instanceof EditDraftFrozen ? "当前会话正在退出，本次未提交。" : preview ? "预览抓取失败，原链接仍保留，请重试。" : err instanceof ApiError && err.code === "cleanup_failed" ? "永久删除未完成，请检查 NAS 存储后重试" : mutationErrorMessage(err));
+    lock.current = true;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    retry.current = { operation, preview, successMessage };
+    try {
+      await operation();
+      retry.current = null;
+      setNotice(successMessage?.() ?? "已保存");
+      return true;
+    } catch (err) {
+      setError(
+        err instanceof EditDraftFrozen
+          ? "当前会话正在退出，本次未提交。"
+          : preview
+            ? "预览抓取失败，原链接仍保留，请重试。"
+            : err instanceof ApiError && err.code === "cleanup_failed"
+              ? "永久删除未完成，请检查 NAS 存储后重试"
+              : mutationErrorMessage(err),
+      );
       return false;
-    } finally { lock.current = false; setBusy(false); }
+    } finally {
+      lock.current = false;
+      setBusy(false);
+    }
   };
   const menuAction = async (operation: () => Promise<unknown>, preview = false) => {
     if (await run(operation, preview)) {
-      setMenuOpen(false); setDueOpen(false); setTagOpen(false);
+      setMenuOpen(false);
+      setDueOpen(false);
+      setTagOpen(false);
       requestAnimationFrame(() => triggerRef.current?.focus());
     }
   };
-  const patch = (p: Parameters<typeof update.mutate>[0]["patch"]) => { void run(() => update.mutateAsync({ id: item.id, patch: p })); };
+  const patch = (p: Parameters<typeof update.mutate>[0]["patch"]) => {
+    void run(() => update.mutateAsync({ id: item.id, patch: p }));
+  };
 
   const copy = async () => {
     setCopyError("");
@@ -125,63 +200,126 @@ export function ItemCard({
 
   const startEdit = async () => {
     if (lock.current || editing) return;
-    lock.current = true; setBusy(true);
-    setDraft(item.content); setEditing(true); setDraftStatus(""); snapshot.current = undefined; memoryAttempt.current = undefined;
+    lock.current = true;
+    setBusy(true);
+    setDraft(item.content);
+    setEditing(true);
+    setDraftStatus("");
+    snapshot.current = undefined;
+    memoryAttempt.current = undefined;
     try {
       const saved = await loadEditDraft(item.id);
-      if (saved) { setDraft(saved.content); snapshot.current = saved; setDraftStatus("已恢复未保存的修改"); }
-    } catch { setDraftStatus("修改尚未保存到本机，请勿关闭窗口"); }
-    finally { lock.current = false; setBusy(false); }
+      if (saved) {
+        setDraft(saved.content);
+        snapshot.current = saved;
+        setDraftStatus("已恢复未保存的修改");
+      }
+    } catch {
+      setDraftStatus("修改尚未保存到本机，请勿关闭窗口");
+    } finally {
+      lock.current = false;
+      setBusy(false);
+    }
   };
-  useEffect(() => { if (editing && !busy && (!item.sensitive || revealed)) editRef.current?.focus(); }, [editing, busy, item.sensitive, revealed]);
+  useEffect(() => {
+    if (editing && !busy && (!item.sensitive || revealed)) editRef.current?.focus();
+  }, [editing, busy, item.sensitive, revealed]);
   const changeDraft = (value: string) => {
     if (lock.current) return;
     memoryAttempt.current = undefined;
-    setDraft(value); setError("");
-    lastWrite.current = saveEditDraft(item.id, value).then(saved => { snapshot.current = saved; setDraftStatus(""); }).catch(err => {
-      setDraftStatus(err instanceof Error && err.message === "draft_full" ? "本机编辑草稿已满，本次修改仅保留在当前页面；请保存到 NAS 后再关闭。" : "修改尚未保存到本机，请勿关闭窗口");
-    });
+    setDraft(value);
+    setError("");
+    lastWrite.current = saveEditDraft(item.id, value)
+      .then((saved) => {
+        snapshot.current = saved;
+        setDraftStatus("");
+      })
+      .catch((err) => {
+        setDraftStatus(
+          err instanceof Error && err.message === "draft_full"
+            ? "本机编辑草稿已满，本次修改仅保留在当前页面；请保存到 NAS 后再关闭。"
+            : "修改尚未保存到本机，请勿关闭窗口",
+        );
+      });
   };
   const saveEdit = async () => {
-    if (!draft.trim() && !item.attachments?.length) { setError("请输入文字"); return; }
+    if (!draft.trim() && !item.attachments?.length) {
+      setError("请输入文字");
+      return;
+    }
     const content = draft;
     const startedContext = captureDetectionContext();
     const generation = draftGeneration();
-    const ensureWritable = () => { if (!draftIsWritable() || draftGeneration() !== generation) throw new EditDraftFrozen(); };
+    const ensureWritable = () => {
+      if (!draftIsWritable() || draftGeneration() !== generation) throw new EditDraftFrozen();
+    };
     let attemptSnapshot: EditSnapshot | undefined;
     let storageUnavailable = false;
-    await run(async () => {
-      attemptSnapshot = undefined;
-      storageUnavailable = false;
-      await lastWrite.current;
-      ensureWritable();
-      const saved = snapshot.current;
-      const context = memoryAttempt.current?.content === content ? memoryAttempt.current.detectionContext
-        : saved?.content === content ? saved.detectionContext ?? startedContext : startedContext;
-      try { attemptSnapshot = await prepareEditDraft(item.id, saved?.content === content ? saved : undefined, content, context); }
-      catch (error) {
+    await run(
+      async () => {
+        attemptSnapshot = undefined;
+        storageUnavailable = false;
+        await lastWrite.current;
         ensureWritable();
-        storageUnavailable = true;
-        memoryAttempt.current = { content, detectionContext: context };
-        setDraftStatus(error instanceof Error && error.message === "draft_full" ? "本机编辑草稿已满，本次修改仅保留在当前页面；请保存到 NAS 后再关闭。" : "修改尚未保存到本机，请勿关闭窗口。");
-      }
-      ensureWritable();
-      if (!storageUnavailable && !attemptSnapshot) memoryAttempt.current = { content, detectionContext: context };
-      if (attemptSnapshot) { snapshot.current = attemptSnapshot; memoryAttempt.current = undefined; }
-      await update.mutateAsync({ id: item.id, patch: { content, detectionContext: context } });
-      if (attemptSnapshot) await clearEditDraft(item.id, attemptSnapshot).catch(() => { storageUnavailable = true; });
-      setEditing(false);
-    }, false, () => storageUnavailable ? "已保存到 NAS；本机草稿未能确认或清理。" : "已保存");
+        const saved = snapshot.current;
+        const context =
+          memoryAttempt.current?.content === content
+            ? memoryAttempt.current.detectionContext
+            : saved?.content === content
+              ? (saved.detectionContext ?? startedContext)
+              : startedContext;
+        try {
+          attemptSnapshot = await prepareEditDraft(
+            item.id,
+            saved?.content === content ? saved : undefined,
+            content,
+            context,
+          );
+        } catch (error) {
+          ensureWritable();
+          storageUnavailable = true;
+          memoryAttempt.current = { content, detectionContext: context };
+          setDraftStatus(
+            error instanceof Error && error.message === "draft_full"
+              ? "本机编辑草稿已满，本次修改仅保留在当前页面；请保存到 NAS 后再关闭。"
+              : "修改尚未保存到本机，请勿关闭窗口。",
+          );
+        }
+        ensureWritable();
+        if (!storageUnavailable && !attemptSnapshot)
+          memoryAttempt.current = { content, detectionContext: context };
+        if (attemptSnapshot) {
+          snapshot.current = attemptSnapshot;
+          memoryAttempt.current = undefined;
+        }
+        await update.mutateAsync({ id: item.id, patch: { content, detectionContext: context } });
+        if (attemptSnapshot)
+          await clearEditDraft(item.id, attemptSnapshot).catch(() => {
+            storageUnavailable = true;
+          });
+        setEditing(false);
+      },
+      false,
+      () => (storageUnavailable ? "已保存到 NAS；本机草稿未能确认或清理。" : "已保存"),
+    );
   };
   const cancelEdit = async () => {
     if (lock.current) return;
-    lock.current = true; setBusy(true);
+    lock.current = true;
+    setBusy(true);
     try {
       await lastWrite.current;
       const expected = snapshot.current;
-      if (expected) await clearEditDraft(item.id, expected).catch(() => setDraftStatus("修改尚未保存到本机，请勿关闭窗口"));
-      setEditing(false); setError("");
-    } finally { lock.current = false; setBusy(false); }
+      if (expected)
+        await clearEditDraft(item.id, expected).catch(() =>
+          setDraftStatus("修改尚未保存到本机，请勿关闭窗口"),
+        );
+      setEditing(false);
+      setError("");
+    } finally {
+      lock.current = false;
+      setBusy(false);
+    }
   };
 
   const urls = itemUrls(item);
@@ -189,21 +327,39 @@ export function ItemCard({
   const reducedMotion = useReducedMotion();
   const suggestion = itemDueSuggestion(item);
   const bucket = dueBucket(item.dueAt, now);
-  const showSuggestion = !trash && (!item.sensitive || revealed) && suggestion && !item.dueAt && !item.isTodo;
+  const showSuggestion =
+    !trash && (!item.sensitive || revealed) && suggestion && !item.dueAt && !item.isTodo;
   const attachments = item.attachments ?? [];
   // 命中具体密钥 → 只遮罩密钥本身；手动标敏感但无命中 → 整条遮罩
   const secretSpans = item.sensitive ? findSecretSpans(item.content) : [];
   const partialMask = item.sensitive && secretSpans.length > 0;
   const contentUrls = partialMask ? extractUrlSpans(item.content) : [];
-  const overlappingUrls = contentUrls.filter(url => secretSpans.some(secret => url.start < secret.end && secret.start < url.end));
+  const overlappingUrls = contentUrls.filter((url) =>
+    secretSpans.some((secret) => url.start < secret.end && secret.start < url.end),
+  );
   const renderSensitiveText = (text: string, start: number) => {
     if (!revealed) return text;
     let offset = 0;
-    const links = contentUrls.filter(url => url.start >= start && url.end <= start + text.length).map(url => {
-      const before = text.slice(offset, url.start - start); offset = url.end - start;
-      return <span key={url.start}>{before}<a href={url.url} target="_blank" rel="noreferrer" className="inline-link">{url.url}</a></span>;
-    });
-    return <>{links}{text.slice(offset)}</>;
+    const links = contentUrls
+      .filter((url) => url.start >= start && url.end <= start + text.length)
+      .map((url) => {
+        const before = text.slice(offset, url.start - start);
+        offset = url.end - start;
+        return (
+          <span key={url.start}>
+            {before}
+            <a href={url.url} target="_blank" rel="noreferrer" className="inline-link">
+              {url.url}
+            </a>
+          </span>
+        );
+      });
+    return (
+      <>
+        {links}
+        {text.slice(offset)}
+      </>
+    );
   };
 
   return (
@@ -211,7 +367,9 @@ export function ItemCard({
       layout={!reducedMotion}
       initial={reducedMotion ? false : { opacity: 0, y: -12, scale: 0.98 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={reducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.96, transition: { duration: 0.18 } }}
+      exit={
+        reducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.96, transition: { duration: 0.18 } }
+      }
       transition={{ type: "spring", stiffness: 520, damping: 38 }}
       className={`item item--gap-${gap}${item.pinned ? " item--pinned" : ""}${
         item.completed ? " item--done" : ""
@@ -242,21 +400,38 @@ export function ItemCard({
                 onChange={(e) => changeDraft(e.target.value)}
               />
               <div className="item__edit-actions">
-                <button
-                  className="item__edit-save"
-                  onClick={() => void saveEdit()}
-                  disabled={busy}
-                >
+                <button className="item__edit-save" onClick={() => void saveEdit()} disabled={busy}>
                   {busy ? "保存中…" : "保存"}
                 </button>
-                <button className="item__edit-cancel" disabled={busy} onClick={() => void cancelEdit()}>
+                <button
+                  className="item__edit-cancel"
+                  disabled={busy}
+                  onClick={() => void cancelEdit()}
+                >
                   取消
                 </button>
               </div>
               {draftStatus && <p role="status">{draftStatus}</p>}
             </div>
           ) : partialMask ? (
-            <><SensitiveText content={item.content} spans={secretSpans} revealed={revealed} onReveal={() => setRevealed(true)} onCopy={value => void copySpan(value)} renderText={renderSensitiveText} />{revealed && overlappingUrls.map(url => <p key={url.start}><a href={url.url} target="_blank" rel="noreferrer" className="inline-link">打开完整链接</a></p>)}</>
+            <>
+              <SensitiveText
+                content={item.content}
+                spans={secretSpans}
+                revealed={revealed}
+                onReveal={() => setRevealed(true)}
+                onCopy={(value) => void copySpan(value)}
+                renderText={renderSensitiveText}
+              />
+              {revealed &&
+                overlappingUrls.map((url) => (
+                  <p key={url.start}>
+                    <a href={url.url} target="_blank" rel="noreferrer" className="inline-link">
+                      打开完整链接
+                    </a>
+                  </p>
+                ))}
+            </>
           ) : item.sensitive && !revealed ? (
             <button className="redacted" onClick={() => setRevealed(true)}>
               <span className="redacted__bars" aria-hidden>
@@ -274,7 +449,9 @@ export function ItemCard({
             )
           )}
 
-          {item.sensitive && revealed && <button onClick={() => setRevealed(false)}>隐藏内容</button>}
+          {item.sensitive && revealed && (
+            <button onClick={() => setRevealed(false)}>隐藏内容</button>
+          )}
           {attachments.length > 0 && (!item.sensitive || revealed) && !item.purgeStartedAt && (
             <Attachments items={attachments} />
           )}
@@ -289,7 +466,6 @@ export function ItemCard({
                   {hostnameOf(u)}
                 </a>
               ))}
-
             </div>
           )}
 
@@ -300,11 +476,21 @@ export function ItemCard({
               onClick={() => patch({ isTodo: true, dueAt: suggestion!.dueAt })}
             >
               <IconClock width={14} height={14} />
-              识别到截止「{suggestion!.matchedText}」：{formatDue(suggestion!.dueAt)}（本机时间）· 设为待办
+              识别到截止「{suggestion!.matchedText}」：{formatDue(suggestion!.dueAt)}（本机时间）·
+              设为待办
             </button>
           )}
 
-          {trash && <p>{item.purgeStartedAt ? "永久删除尚未完成" : `删除于 ${item.deletedAt ? new Date(item.deletedAt).toLocaleString() : ""}`}{!item.purgeStartedAt && item.trashExpiresAt && ` · 预计 ${new Date(item.trashExpiresAt).toLocaleString()} 后自动清理`}</p>}
+          {trash && (
+            <p>
+              {item.purgeStartedAt
+                ? "永久删除尚未完成"
+                : `删除于 ${item.deletedAt ? new Date(item.deletedAt).toLocaleString() : ""}`}
+              {!item.purgeStartedAt &&
+                item.trashExpiresAt &&
+                ` · 预计 ${new Date(item.trashExpiresAt).toLocaleString()} 后自动清理`}
+            </p>
+          )}
           <div className="item__meta">
             {item.dueAt && bucket !== "none" && (
               <span className={`due due--${item.completed ? "later" : bucket}`}>
@@ -320,34 +506,279 @@ export function ItemCard({
         </div>
       </div>
 
-      {confirmDelete && <Dialog onClose={() => setConfirmDelete(false)} labelledBy={`purge-${item.id}`}><h2 id={`purge-${item.id}`}>永久删除这条内容？</h2><p>正文和 {attachments.length} 个附件将从 NAS 删除，无法从回收站恢复。</p><button onClick={() => setConfirmDelete(false)}>取消</button><button className="button button--danger" onClick={() => { setConfirmDelete(false); void run(async () => { await permanent.mutateAsync(item.id); }); }}>永久删除</button></Dialog>}
+      {confirmDelete && (
+        <Dialog onClose={() => setConfirmDelete(false)} labelledBy={`purge-${item.id}`}>
+          <h2 id={`purge-${item.id}`}>永久删除这条内容？</h2>
+          <p>正文和 {attachments.length} 个附件将从 NAS 删除，无法从回收站恢复。</p>
+          <button onClick={() => setConfirmDelete(false)}>取消</button>
+          <button
+            className="button button--danger"
+            onClick={() => {
+              setConfirmDelete(false);
+              void run(async () => {
+                await permanent.mutateAsync(item.id);
+              });
+            }}
+          >
+            永久删除
+          </button>
+        </Dialog>
+      )}
       {notice && <p role="status">{notice}</p>}
-      {error && <p className="composer__error" role="alert">{error} {editing ? <><button className="button button--secondary" disabled={busy} onClick={() => void saveEdit()}>重试保存</button><button className="button button--secondary" onClick={() => void copyText(draft)}>复制未保存内容</button></> : <button className="button button--secondary" disabled={busy} onClick={() => { if (retry.current) void (menuOpen ? menuAction(retry.current.operation, retry.current.preview) : run(retry.current.operation, retry.current.preview, retry.current.successMessage)); }}>重试</button>}</p>}
-      {copyError && <p className="composer__error" role="alert">{copyError}</p>}
-      <fieldset className="actions" disabled={busy || editing} style={{ border: 0, padding: 0, margin: 0 }}>
+      {error && (
+        <p className="composer__error" role="alert">
+          {error}{" "}
+          {editing ? (
+            <>
+              <button
+                className="button button--secondary"
+                disabled={busy}
+                onClick={() => void saveEdit()}
+              >
+                重试保存
+              </button>
+              <button className="button button--secondary" onClick={() => void copyText(draft)}>
+                复制未保存内容
+              </button>
+            </>
+          ) : (
+            <button
+              className="button button--secondary"
+              disabled={busy}
+              onClick={() => {
+                if (retry.current)
+                  void (menuOpen
+                    ? menuAction(retry.current.operation, retry.current.preview)
+                    : run(
+                        retry.current.operation,
+                        retry.current.preview,
+                        retry.current.successMessage,
+                      ));
+              }}
+            >
+              重试
+            </button>
+          )}
+        </p>
+      )}
+      {copyError && (
+        <p className="composer__error" role="alert">
+          {copyError}
+        </p>
+      )}
+      <fieldset
+        className="actions"
+        disabled={busy || editing}
+        style={{ border: 0, padding: 0, margin: 0 }}
+      >
         {trash ? (
           <>
-            <button className="icon-btn" aria-label="恢复" title="恢复" disabled={!!item.purgeStartedAt} onClick={() => void run(() => restore.mutateAsync(item.id))}><IconRestore /></button>
-            <button className="button button--danger" onClick={() => item.purgeStartedAt ? void run(async () => { await permanent.mutateAsync(item.id); }) : setConfirmDelete(true)}>{busy ? "正在清理…" : item.purgeStartedAt ? "重试清理" : "永久删除"}</button>
+            <button
+              className="icon-btn"
+              aria-label="恢复"
+              title="恢复"
+              disabled={!!item.purgeStartedAt}
+              onClick={() => void run(() => restore.mutateAsync(item.id))}
+            >
+              <IconRestore />
+            </button>
+            <button
+              className="button button--danger"
+              onClick={() =>
+                item.purgeStartedAt
+                  ? void run(async () => {
+                      await permanent.mutateAsync(item.id);
+                    })
+                  : setConfirmDelete(true)
+              }
+            >
+              {busy ? "正在清理…" : item.purgeStartedAt ? "重试清理" : "永久删除"}
+            </button>
           </>
         ) : (
           <>
-            {item.content.trim() && (!item.sensitive || revealed) && <button className="icon-btn" onClick={copy} aria-label={copied ? "已复制文字" : "复制文字"} title={copied ? "已复制文字" : "复制文字"}>{copied ? <IconCheck width={16} height={16} /> : <IconCopy width={16} height={16} />}</button>}
-            <div className="due-wrap" ref={menuRef} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setMenuOpen(false); }}>
-              <button className="icon-btn" ref={triggerRef} aria-label="更多操作" title="更多操作" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg></button>
-              {menuOpen && <div className="due-menu">
-                <button onClick={() => void menuAction(() => update.mutateAsync({id:item.id,patch:{pinned:!item.pinned}}))}>{item.pinned ? "取消收藏" : "收藏"}</button>
-                <button onClick={() => void menuAction(() => update.mutateAsync({id:item.id,patch:{isTodo:!item.isTodo}}))}>{item.isTodo ? "取消待办" : "设为待办"}</button>
-                <button aria-expanded={dueOpen} onClick={() => setDueOpen(!dueOpen)}>截止日期</button>
-                {dueOpen && <div>{(["today","tomorrow","sunday"] as const).map(k => <button key={k} onClick={() => void menuAction(() => update.mutateAsync({id:item.id,patch:{dueAt:quickDue(k)}}))}>{k === "today" ? "今天" : k === "tomorrow" ? "明天" : "本周日"} 23:59</button>)}<form onSubmit={e => { e.preventDefault(); if (customDue) void menuAction(() => update.mutateAsync({id:item.id,patch:{dueAt:new Date(customDue).toISOString()}})); }}><label>自定义 <input type="datetime-local" value={customDue} onChange={e => setCustomDue(e.target.value)} /></label><button type="submit">确定</button></form>{item.dueAt && <button onClick={() => void menuAction(() => update.mutateAsync({id:item.id,patch:{dueAt:null}}))}>清除截止日期</button>}</div>}
-                <button aria-expanded={tagOpen} onClick={() => setTagOpen(!tagOpen)}>标记</button>
-                {tagOpen && ([['none','无'],['idea','想法'],['read_later','稍后看']] as const).map(([value,label]) => <button key={value} onClick={() => void menuAction(() => update.mutateAsync({id:item.id,patch:{category:value}}))}>{label}</button>)}
-                <button onClick={() => { setMenuOpen(false); void startEdit(); }}>编辑</button>
-                <button onClick={() => void menuAction(() => update.mutateAsync({id:item.id,patch:{sensitive:!item.sensitive}}))}>{item.sensitive ? "取消敏感遮罩" : "标记为敏感"}</button>
-                {item.sensitiveOverride !== null && <button onClick={() => void menuAction(() => update.mutateAsync({id:item.id,patch:{sensitive:null}}))}>恢复自动识别</button>}
-                {urls.length > 0 && <button onClick={() => void menuAction(async () => { const result = await refetchPreview.mutateAsync(item.id); if (result.meta?.preview?.status === "error") throw new Error("preview failed"); }, true)}>刷新链接预览</button>}
-                <button onClick={() => void menuAction(() => remove.mutateAsync(item.id))}>移至回收站</button>
-              </div>}
+            {item.content.trim() && (!item.sensitive || revealed) && (
+              <button
+                className="icon-btn"
+                onClick={copy}
+                aria-label={copied ? "已复制文字" : "复制文字"}
+                title={copied ? "已复制文字" : "复制文字"}
+              >
+                {copied ? (
+                  <IconCheck width={16} height={16} />
+                ) : (
+                  <IconCopy width={16} height={16} />
+                )}
+              </button>
+            )}
+            <div
+              className="due-wrap"
+              ref={menuRef}
+              onBlur={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget as Node | null))
+                  setMenuOpen(false);
+              }}
+            >
+              <button
+                className="icon-btn"
+                ref={triggerRef}
+                aria-label="更多操作"
+                title="更多操作"
+                aria-expanded={menuOpen}
+                onClick={() => setMenuOpen(!menuOpen)}
+              >
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  aria-hidden="true"
+                >
+                  <circle cx="5" cy="12" r="2" />
+                  <circle cx="12" cy="12" r="2" />
+                  <circle cx="19" cy="12" r="2" />
+                </svg>
+              </button>
+              {menuOpen && (
+                <div className="due-menu">
+                  <button
+                    onClick={() =>
+                      void menuAction(() =>
+                        update.mutateAsync({ id: item.id, patch: { pinned: !item.pinned } }),
+                      )
+                    }
+                  >
+                    {item.pinned ? "取消收藏" : "收藏"}
+                  </button>
+                  <button
+                    onClick={() =>
+                      void menuAction(() =>
+                        update.mutateAsync({ id: item.id, patch: { isTodo: !item.isTodo } }),
+                      )
+                    }
+                  >
+                    {item.isTodo ? "取消待办" : "设为待办"}
+                  </button>
+                  <button aria-expanded={dueOpen} onClick={() => setDueOpen(!dueOpen)}>
+                    截止日期
+                  </button>
+                  {dueOpen && (
+                    <div>
+                      {(["today", "tomorrow", "sunday"] as const).map((k) => (
+                        <button
+                          key={k}
+                          onClick={() =>
+                            void menuAction(() =>
+                              update.mutateAsync({ id: item.id, patch: { dueAt: quickDue(k) } }),
+                            )
+                          }
+                        >
+                          {k === "today" ? "今天" : k === "tomorrow" ? "明天" : "本周日"} 23:59
+                        </button>
+                      ))}
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          if (customDue)
+                            void menuAction(() =>
+                              update.mutateAsync({
+                                id: item.id,
+                                patch: { dueAt: new Date(customDue).toISOString() },
+                              }),
+                            );
+                        }}
+                      >
+                        <label>
+                          自定义{" "}
+                          <input
+                            type="datetime-local"
+                            value={customDue}
+                            onChange={(e) => setCustomDue(e.target.value)}
+                          />
+                        </label>
+                        <button type="submit">确定</button>
+                      </form>
+                      {item.dueAt && (
+                        <button
+                          onClick={() =>
+                            void menuAction(() =>
+                              update.mutateAsync({ id: item.id, patch: { dueAt: null } }),
+                            )
+                          }
+                        >
+                          清除截止日期
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  <button aria-expanded={tagOpen} onClick={() => setTagOpen(!tagOpen)}>
+                    标记
+                  </button>
+                  {tagOpen &&
+                    (
+                      [
+                        ["none", "无"],
+                        ["idea", "想法"],
+                        ["read_later", "稍后看"],
+                      ] as const
+                    ).map(([value, label]) => (
+                      <button
+                        key={value}
+                        onClick={() =>
+                          void menuAction(() =>
+                            update.mutateAsync({ id: item.id, patch: { category: value } }),
+                          )
+                        }
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  <button
+                    onClick={() => {
+                      setMenuOpen(false);
+                      void startEdit();
+                    }}
+                  >
+                    编辑
+                  </button>
+                  <button
+                    onClick={() =>
+                      void menuAction(() =>
+                        update.mutateAsync({ id: item.id, patch: { sensitive: !item.sensitive } }),
+                      )
+                    }
+                  >
+                    {item.sensitive ? "取消敏感遮罩" : "标记为敏感"}
+                  </button>
+                  {item.sensitiveOverride !== null && (
+                    <button
+                      onClick={() =>
+                        void menuAction(() =>
+                          update.mutateAsync({ id: item.id, patch: { sensitive: null } }),
+                        )
+                      }
+                    >
+                      恢复自动识别
+                    </button>
+                  )}
+                  {urls.length > 0 && (
+                    <button
+                      onClick={() =>
+                        void menuAction(async () => {
+                          const result = await refetchPreview.mutateAsync(item.id);
+                          if (result.meta?.preview?.status === "error")
+                            throw new Error("preview failed");
+                        }, true)
+                      }
+                    >
+                      刷新链接预览
+                    </button>
+                  )}
+                  <button onClick={() => void menuAction(() => remove.mutateAsync(item.id))}>
+                    移至回收站
+                  </button>
+                </div>
+              )}
             </div>
           </>
         )}

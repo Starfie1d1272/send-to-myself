@@ -25,7 +25,11 @@ const loginInput = z.object({ password: z.string().min(1) });
 const deviceInput = z.object({ name: z.string().min(1).max(40) });
 
 function clientIp(c: Context): string {
-  try { return getConnInfo(c).remote.address ?? "unknown"; } catch { return "unknown"; }
+  try {
+    return getConnInfo(c).remote.address ?? "unknown";
+  } catch {
+    return "unknown";
+  }
 }
 
 function setSessionCookie(c: Context, token: string, maxAgeSec: number): void {

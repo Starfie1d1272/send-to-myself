@@ -8,7 +8,14 @@ export type TimelineViewState = {
   sensitiveOnly: boolean;
   query: string;
 };
-export const initialTimelineState: TimelineViewState = { view: "all", todoScope: "open", contentType: "all", category: "all", sensitiveOnly: false, query: "" };
+export const initialTimelineState: TimelineViewState = {
+  view: "all",
+  todoScope: "open",
+  contentType: "all",
+  category: "all",
+  sensitiveOnly: false,
+  query: "",
+};
 
 export function timelineParams(state: TimelineViewState, now = new Date()): ListParams {
   const p: ListParams = { limit: 100 };
@@ -18,7 +25,10 @@ export function timelineParams(state: TimelineViewState, now = new Date()): List
   if (state.view === "todo") {
     p.isTodo = true;
     p.completed = state.todoScope === "completed";
-    if (state.todoScope === "next7days") { p.dueFrom = now.toISOString(); p.dueBefore = new Date(now.getTime() + 168 * 3600000).toISOString(); }
+    if (state.todoScope === "next7days") {
+      p.dueFrom = now.toISOString();
+      p.dueBefore = new Date(now.getTime() + 168 * 3600000).toISOString();
+    }
   }
   if (state.contentType === "link") p.hasLinks = true;
   if (state.contentType === "image") p.hasImages = true;
@@ -28,7 +38,11 @@ export function timelineParams(state: TimelineViewState, now = new Date()): List
   return p;
 }
 export function itemPages(params: ListParams) {
-  return { queryKey: ["items", params], initialPageParam: undefined as string | undefined,
-    queryFn: ({ pageParam }: { pageParam: string | undefined }) => api.list({ ...params, cursor: pageParam }),
-    getNextPageParam: (page: ListResult) => page.nextCursor ?? undefined };
+  return {
+    queryKey: ["items", params],
+    initialPageParam: undefined as string | undefined,
+    queryFn: ({ pageParam }: { pageParam: string | undefined }) =>
+      api.list({ ...params, cursor: pageParam }),
+    getNextPageParam: (page: ListResult) => page.nextCursor ?? undefined,
+  };
 }

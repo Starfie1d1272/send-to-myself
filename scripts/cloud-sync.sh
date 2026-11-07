@@ -11,7 +11,7 @@ fi
 
 branch=$(git branch --show-current)
 case "$branch" in
-  main|work) ;;
+  main | work) ;;
   *)
     echo "[cloud-sync] Keeping task branch or detached checkout unchanged."
     exit 0
