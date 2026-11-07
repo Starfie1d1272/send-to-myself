@@ -38,6 +38,8 @@ jobs:
 
       - run: pnpm audit --audit-level high
 
+      - run: pnpm quality:audit
+
       - run: pnpm --filter @sendtomyself/web build
 
       - run: pnpm --filter desktop build

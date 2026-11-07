@@ -6,6 +6,7 @@ Use the Node version in `.node-version` and pnpm version in the root `packageMan
 pnpm quality:install
 pnpm format:check
 pnpm lint
+pnpm quality:audit
 # Apply the same formatting locally:
 pnpm format
 ```
@@ -14,6 +15,8 @@ The private `scripts/quality` package keeps the formatting/lint dependencies and
 lockfile separate from the product workspaces. It uses the same pnpm version and
 normal frozen-lockfile installation; it does not change dependency safety policies.
 Installing these tools does not require building native product dependencies.
+The isolated lockfile is audited separately with `pnpm quality:audit`, using the
+same `high` failure threshold as the existing product dependency audit.
 
 - Prettier 3.9.10 covers maintained TS, TSX, JavaScript/MJS, CSS, HTML, JSON and YAML.
   It preserves the prevailing double quotes, semicolons and two-space indentation.
