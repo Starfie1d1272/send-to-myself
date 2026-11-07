@@ -24,14 +24,18 @@ export async function prepareAttachment(
   try {
     const data = await file.read();
     await putBuffer(storageKey, data);
-    const thumbKey = isImageMime(file.mimeType)
-      ? await makeThumbnail(storageKey, data)
-      : null;
+    const thumbKey = isImageMime(file.mimeType) ? await makeThumbnail(storageKey, data) : null;
     // best-effort 缩略图失败时也可能留下部分写入的文件。
     if (!thumbKey) await remove(candidateThumbKey);
     return {
-      id: newId(), itemId, filename: file.filename, mimeType: file.mimeType,
-      size: file.size, storageKey, thumbKey, createdAt: nowSec(),
+      id: newId(),
+      itemId,
+      filename: file.filename,
+      mimeType: file.mimeType,
+      size: file.size,
+      storageKey,
+      thumbKey,
+      createdAt: nowSec(),
     };
   } catch (error) {
     await Promise.all([remove(storageKey), remove(candidateThumbKey)]);
@@ -41,10 +45,12 @@ export async function prepareAttachment(
 
 /** 清理由未提交上传产生的文件（包括缩略图）。 */
 export async function discardPrepared(rows: AttachmentInsert[]): Promise<void> {
-  await Promise.all(rows.flatMap((row) => [
-    remove(row.storageKey),
-    ...(row.thumbKey ? [remove(row.thumbKey)] : []),
-  ]));
+  await Promise.all(
+    rows.flatMap((row) => [
+      remove(row.storageKey),
+      ...(row.thumbKey ? [remove(row.thumbKey)] : []),
+    ]),
+  );
 }
 
 export function listByItem(itemId: string): AttachmentRow[] {
@@ -65,5 +71,12 @@ export function listByItems(itemIds: string[]): Map<string, AttachmentRow[]> {
 }
 
 export function getAttachment(id: string): AttachmentRow | null {
-  return db.select({ attachment: attachments }).from(attachments).innerJoin(items, eq(items.id, attachments.itemId)).where(and(eq(attachments.id, id), isNull(items.purgeStartedAt))).get()?.attachment ?? null;
+  return (
+    db
+      .select({ attachment: attachments })
+      .from(attachments)
+      .innerJoin(items, eq(items.id, attachments.itemId))
+      .where(and(eq(attachments.id, id), isNull(items.purgeStartedAt)))
+      .get()?.attachment ?? null
+  );
 }

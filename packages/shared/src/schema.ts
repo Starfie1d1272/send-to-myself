@@ -26,7 +26,7 @@ const id = z.string().min(1);
 const isoDateTime = z.string().datetime({ offset: true });
 
 export const detectionContextSchema = z.object({
-  capturedAt: isoDateTime.max(64).refine(value => Number.isFinite(Date.parse(value))),
+  capturedAt: isoDateTime.max(64).refine((value) => Number.isFinite(Date.parse(value))),
   utcOffsetMinutes: z.number().int().min(-840).max(840),
 });
 export type DetectionContext = z.infer<typeof detectionContextSchema>;
@@ -60,15 +60,21 @@ export const linkPreviewSchema = z.object({
 });
 export type LinkPreview = z.infer<typeof linkPreviewSchema>;
 
-export const itemSuggestionsSchema = z.object({
-  todo: z.boolean().optional(), urls: z.array(z.string()).optional(),
-  due: z.object({ dueAt: z.string(), matchedText: z.string() }).nullable().optional(),
-  secretHint: z.string().nullable().optional(),
-}).passthrough();
+export const itemSuggestionsSchema = z
+  .object({
+    todo: z.boolean().optional(),
+    urls: z.array(z.string()).optional(),
+    due: z.object({ dueAt: z.string(), matchedText: z.string() }).nullable().optional(),
+    secretHint: z.string().nullable().optional(),
+  })
+  .passthrough();
 export type ItemSuggestions = z.infer<typeof itemSuggestionsSchema>;
-export const itemMetaSchema = z.object({
-  suggestions: itemSuggestionsSchema.optional(), preview: linkPreviewSchema.partial({ url: true }).passthrough().optional(),
-}).passthrough();
+export const itemMetaSchema = z
+  .object({
+    suggestions: itemSuggestionsSchema.optional(),
+    preview: linkPreviewSchema.partial({ url: true }).passthrough().optional(),
+  })
+  .passthrough();
 export type ItemMeta = z.infer<typeof itemMetaSchema>;
 
 // —— Item ——
@@ -139,7 +145,8 @@ export const updateItemInput = z
     pinned: z.boolean(),
     sensitive: z.boolean().nullable(),
   })
-  .partial().refine(value => value.detectionContext === undefined || value.content !== undefined);
+  .partial()
+  .refine((value) => value.detectionContext === undefined || value.content !== undefined);
 export type UpdateItemInput = z.infer<typeof updateItemInput>;
 
 // —— 时间线查询 ——
@@ -164,14 +171,24 @@ export const timelineFilter = z
     /** 关键词搜索（正文/标题/URL/文件名）。 */
     q: z.string().optional(),
     /** 不透明分页游标，原样回传 nextCursor；兼容历史 ISO 时间。 */
-    cursor: z.union([isoDateTime, z.string().max(512).regex(/^v1\.[A-Za-z0-9_-]+$/)]).optional(),
+    cursor: z
+      .union([
+        isoDateTime,
+        z
+          .string()
+          .max(512)
+          .regex(/^v1\.[A-Za-z0-9_-]+$/),
+      ])
+      .optional(),
     limit: z.number().int().min(1).max(100).default(30),
   })
   .partial({ limit: true });
 export type TimelineFilter = z.infer<typeof timelineFilter>;
 
-
-export const itemPageSchema = z.object({ items: z.array(itemSchema), nextCursor: z.string().nullable() });
+export const itemPageSchema = z.object({
+  items: z.array(itemSchema),
+  nextCursor: z.string().nullable(),
+});
 export type ItemPage = z.infer<typeof itemPageSchema>;
 
 export const serverInfoSchema = z.object({

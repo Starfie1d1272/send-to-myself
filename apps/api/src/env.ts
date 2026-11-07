@@ -15,7 +15,13 @@ const maxUploadBytes = (() => {
   const raw = process.env.MAX_UPLOAD_BYTES;
   const value = Number(raw);
   if (raw === undefined) return 50 * 1024 * 1024;
-  if (raw.trim() && Number.isSafeInteger(value) && value > 0 && Number.isSafeInteger(value * 2 + 1024 * 1024)) return value;
+  if (
+    raw.trim() &&
+    Number.isSafeInteger(value) &&
+    value > 0 &&
+    Number.isSafeInteger(value * 2 + 1024 * 1024)
+  )
+    return value;
   console.warn("Invalid MAX_UPLOAD_BYTES; using default");
   return 50 * 1024 * 1024;
 })();

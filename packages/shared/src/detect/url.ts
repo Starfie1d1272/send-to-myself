@@ -4,10 +4,12 @@
 const URL_RE = /\bhttps?:\/\/[^\s<>"')\]}，。、；！？]+/gi;
 
 export function extractUrlSpans(text: string): Array<{ start: number; end: number; url: string }> {
-  return [...text.matchAll(URL_RE)].map((match) => {
-    const url = match[0].replace(/[.,;:!?)]+$/, "");
-    return { start: match.index!, end: match.index! + url.length, url };
-  }).filter((span) => span.url.length > 0);
+  return [...text.matchAll(URL_RE)]
+    .map((match) => {
+      const url = match[0].replace(/[.,;:!?)]+$/, "");
+      return { start: match.index!, end: match.index! + url.length, url };
+    })
+    .filter((span) => span.url.length > 0);
 }
 
 export function detectUrls(text: string): string[] {

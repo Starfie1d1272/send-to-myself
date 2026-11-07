@@ -1,11 +1,24 @@
 import { itemSchema } from "@sendtomyself/shared";
-import type { CreateItemInput, DetectionContext, Item, UpdateItemInput, ItemPage, TimelineFilter, ServerInfo } from "@sendtomyself/shared";
+import type {
+  CreateItemInput,
+  DetectionContext,
+  Item,
+  UpdateItemInput,
+  ItemPage,
+  TimelineFilter,
+  ServerInfo,
+} from "@sendtomyself/shared";
 
 export type ListResult = ItemPage;
 export type ListParams = TimelineFilter;
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string, public code?: string, public details?: Record<string, unknown>) {
+  constructor(
+    public status: number,
+    message: string,
+    public code?: string,
+    public details?: Record<string, unknown>,
+  ) {
     super(message);
   }
 }
@@ -30,13 +43,21 @@ function responseError(status: number, text: string): ApiError {
     const value: unknown = JSON.parse(text);
     if (value && typeof value === "object" && !Array.isArray(value)) {
       const { error, ...details } = value as Record<string, unknown>;
-      return new ApiError(status, JSON.stringify(value), typeof error === "string" ? error : undefined, details);
+      return new ApiError(
+        status,
+        JSON.stringify(value),
+        typeof error === "string" ? error : undefined,
+        details,
+      );
     }
-  } catch { /* Non-JSON responses must not expose proxy content. */ }
+  } catch {
+    /* Non-JSON responses must not expose proxy content. */
+  }
   return new ApiError(status, `HTTP ${status}`);
 }
 export function recheckAuthOnUnauthorized(status: number): void {
-  if (status === 401 && typeof window !== "undefined") window.dispatchEvent(new Event("send-to-myself:auth-check"));
+  if (status === 401 && typeof window !== "undefined")
+    window.dispatchEvent(new Event("send-to-myself:auth-check"));
 }
 async function handle(r: Response) {
   if (!/\/api\/auth\/(?:me|login|logout)(?:\?|$)/.test(r.url)) recheckAuthOnUnauthorized(r.status);
@@ -60,7 +81,9 @@ export interface AuthState {
 }
 
 export const api = {
-  info(): Promise<ServerInfo> { return fetch("/api/info", businessOpts()).then(handle); },
+  info(): Promise<ServerInfo> {
+    return fetch("/api/info", businessOpts()).then(handle);
+  },
   // —— 认证 ——
   me(): Promise<AuthState> {
     return fetch("/api/auth/me", opts()).then(handle);
@@ -79,14 +102,26 @@ export const api = {
     return fetch("/api/auth/logout", opts({ method: "POST" })).then(handle);
   },
 
-  devices(): Promise<{ devices: Array<{ name: string; tail: string; createdAt: number; lastUsedAt: number | null }> }> {
+  devices(): Promise<{
+    devices: Array<{ name: string; tail: string; createdAt: number; lastUsedAt: number | null }>;
+  }> {
     return fetch("/api/auth/devices", businessOpts()).then(handle);
   },
   createDevice(name: string): Promise<{ token: string; name: string; createdAt: number }> {
-    return fetch("/api/auth/devices", businessOpts({ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name }) })).then(handle);
+    return fetch(
+      "/api/auth/devices",
+      businessOpts({
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name }),
+      }),
+    ).then(handle);
   },
   revokeDevice(tail: string): Promise<null> {
-    return fetch(`/api/auth/devices/${encodeURIComponent(tail)}`, businessOpts({ method: "DELETE" })).then(handle);
+    return fetch(
+      `/api/auth/devices/${encodeURIComponent(tail)}`,
+      businessOpts({ method: "DELETE" }),
+    ).then(handle);
   },
 
   // —— 时间线 ——
@@ -105,16 +140,24 @@ export const api = {
         headers: { "content-type": "application/json" },
         body: JSON.stringify(input),
       }),
-    ).then(handle).then(validItem);
+    )
+      .then(handle)
+      .then(validItem);
   },
   /** 带附件发送（multipart）。 */
-  upload(content: string, files: File[], dedupeKey?: string, options?: UploadOptions): Promise<Item> {
+  upload(
+    content: string,
+    files: File[],
+    dedupeKey?: string,
+    options?: UploadOptions,
+  ): Promise<Item> {
     if (businessFrozen) return Promise.reject(new Error("Business requests are paused"));
     const globalSignal = businessController.signal;
     const fd = new FormData();
     fd.set("content", content);
     if (dedupeKey) fd.set("dedupeKey", dedupeKey);
-    if (options?.detectionContext) fd.set("detectionContext", JSON.stringify(options.detectionContext));
+    if (options?.detectionContext)
+      fd.set("detectionContext", JSON.stringify(options.detectionContext));
     for (const f of files) fd.append("files", f);
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
@@ -123,21 +166,45 @@ export const api = {
       const cleanup = () => {
         options?.signal?.removeEventListener("abort", abort);
         globalSignal.removeEventListener("abort", abort);
-        xhr.upload.onprogress = null; xhr.onload = null; xhr.onerror = null; xhr.onabort = null;
+        xhr.upload.onprogress = null;
+        xhr.onload = null;
+        xhr.onerror = null;
+        xhr.onabort = null;
       };
-      const finish = (fn: () => void) => { if (!settled) { settled = true; cleanup(); fn(); } };
+      const finish = (fn: () => void) => {
+        if (!settled) {
+          settled = true;
+          cleanup();
+          fn();
+        }
+      };
       xhr.open("POST", "/api/items/upload");
       xhr.withCredentials = true;
-      xhr.upload.onprogress = event => options?.onProgress?.({ loaded: event.loaded, ...(event.lengthComputable ? { total: event.total } : {}) });
-      xhr.onload = () => finish(() => {
-        if (xhr.status < 200 || xhr.status >= 300) { reject(responseError(xhr.status, xhr.responseText)); return; }
-        try { resolve(validItem(JSON.parse(xhr.responseText))); } catch (error) { reject(error); }
-      });
+      xhr.upload.onprogress = (event) =>
+        options?.onProgress?.({
+          loaded: event.loaded,
+          ...(event.lengthComputable ? { total: event.total } : {}),
+        });
+      xhr.onload = () =>
+        finish(() => {
+          if (xhr.status < 200 || xhr.status >= 300) {
+            reject(responseError(xhr.status, xhr.responseText));
+            return;
+          }
+          try {
+            resolve(validItem(JSON.parse(xhr.responseText)));
+          } catch (error) {
+            reject(error);
+          }
+        });
       xhr.onerror = () => finish(() => reject(new Error("Network error")));
       xhr.onabort = () => finish(() => reject(new DOMException("Aborted", "AbortError")));
       options?.signal?.addEventListener("abort", abort);
       globalSignal.addEventListener("abort", abort);
-      if (options?.signal?.aborted || globalSignal.aborted) { finish(() => reject(new DOMException("Aborted", "AbortError"))); return; }
+      if (options?.signal?.aborted || globalSignal.aborted) {
+        finish(() => reject(new DOMException("Aborted", "AbortError")));
+        return;
+      }
       xhr.send(fd);
     });
   },
@@ -171,5 +238,4 @@ export const attachmentRawUrl = (id: string) => `/api/attachments/${id}/raw`;
 export const attachmentDownloadUrl = (id: string) => `/api/attachments/${id}/raw?download=1`;
 
 /** 链接预览封面/favicon 经服务端代理加载，绕过图床防盗链与混合内容（SPEC §7）。 */
-export const previewImageUrl = (raw: string) =>
-  `/api/preview/image?url=${encodeURIComponent(raw)}`;
+export const previewImageUrl = (raw: string) => `/api/preview/image?url=${encodeURIComponent(raw)}`;

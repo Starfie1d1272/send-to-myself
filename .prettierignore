@@ -1,0 +1,26 @@
+# Build outputs, dependencies and local data.
+**/node_modules/**
+**/oh_modules/**
+**/dist/**
+**/build/**
+**/target/**
+**/.hvigor/**
+**/.preview/**
+data/
+uploads/
+# Generated declarations, assets, migrations and lockfiles.
+apps/raycast/raycast-env.d.ts
+apps/desktop/src-tauri/icons/**
+apps/api/drizzle/**
+**/pnpm-lock.yaml
+**/package-lock.json
+**/oh-package-lock.json5
+# ArkTS and its SDK-owned configuration keep their native linter.
+SendToMyself/**
+scripts/harmony-ci/**
+# Preserve prose, release records, and existing README presentation.
+**/*.md
+# Release workflows are outside this non-publishing cleanup.
+.github/workflows/desktop-build.yml
+.github/workflows/docker-image.yml
+.github/workflows/harmony-build.yml

@@ -8,15 +8,22 @@ Requires Linux, Docker, ugcli, gh, Python 3 and a published core release and mat
 The output directory must be empty. No upload or NAS installation is performed.
 HELP
 }
-die() { printf 'Error: %s\n' "$*" >&2; exit 1; }
-version= build= output= arch=all
+die() {
+  printf 'Error: %s\n' "$*" >&2
+  exit 1
+}
+version="" build="" output="" arch=all
 while (($#)); do
   case "$1" in
-    --help|-h) usage; exit 0 ;;
-    --version|--build|--arch|--output)
+    --help | -h)
+      usage
+      exit 0
+      ;;
+    --version | --build | --arch | --output)
       (($# >= 2)) || die "Missing value for $1"
-      case "$1" in --version) version=$2;; --build) build=$2;; --arch) arch=$2;; --output) output=$2;; esac
-      shift 2 ;;
+      case "$1" in --version) version=$2 ;; --build) build=$2 ;; --arch) arch=$2 ;; --output) output=$2 ;; esac
+      shift 2
+      ;;
     *) die "Unknown argument: $1" ;;
   esac
 done
@@ -45,10 +52,11 @@ p = pathlib.Path(sys.argv[1]); v = sys.argv[2]
 for name, old, new in [('project.yaml', 'version: "1.0.2"', f'version: "{v}"'), ('rootfs_common/docker-compose.yaml', 'send-to-myself:1.0.2', f'send-to-myself:{v}')]:
     f = p / name; s = f.read_text(); assert s.count(old) == 1; f.write_text(s.replace(old, new))
 PY
-arches=($arch); [[ $arch == all ]] && arches=(amd64 arm64)
+arches=("$arch")
+[[ $arch == all ]] && arches=(amd64 arm64)
 mkdir -p "$work/result"
 # Resolve the multi-platform index once, so a moving tag cannot mix releases.
-docker buildx imagetools inspect --raw "$image" > "$work/index.json"
+docker buildx imagetools inspect --raw "$image" >"$work/index.json"
 for a in "${arches[@]}"; do
   # Each pack contains only this architecture's rootfs; keep the source template dual-arch.
   python3 - "$work/project.yaml" "$a" <<'PYARCH'
@@ -58,7 +66,8 @@ text, count = re.subn(r'^support_arch: \[[^\n]*\]$', f'support_arch: [{sys.argv[
 if count != 1: raise SystemExit('Expected one support_arch declaration')
 path.write_text(text)
 PYARCH
-  child_digest=$(python3 - "$work/index.json" "$a" <<'PYCODE'
+  child_digest=$(
+    python3 - "$work/index.json" "$a" <<'PYCODE'
 import json, re, sys
 index = json.load(open(sys.argv[1])); arch = sys.argv[2]
 matches = [m['digest'] for m in index.get('manifests', []) if m.get('platform', {}).get('os') == 'linux' and m.get('platform', {}).get('architecture') == arch]
@@ -108,7 +117,7 @@ for arch in sys.argv[5:]:
 manifest=dict(core_version=sys.argv[2], build=int(sys.argv[3]), ugcli_version=sys.argv[4], generated_at=datetime.datetime.now(datetime.timezone.utc).isoformat(), images=entries)
 (p/'manifest.json').write_text(json.dumps(manifest, indent=2, ensure_ascii=False)+'\n')
 PY
-(cd "$work/result" && sha256sum ./*.upk manifest.json > SHA256SUMS)
+(cd "$work/result" && sha256sum ./*.upk manifest.json >SHA256SUMS)
 mkdir -p "$output"
 cp "$work/result/"* "$output/"
 printf 'UPKs and manifest written to %s\n' "$output"

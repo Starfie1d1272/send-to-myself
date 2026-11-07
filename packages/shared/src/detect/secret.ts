@@ -29,8 +29,14 @@ const RULES: SecretRule[] = [
   { hint: "Stripe Key", re: /\b(?:sk|rk|pk)_(?:live|test)_[0-9a-zA-Z]{16,}/ },
   // 即时通讯 / 推送
   { hint: "Telegram Bot Token", re: /\b\d{8,10}:[A-Za-z0-9_-]{35}/ },
-  { hint: "Discord Bot Token", re: /\b[MNO][A-Za-z0-9_-]{23,}\.[A-Za-z0-9_-]{6}\.[A-Za-z0-9_-]{27,}/ },
-  { hint: "Discord Webhook", re: /https:\/\/(?:\w+\.)?discord(?:app)?\.com\/api\/webhooks\/\d+\/[A-Za-z0-9_-]+/ },
+  {
+    hint: "Discord Bot Token",
+    re: /\b[MNO][A-Za-z0-9_-]{23,}\.[A-Za-z0-9_-]{6}\.[A-Za-z0-9_-]{27,}/,
+  },
+  {
+    hint: "Discord Webhook",
+    re: /https:\/\/(?:\w+\.)?discord(?:app)?\.com\/api\/webhooks\/\d+\/[A-Za-z0-9_-]+/,
+  },
   // 云通信
   { hint: "Twilio", re: /\b(?:SK|AC)[0-9a-fA-F]{32}/ },
   { hint: "SendGrid", re: /\bSG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}/ },

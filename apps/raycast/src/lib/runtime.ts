@@ -11,7 +11,12 @@ export function client() {
   const preferences = getPreferenceValues<{ serverUrl: string; deviceToken: string }>();
   return new InboxClient(preferences.serverUrl, preferences.deviceToken);
 }
-export async function send(content: string, paths: string[], onConfirmed?: () => Promise<void>, intent: "retry" | "new" = "retry") {
+export async function send(
+  content: string,
+  paths: string[],
+  onConfirmed?: () => Promise<void>,
+  intent: "retry" | "new" = "retry",
+) {
   const context = captureDetectionContext();
   const api = client();
   const files: File[] = [];
@@ -20,7 +25,8 @@ export async function send(content: string, paths: string[], onConfirmed?: () =>
     const info = await stat(path);
     if (!info.isFile()) throw new Error("请只选择文件，不能发送文件夹。");
     size += info.size;
-    if (size > 50 * 1024 * 1024) throw new Error("一次最多发送 50 MiB 文件；服务器可能有更低限制。");
+    if (size > 50 * 1024 * 1024)
+      throw new Error("一次最多发送 50 MiB 文件；服务器可能有更低限制。");
     const bytes = await readFile(path);
     const name = basename(path);
     files.push(new File([bytes], name, { type: lookup(name) || "application/octet-stream" }));

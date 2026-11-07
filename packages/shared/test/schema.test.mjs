@@ -3,7 +3,11 @@ import test from "node:test";
 import { createItemInput, itemSchema, updateItemInput } from "../src/schema.ts";
 
 test("item metadata keeps arbitrary string keys and nested preview data", () => {
-  const meta = { preview: { title: "标题", status: "ok" }, suggestions: { todo: false }, custom: 42 };
+  const meta = {
+    preview: { title: "标题", status: "ok" },
+    suggestions: { todo: false },
+    custom: 42,
+  };
   const item = itemSchema.parse({
     id: "fixture",
     content: "文字",
@@ -31,7 +35,10 @@ test("create input retains defaults and validates offline deduplication keys", (
 });
 
 test("partial updates preserve nullable due dates and reject invalid fields", () => {
-  assert.deepEqual(updateItemInput.parse({ dueAt: null, isTodo: true }), { dueAt: null, isTodo: true });
+  assert.deepEqual(updateItemInput.parse({ dueAt: null, isTodo: true }), {
+    dueAt: null,
+    isTodo: true,
+  });
   assert.deepEqual(updateItemInput.parse({}), {});
   assert.equal(updateItemInput.safeParse({ category: "todo" }).success, false);
   assert.equal(updateItemInput.safeParse({ dueAt: "tomorrow" }).success, false);

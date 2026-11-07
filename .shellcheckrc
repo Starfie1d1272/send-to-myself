@@ -1,0 +1,3 @@
+# Shared deployment helpers are resolved relative to each calling script.
+source-path=SCRIPTDIR
+external-sources=true

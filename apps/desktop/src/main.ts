@@ -1,6 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
 
-type Settings = { serverUrl: string | null; shortcut: string; shortcutActive: boolean; shortcutError: string | null; clipboardAvailable: boolean; clipboardError: string | null };
+type Settings = {
+  serverUrl: string | null;
+  shortcut: string;
+  shortcutActive: boolean;
+  shortcutError: string | null;
+  clipboardAvailable: boolean;
+  clipboardError: string | null;
+};
 type ConnectResult = { url: string; clipboardAvailable: boolean; clipboardError: string | null };
 type SettingsError = { code: string; message: string };
 const messages: Record<string, string> = {
@@ -16,11 +23,18 @@ const messages: Record<string, string> = {
   superseded: "连接已被新的操作取代，请重试。",
 };
 const el = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
-const form = el<HTMLFormElement>("form"), input = el<HTMLInputElement>("url"), connect = el<HTMLButtonElement>("connect");
-const error = el<HTMLElement>("err"), shortcutError = el<HTMLElement>("shortcut-error");
-const record = el<HTMLButtonElement>("record"), back = el<HTMLButtonElement>("back");
+const form = el<HTMLFormElement>("form"),
+  input = el<HTMLInputElement>("url"),
+  connect = el<HTMLButtonElement>("connect");
+const error = el<HTMLElement>("err"),
+  shortcutError = el<HTMLElement>("shortcut-error");
+const record = el<HTMLButtonElement>("record"),
+  back = el<HTMLButtonElement>("back");
 const settingsView = new URLSearchParams(location.search).get("view") === "settings";
-let settings: Settings | null = null, candidate = "", recording = false, busy = false;
+let settings: Settings | null = null,
+  candidate = "",
+  recording = false,
+  busy = false;
 function showError(target: HTMLElement, e: unknown): void {
   const code = (e as SettingsError)?.code;
   target.textContent = messages[code] ?? "操作失败，请重试。";
@@ -30,8 +44,11 @@ function renderSettings(value: Settings): void {
   settings = value;
   candidate = value.shortcut;
   record.textContent = candidate;
-  el<HTMLElement>("shortcut-status").textContent = value.shortcutError || (value.shortcutActive ? "快捷键已生效" : "快捷键未生效");
-  el<HTMLElement>("clipboard-status").textContent = value.clipboardError || (value.clipboardAvailable ? "" : "原生复制暂不可用，可使用页面支持的复制方式");
+  el<HTMLElement>("shortcut-status").textContent =
+    value.shortcutError || (value.shortcutActive ? "快捷键已生效" : "快捷键未生效");
+  el<HTMLElement>("clipboard-status").textContent =
+    value.clipboardError ||
+    (value.clipboardAvailable ? "" : "原生复制暂不可用，可使用页面支持的复制方式");
   back.hidden = !value.serverUrl;
 }
 async function connectTo(raw: string): Promise<void> {
@@ -49,7 +66,7 @@ async function connectTo(raw: string): Promise<void> {
     if (!result.clipboardAvailable) {
       error.textContent = "原生复制暂不可用，可使用页面支持的复制方式";
       error.hidden = false;
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
     }
     location.replace(result.url);
   } catch (e) {
@@ -60,26 +77,72 @@ async function connectTo(raw: string): Promise<void> {
     back.disabled = false;
   }
 }
-form.addEventListener("submit", e => { e.preventDefault(); void connectTo(input.value); });
-back.addEventListener("click", () => { if (settings?.serverUrl) void connectTo(settings.serverUrl); });
-record.addEventListener("click", () => { recording = true; record.textContent = "请按下快捷键（Esc 取消）"; shortcutError.hidden = true; });
-record.addEventListener("keydown", e => {
-  if (!recording || e.key === "Tab") { if (e.key === "Tab") { recording = false; record.textContent = candidate; } return; }
+form.addEventListener("submit", (e) => {
   e.preventDefault();
-  if (e.key === "Escape") { recording = false; record.textContent = candidate; return; }
+  void connectTo(input.value);
+});
+back.addEventListener("click", () => {
+  if (settings?.serverUrl) void connectTo(settings.serverUrl);
+});
+record.addEventListener("click", () => {
+  recording = true;
+  record.textContent = "请按下快捷键（Esc 取消）";
+  shortcutError.hidden = true;
+});
+record.addEventListener("keydown", (e) => {
+  if (!recording || e.key === "Tab") {
+    if (e.key === "Tab") {
+      recording = false;
+      record.textContent = candidate;
+    }
+    return;
+  }
+  e.preventDefault();
+  if (e.key === "Escape") {
+    recording = false;
+    record.textContent = candidate;
+    return;
+  }
   if (["Control", "Meta", "Alt", "Shift"].includes(e.key)) return;
-  const key = /^Key[A-Z]$/.test(e.code) ? e.code.slice(3) : /^Digit[0-9]$/.test(e.code) ? e.code.slice(5) : /^F(?:[1-9]|1[0-2])$/.test(e.code) ? e.code : "";
-  if ((!e.ctrlKey && !e.metaKey && !e.altKey) || !key) { showError(shortcutError, { code: "invalid_shortcut" }); return; }
-  candidate = [e.ctrlKey && "Control", e.metaKey && "Super", e.altKey && "Alt", e.shiftKey && "Shift", key].filter(Boolean).join("+");
-  recording = false; record.textContent = candidate;
+  const key = /^Key[A-Z]$/.test(e.code)
+    ? e.code.slice(3)
+    : /^Digit[0-9]$/.test(e.code)
+      ? e.code.slice(5)
+      : /^F(?:[1-9]|1[0-2])$/.test(e.code)
+        ? e.code
+        : "";
+  if ((!e.ctrlKey && !e.metaKey && !e.altKey) || !key) {
+    showError(shortcutError, { code: "invalid_shortcut" });
+    return;
+  }
+  candidate = [
+    e.ctrlKey && "Control",
+    e.metaKey && "Super",
+    e.altKey && "Alt",
+    e.shiftKey && "Shift",
+    key,
+  ]
+    .filter(Boolean)
+    .join("+");
+  recording = false;
+  record.textContent = candidate;
 });
 async function saveShortcut(shortcut: string): Promise<void> {
   shortcutError.hidden = true;
-  try { renderSettings(await invoke<Settings>("set_shortcut", { shortcut })); }
-  catch (e) { showError(shortcutError, e); }
+  try {
+    renderSettings(await invoke<Settings>("set_shortcut", { shortcut }));
+  } catch (e) {
+    showError(shortcutError, e);
+  }
 }
-el<HTMLButtonElement>("save-shortcut").addEventListener("click", () => void saveShortcut(candidate));
-el<HTMLButtonElement>("reset-shortcut").addEventListener("click", () => void saveShortcut("CommandOrControl+Shift+S"));
+el<HTMLButtonElement>("save-shortcut").addEventListener(
+  "click",
+  () => void saveShortcut(candidate),
+);
+el<HTMLButtonElement>("reset-shortcut").addEventListener(
+  "click",
+  () => void saveShortcut("CommandOrControl+Shift+S"),
+);
 async function boot(): Promise<void> {
   el<HTMLElement>("launcher").hidden = false;
   try {
@@ -93,7 +156,9 @@ async function boot(): Promise<void> {
     } else if (value.serverUrl) {
       await connectTo(value.serverUrl);
     }
-  } catch (e) { showError(error, e); }
+  } catch (e) {
+    showError(error, e);
+  }
   el<HTMLElement>("launcher").hidden = false;
 }
 void boot();

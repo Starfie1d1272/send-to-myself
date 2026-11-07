@@ -12,6 +12,14 @@
     "test": "pnpm --filter @sendtomyself/shared test && pnpm --filter @sendtomyself/api test && pnpm --filter @sendtomyself/web test && node --test scripts/cloud-sync.test.mjs && pnpm --filter send-to-myself-raycast test",
     "dev": "pnpm --filter @sendtomyself/api --filter @sendtomyself/web --parallel run dev",
     "typecheck": "pnpm -r run typecheck",
-    "test:recovery": "node --test scripts/recovery.test.mjs"
+    "test:recovery": "node --test scripts/recovery.test.mjs",
+    "quality:install": "pnpm --dir scripts/quality install --ignore-workspace --frozen-lockfile",
+    "format": "node scripts/quality/node_modules/prettier/bin/prettier.cjs --write .",
+    "format:check": "node scripts/quality/node_modules/prettier/bin/prettier.cjs --check .",
+    "lint": "node scripts/quality/node_modules/eslint/bin/eslint.js . --max-warnings 0",
+    "format:rust:check": "cargo +1.99.1 fmt --manifest-path apps/desktop/src-tauri/Cargo.toml --all -- --check",
+    "format:shell:check": "git ls-files -z -- '*.sh' | xargs -0 shfmt -d -i 2 -ci",
+    "lint:shell": "git ls-files -z -- '*.sh' | xargs -0 shellcheck",
+    "quality:audit": "pnpm --dir scripts/quality audit --ignore-workspace --audit-level high"
   }
 }
