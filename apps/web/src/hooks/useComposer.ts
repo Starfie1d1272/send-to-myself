@@ -57,6 +57,7 @@ export function useComposer() {
   const [pending, setPending] = useState(false);
   const [pendingAttempts, setPendingAttempts] = useState<PendingAttempt[]>([]);
   const [selectedAttempt, setSelectedAttempt] = useState(false);
+  const selectedAttemptKey = useRef<string | undefined>(undefined);
   const attempt = useRef<AbortController | null>(null);
   const busyRef = useRef(false);
 
@@ -78,6 +79,9 @@ export function useComposer() {
         current.current = next;
         setDraft(next);
         setSelectedAttempt(!!saved.webSendAttempted);
+        if (saved.restoredFromNative && saved.content.trim()) {
+          setNotice("原原生附件任务请在传输页查看，文字已恢复为新草稿");
+        }
       })
       .catch(() => {
         if (active) setDraftError(true);
@@ -105,6 +109,7 @@ export function useComposer() {
           : "将作为新内容发送；上一笔发送结果可能尚未确认",
       );
     disownAttempt();
+    selectedAttemptKey.current = undefined;
     setSelectedAttempt(false);
     const next = { content, files, dedupeKey: newDedupeKey(), webSendAttempted: false };
     current.current = next;
@@ -139,23 +144,24 @@ export function useComposer() {
     (newIntent || !deleted);
   const canSend = allowed(draft);
 
-  const applySharedDraft = async (generation: number, message = "") => {
+  const applySharedDraft = async (generation: number) => {
     try {
       const saved = await loadSharedDraft();
       if (!draftIsWritable() || generation !== draftGeneration()) return;
       const next = { ...saved, dedupeKey: saved.dedupeKey ?? newDedupeKey() };
       current.current = next;
+      selectedAttemptKey.current = undefined;
       setDraft(next);
       setSelectedAttempt(!!saved.webSendAttempted);
       setError("");
       setDeleted(false);
       setBadFile(undefined);
-      setNotice(message);
+      setNotice("");
     } catch {
       if (generation === draftGeneration()) {
         setDraftError(true);
         setSelectedAttempt(true);
-        setNotice(message);
+        setNotice("");
       }
     }
   };
@@ -262,11 +268,12 @@ export function useComposer() {
         return;
       }
       current.current = saved;
+      selectedAttemptKey.current = key;
       setDraft(saved);
       setSelectedAttempt(true);
       setDeleted(false);
       setBadFile(undefined);
-      setNotice("");
+      setNotice(saved.restoredFromNative ? "原原生附件任务请在传输页查看，文字已恢复为新草稿" : "");
       setError("");
     } catch {
       if (generation === draftGeneration()) setDraftError(true);
@@ -299,7 +306,9 @@ export function useComposer() {
     try {
       await deletePendingAttempt(key);
       if (!draftIsWritable() || generation !== draftGeneration()) return;
-      if (current.current.dedupeKey === key) await applySharedDraft(generation);
+      if (current.current.dedupeKey === key || selectedAttemptKey.current === key) {
+        await applySharedDraft(generation);
+      }
       await refreshAttempts();
     } catch {
       if (generation === draftGeneration()) setDraftError(true);

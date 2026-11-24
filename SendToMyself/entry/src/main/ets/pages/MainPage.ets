@@ -371,34 +371,40 @@ struct MainPage {
                   settled = true;
                   event.result.handleFileList(uris);
                 };
-                this.getUIContext().showActionSheet({
-                  title: '添加附件',
-                  message: '',
-                  sheets: [
-                    {
-                      title: '从相册选择',
-                      action: (): void => {
-                        const opts = new photoAccessHelper.PhotoSelectOptions();
-                        opts.MIMEType = photoAccessHelper.PhotoViewMIMETypes.IMAGE_VIDEO_TYPE;
-                        opts.maxSelectNumber = max;
-                        new photoAccessHelper.PhotoViewPicker().select(opts)
-                          .then((res): void => { finish(res.photoUris); })
-                          .catch((): void => { finish([]); });
+                try {
+                  this.getUIContext().showActionSheet({
+                    title: '添加附件',
+                    message: '',
+                    sheets: [
+                      {
+                        title: '从相册选择',
+                        action: (): void => {
+                          try {
+                            const opts = new photoAccessHelper.PhotoSelectOptions();
+                            opts.MIMEType = photoAccessHelper.PhotoViewMIMETypes.IMAGE_VIDEO_TYPE;
+                            opts.maxSelectNumber = max;
+                            new photoAccessHelper.PhotoViewPicker().select(opts)
+                              .then((res): void => { finish(res.photoUris); })
+                              .catch((): void => { finish([]); });
+                          } catch (_error) { finish([]); }
+                        }
+                      },
+                      {
+                        title: '从文件管理选择',
+                        action: (): void => {
+                          try {
+                            const opts = new picker.DocumentSelectOptions();
+                            opts.maxSelectNumber = max;
+                            new picker.DocumentViewPicker(this.context).select(opts)
+                              .then((uris): void => { finish(uris); })
+                              .catch((): void => { finish([]); });
+                          } catch (_error) { finish([]); }
+                        }
                       }
-                    },
-                    {
-                      title: '从文件管理选择',
-                      action: (): void => {
-                        const opts = new picker.DocumentSelectOptions();
-                        opts.maxSelectNumber = max;
-                        new picker.DocumentViewPicker(this.context).select(opts)
-                          .then((uris): void => { finish(uris); })
-                          .catch((): void => { finish([]); });
-                      }
-                    }
-                  ],
-                  cancel: (): void => { finish([]); }
-                });
+                    ],
+                    cancel: (): void => { finish([]); }
+                  });
+                } catch (_error) { finish([]); }
                 return true;
               })
               .onContextMenuShow((event) => {

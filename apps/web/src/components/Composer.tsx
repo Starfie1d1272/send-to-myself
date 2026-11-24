@@ -176,7 +176,9 @@ export function Composer() {
         >
           <summary>待确认发送（{pendingAttempts.length}）</summary>
           <div className="composer__attempts-head">
-            <p>恢复后可检查或重试，不会自动发送。</p>
+            <p>
+              恢复后可检查或重试，不会自动发送；删除仅清理本机记录，不撤回 NAS 内容或取消后台传输。
+            </p>
             <button
               type="button"
               className="button button--quiet button--sm"
@@ -241,7 +243,7 @@ export function Composer() {
         <div className="composer__status">
           <InlineStatus>
             <span>{notice}</span>
-            {notice === "已保存在本机，等待发送" && canOpenNativeTransfers() && (
+            {draft.restoredFromNative && canOpenNativeTransfers() && (
               <button
                 type="button"
                 className="button button--secondary button--sm"

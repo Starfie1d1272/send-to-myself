@@ -6,6 +6,7 @@ export interface ComposerDraft {
   files: File[];
   dedupeKey?: string;
   webSendAttempted?: boolean;
+  restoredFromNative?: boolean;
 }
 
 const DB = "send-to-myself-drafts";
@@ -111,21 +112,31 @@ export interface PendingAttempt {
   native: boolean;
 }
 function fromStored(saved: StoredDraft | undefined): ComposerDraft {
-  return saved
-    ? {
-        content: saved.content,
-        detectionContext: saved.detectionContext,
-        webSendAttempted: saved.webSendAttempted ?? !!saved.dedupeKey,
-        ...(saved.dedupeKey ? { dedupeKey: saved.dedupeKey } : {}),
-        files: saved.files.map(
-          (file) =>
-            new File([file.blob], file.name, {
-              type: file.blob.type,
-              lastModified: file.lastModified,
-            }),
-        ),
-      }
-    : { content: "", files: [] };
+  if (!saved) return { content: "", files: [] };
+  const files = saved.files.map(
+    (file) =>
+      new File([file.blob], file.name, {
+        type: file.blob.type,
+        lastModified: file.lastModified,
+      }),
+  );
+  if (saved.nativeHandoffPending) {
+    return {
+      content: saved.content,
+      detectionContext: saved.detectionContext,
+      dedupeKey: newDedupeKey(),
+      webSendAttempted: false,
+      restoredFromNative: true,
+      files,
+    };
+  }
+  return {
+    content: saved.content,
+    detectionContext: saved.detectionContext,
+    webSendAttempted: !!saved.webSendAttempted,
+    ...(saved.dedupeKey ? { dedupeKey: saved.dedupeKey } : {}),
+    files,
+  };
 }
 
 /** Lists only unconfirmed attempts; reading this list never dispatches them. */
