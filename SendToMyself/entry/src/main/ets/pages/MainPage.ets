@@ -7,6 +7,8 @@ import { processQueue, queueStatus } from '../common/QueueService';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { DOMAIN, TAG } from '../common/Constants';
 import { common } from '@kit.AbilityKit';
+import { picker } from '@kit.CoreFileKit';
+import { photoAccessHelper } from '@kit.MediaLibraryKit';
 import { requestAttachmentAction } from '../common/NativeDownloads';
 import { promptAction } from '@kit.ArkUI';
 import { NativeBridge, bridgePermission } from '../common/NativeBridge';
@@ -60,9 +62,7 @@ struct MainPage {
       { title: '传输任务', action: () => { this.getUIContext().getRouter().pushUrl({ url: 'pages/TransfersPage' }); } },
       { title: '连接设置', action: () => { this.openConnectionSettings().catch(() => { promptAction.showToast({ message: '无法打开连接设置，请重试' }); }); } }
     ] });
-  }, (source: ConnectionSession) => this.beginReauthenticate(source), (source: ConnectionSession) => this.logoutConnection(source), async () => {
-    await this.getUIContext().getRouter().pushUrl({ url: 'pages/UploadPage' });
-  });
+  }, (source: ConnectionSession) => this.beginReauthenticate(source), (source: ConnectionSession) => this.logoutConnection(source));
 
   private async openConnectionSettings(): Promise<void> {
     if (this.busy) throw new Error('AUTH_BUSY');
@@ -359,8 +359,53 @@ struct MainPage {
               .onControllerAttached(() => {
                 try {
                   this.controller.registerJavaScriptProxy(this.nativeBridge, 'stmNative', [],
-                    ['shareAttachment', 'saveAttachment', 'openTools', 'openTransfers', 'openUpload', 'getUploadReceipt', 'reauthenticate', 'logout'], bridgePermission(this.activeOrigin));
+                    ['shareAttachment', 'saveAttachment', 'openTools', 'openTransfers', 'reauthenticate', 'logout'], bridgePermission(this.activeOrigin));
                 } catch (_error) { promptAction.showToast({ message: '原生分享入口暂不可用，请重新打开应用' }); }
+              })
+              .onShowFileSelector((event): boolean => {
+                if (!event) return false;
+                const max = event.fileSelector.getMode() === FileSelectorMode.FileOpenMultipleMode ? 20 : 1;
+                let settled = false;
+                const finish = (uris: string[]): void => {
+                  if (settled) return;
+                  settled = true;
+                  event.result.handleFileList(uris);
+                };
+                try {
+                  this.getUIContext().showActionSheet({
+                    title: '添加附件',
+                    message: '',
+                    sheets: [
+                      {
+                        title: '从相册选择',
+                        action: (): void => {
+                          try {
+                            const opts = new photoAccessHelper.PhotoSelectOptions();
+                            opts.MIMEType = photoAccessHelper.PhotoViewMIMETypes.IMAGE_VIDEO_TYPE;
+                            opts.maxSelectNumber = max;
+                            new photoAccessHelper.PhotoViewPicker().select(opts)
+                              .then((res): void => { finish(res.photoUris); })
+                              .catch((): void => { finish([]); });
+                          } catch (_error) { finish([]); }
+                        }
+                      },
+                      {
+                        title: '从文件管理选择',
+                        action: (): void => {
+                          try {
+                            const opts = new picker.DocumentSelectOptions();
+                            opts.maxSelectNumber = max;
+                            new picker.DocumentViewPicker(this.context).select(opts)
+                              .then((uris): void => { finish(uris); })
+                              .catch((): void => { finish([]); });
+                          } catch (_error) { finish([]); }
+                        }
+                      }
+                    ],
+                    cancel: (): void => { finish([]); }
+                  });
+                } catch (_error) { finish([]); }
+                return true;
               })
               .onContextMenuShow((event) => {
                 if (!event || event.param.getMediaType() !== ContextMenuMediaType.Image) return false;

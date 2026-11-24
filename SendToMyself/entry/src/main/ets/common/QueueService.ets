@@ -38,30 +38,19 @@ export interface QueueRow {
 export interface QueueStatus { count: number; error: string }
 let processing: Promise<void> | undefined = undefined;
 
-interface WebReceipt { serverOrigin: string; dedupeKey: string; acceptedAt: number }
-interface QueueEnvelope { items: QueueItemData[]; webReceipts: WebReceipt[] }
+interface LegacyQueueEnvelope { items?: QueueItemData[] }
 export type EnqueueResult = 'accepted' | 'not_accepted' | 'unknown';
 
-async function loadEnvelope(context: common.Context): Promise<QueueEnvelope> {
+async function loadQueue(context: common.Context): Promise<QueueItemData[]> {
   await preferences.removePreferencesFromCache(context, PREFS_NAME_QUEUE);
   const prefs = await preferences.getPreferences(context, PREFS_NAME_QUEUE);
-  const value = JSON.parse(await prefs.get(PREFS_KEY_QUEUE, '[]') as string) as QueueEnvelope | QueueItemData[];
-  if (Array.isArray(value)) return { items: value as QueueItemData[], webReceipts: [] };
-  const envelope = value as QueueEnvelope;
-  return { items: envelope.items, webReceipts: envelope.webReceipts ?? [] };
-}
-async function loadQueue(context: common.Context): Promise<QueueItemData[]> {
-  return (await loadEnvelope(context)).items;
-}
-async function saveEnvelope(context: common.Context, envelope: QueueEnvelope): Promise<void> {
-  const prefs = await preferences.getPreferences(context, PREFS_NAME_QUEUE);
-  await prefs.put(PREFS_KEY_QUEUE, JSON.stringify(envelope));
-  await prefs.flush();
+  const value = JSON.parse(await prefs.get(PREFS_KEY_QUEUE, '[]') as string) as LegacyQueueEnvelope | QueueItemData[];
+  return Array.isArray(value) ? value : (value.items ?? []);
 }
 async function saveQueue(context: common.Context, items: QueueItemData[]): Promise<void> {
-  const envelope = await loadEnvelope(context);
-  envelope.items = items;
-  await saveEnvelope(context, envelope);
+  const prefs = await preferences.getPreferences(context, PREFS_NAME_QUEUE);
+  await prefs.put(PREFS_KEY_QUEUE, JSON.stringify(items));
+  await prefs.flush();
 }
 async function readQueue(context: common.Context): Promise<QueueItemData[]> {
   return withTransferLock(context, 'queue', () => loadQueue(context));
@@ -86,34 +75,27 @@ async function finishItem(context: common.Context, item: QueueItemData): Promise
   cleanSharedFiles(filesOf(item));
   if (item.agentId) { try { await removeTask(item.agentId); } catch (_error) {} }
 }
-async function persistEnqueue(context: common.Context, key: string, kind: 'text' | 'upload',
-  content?: string, files?: SharedFileData[], targetOrigin?: string, web: boolean = false, detectionContext?: DetectionContext, expected?: ConnectionSession): Promise<EnqueueResult> {
+export async function enqueue(context: common.Context, key: string, kind: 'text' | 'upload',
+  content?: string, files?: SharedFileData[], targetOrigin?: string, detectionContext?: DetectionContext): Promise<EnqueueResult> {
   let current: ConnectionSession | null;
   try { current = await readConnection(context); } catch (_error) { return 'not_accepted'; }
-  if (!current || !key || key.length > 64 || (targetOrigin && current.origin !== targetOrigin) ||
-    (expected && (current.origin !== expected.origin || current.revision !== expected.revision))) return 'not_accepted';
+  if (!current || !key || key.length > 64 || (targetOrigin && current.origin !== targetOrigin)) return 'not_accepted';
   const server = current.origin;
   let writeStarted = false;
   try {
     return await withTransferLock<EnqueueResult>(context, 'queue', async () => {
-      let envelope = await loadEnvelope(context);
-      if (expected) { try { await assertCurrentConnection(context, expected); } catch (_error) { return 'not_accepted'; } }
-      const existing = envelope.items.find((item: QueueItemData) => item.dedupeKey === key);
+      let items = await loadQueue(context);
+      const existing = items.find((item: QueueItemData) => item.dedupeKey === key);
       if (existing && (!existing.serverUrl || normalizeOrigin(existing.serverUrl) !== server)) return 'not_accepted';
-      if (!existing) envelope.items.push({ dedupeKey: key, kind: kind, content: content, files: files,
+      if (!existing) items.push({ dedupeKey: key, kind: kind, content: content, files: files,
         serverUrl: server, detectionContext: detectionContext, createdAt: Date.now() });
-      if (web && !envelope.webReceipts.some((receipt: WebReceipt) => receipt.serverOrigin === server && receipt.dedupeKey === key)) {
-        envelope.webReceipts.push({ serverOrigin: server, dedupeKey: key, acceptedAt: Date.now() });
-        if (envelope.webReceipts.length > 64) envelope.webReceipts.shift();
-      }
-      try { writeStarted = true; await saveEnvelope(context, envelope); }
+      try { writeStarted = true; await saveQueue(context, items); }
       catch (_error) {
         try {
-          envelope = await loadEnvelope(context);
-          const confirmed = envelope.items.some((item: QueueItemData) => item.dedupeKey === key &&
+          items = await loadQueue(context);
+          const confirmed = items.some((item: QueueItemData) => item.dedupeKey === key &&
             !!item.serverUrl && normalizeOrigin(item.serverUrl) === server);
-          const receipt = !web || envelope.webReceipts.some((entry: WebReceipt) => entry.dedupeKey === key && entry.serverOrigin === server);
-          if (!confirmed || !receipt) return 'unknown';
+          if (!confirmed) return 'unknown';
         } catch (_readError) { return 'unknown'; }
       }
       if (existing && files) {
@@ -123,22 +105,6 @@ async function persistEnqueue(context: common.Context, key: string, kind: 'text'
       return 'accepted';
     });
   } catch (_error) { return writeStarted ? 'unknown' : 'not_accepted'; }
-}
-export async function enqueue(context: common.Context, key: string, kind: 'text' | 'upload',
-  content?: string, files?: SharedFileData[], targetOrigin?: string, detectionContext?: DetectionContext): Promise<EnqueueResult> {
-  return persistEnqueue(context, key, kind, content, files, targetOrigin, false, detectionContext);
-}
-export async function enqueueWebUpload(context: common.Context, key: string, content: string,
-  files: SharedFileData[], targetOrigin: string, detectionContext?: DetectionContext, expected?: ConnectionSession): Promise<EnqueueResult> {
-  return persistEnqueue(context, key, 'upload', content, files, targetOrigin, true, detectionContext, expected);
-}
-export async function getUploadReceipt(context: common.Context, key: string, origin: string): Promise<boolean> {
-  return withTransferLock(context, 'queue', async () => {
-    const envelope = await loadEnvelope(context);
-    return envelope.items.some((item: QueueItemData) => item.dedupeKey === key && !!item.serverUrl &&
-      normalizeOrigin(item.serverUrl) === origin) || envelope.webReceipts.some((receipt: WebReceipt) =>
-      receipt.dedupeKey === key && receipt.serverOrigin === origin);
-  });
 }
 export async function isQueued(context: common.Context, key: string): Promise<boolean> {
   return (await readQueue(context)).some((item: QueueItemData) => item.dedupeKey === key);

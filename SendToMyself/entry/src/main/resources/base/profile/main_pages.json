@@ -2,7 +2,6 @@
   "src": [
     "pages/MainPage",
     "pages/SharePage",
-    "pages/TransfersPage",
-    "pages/UploadPage"
+    "pages/TransfersPage"
   ]
 }

@@ -10,10 +10,6 @@ export function Composer() {
     draft,
     change,
     send,
-    addNative,
-    checkReceipt,
-    webFallback,
-    newRequired,
     canSend,
     overLimit,
     ready,
@@ -30,6 +26,8 @@ export function Composer() {
     refreshAttempts,
     restoreAttempt,
     restoreShared,
+    removeAttempt,
+    clearAttempts,
     sendAsNew,
     stop,
   } = useComposer();
@@ -177,13 +175,25 @@ export function Composer() {
           }}
         >
           <summary>待确认发送（{pendingAttempts.length}）</summary>
-          <p>恢复后可检查或重试，不会自动发送。</p>
+          <div className="composer__attempts-head">
+            <p>
+              恢复后可检查或重试，不会自动发送；删除仅清理本机记录，不撤回 NAS 内容或取消后台传输。
+            </p>
+            <button
+              type="button"
+              className="button button--quiet button--sm"
+              disabled={pending || !ready}
+              onClick={() => void clearAttempts()}
+            >
+              清空全部
+            </button>
+          </div>
           <ul>
             {pendingAttempts.map((item, index) => (
               <li key={item.key}>
                 <button
                   type="button"
-                  className="button button--secondary button--sm"
+                  className="button button--secondary button--sm composer__attempt-restore"
                   disabled={pending || !ready}
                   onClick={() => void restoreAttempt(item.key)}
                 >
@@ -191,6 +201,15 @@ export function Composer() {
                   {item.capturedAt ? new Date(item.capturedAt).toLocaleString() : "时间未知"} ·{" "}
                   {item.hasText ? "文字" : "无文字"} · {item.fileCount} 个附件
                   {item.native ? " · 原生交接" : ""}
+                </button>
+                <button
+                  type="button"
+                  className="button button--danger button--sm"
+                  disabled={pending || !ready}
+                  aria-label={`删除第 ${index + 1} 笔待确认发送`}
+                  onClick={() => void removeAttempt(item.key)}
+                >
+                  删除
                 </button>
               </li>
             ))}
@@ -201,7 +220,7 @@ export function Composer() {
         <div className="composer__status">
           <InlineStatus tone="error">
             <span>{error}</span>
-            {(deleted || newRequired || draft.nativeHandoffPending || draft.webSendAttempted) && (
+            {(deleted || draft.webSendAttempted) && (
               <>
                 <span>
                   {deleted
@@ -217,29 +236,6 @@ export function Composer() {
                 </button>
               </>
             )}
-            {draft.nativeHandoffPending && (
-              <button
-                type="button"
-                className="button button--secondary button--sm"
-                onClick={() => void checkReceipt()}
-              >
-                重新检查
-              </button>
-            )}
-          </InlineStatus>
-        </div>
-      )}
-      {webFallback && (
-        <div className="composer__status">
-          <InlineStatus>
-            <button
-              type="button"
-              className="button button--secondary button--sm"
-              onClick={() => fileInput.current?.click()}
-            >
-              改用当前页面上传
-            </button>
-            {files.length > 0 && <span>此批附件将在当前页面发送，请保持页面开启</span>}
           </InlineStatus>
         </div>
       )}
@@ -247,7 +243,7 @@ export function Composer() {
         <div className="composer__status">
           <InlineStatus>
             <span>{notice}</span>
-            {notice === "已保存在本机，等待发送" && canOpenNativeTransfers() && (
+            {draft.restoredFromNative && canOpenNativeTransfers() && (
               <button
                 type="button"
                 className="button button--secondary button--sm"
@@ -293,11 +289,7 @@ export function Composer() {
             type="button"
             disabled={pending || !ready}
             className="attach-btn"
-            onClick={() => {
-              void addNative().then((handled) => {
-                if (!handled) fileInput.current?.click();
-              });
-            }}
+            onClick={() => fileInput.current?.click()}
             title="添加图片或文件"
             aria-label="添加图片或文件"
           >

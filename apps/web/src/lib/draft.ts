@@ -6,7 +6,7 @@ export interface ComposerDraft {
   files: File[];
   dedupeKey?: string;
   webSendAttempted?: boolean;
-  nativeHandoffPending?: true;
+  restoredFromNative?: boolean;
 }
 
 const DB = "send-to-myself-drafts";
@@ -112,22 +112,31 @@ export interface PendingAttempt {
   native: boolean;
 }
 function fromStored(saved: StoredDraft | undefined): ComposerDraft {
-  return saved
-    ? {
-        content: saved.content,
-        detectionContext: saved.detectionContext,
-        nativeHandoffPending: saved.nativeHandoffPending,
-        webSendAttempted: saved.webSendAttempted ?? !!saved.dedupeKey,
-        ...(saved.dedupeKey ? { dedupeKey: saved.dedupeKey } : {}),
-        files: saved.files.map(
-          (file) =>
-            new File([file.blob], file.name, {
-              type: file.blob.type,
-              lastModified: file.lastModified,
-            }),
-        ),
-      }
-    : { content: "", files: [] };
+  if (!saved) return { content: "", files: [] };
+  const files = saved.files.map(
+    (file) =>
+      new File([file.blob], file.name, {
+        type: file.blob.type,
+        lastModified: file.lastModified,
+      }),
+  );
+  if (saved.nativeHandoffPending) {
+    return {
+      content: saved.content,
+      detectionContext: saved.detectionContext,
+      dedupeKey: newDedupeKey(),
+      webSendAttempted: false,
+      restoredFromNative: true,
+      files,
+    };
+  }
+  return {
+    content: saved.content,
+    detectionContext: saved.detectionContext,
+    webSendAttempted: !!saved.webSendAttempted,
+    ...(saved.dedupeKey ? { dedupeKey: saved.dedupeKey } : {}),
+    files,
+  };
 }
 
 /** Lists only unconfirmed attempts; reading this list never dispatches them. */
@@ -239,7 +248,6 @@ function stored(draft: ComposerDraft): StoredDraft {
     detectionContext: draft.detectionContext,
     dedupeKey: draft.dedupeKey,
     webSendAttempted: draft.webSendAttempted,
-    nativeHandoffPending: draft.nativeHandoffPending,
     files: draft.files.map((file) => ({
       blob: file,
       name: file.name,
@@ -253,12 +261,7 @@ function writeDraft(draft: ComposerDraft, expectedGeneration?: number): Promise<
     transaction<void>((store, done) => {
       if (expectedGeneration !== undefined && (frozen || generation !== expectedGeneration))
         throw new Error("草稿写入已暂停");
-      if (
-        !snapshot.content &&
-        !snapshot.files.length &&
-        !snapshot.nativeHandoffPending &&
-        !snapshot.detectionContext
-      )
+      if (!snapshot.content && !snapshot.files.length && !snapshot.detectionContext)
         store.delete(KEY);
       else store.put(snapshot, KEY);
       done();
@@ -449,35 +452,35 @@ export function clearDraftIfKey(key: string, expectedGeneration?: number): Promi
     if (permitted) clearAttemptPointer(key);
   });
 }
-export function clearNativeHandoffIfKey(key: string, expectedGeneration: number): Promise<void> {
+export function deletePendingAttempt(key: string): Promise<void> {
   return enqueue(() =>
     transaction<void>((store, done) => {
-      const attempt = store.get(attemptKey(key));
-      attempt.onsuccess = () => {
-        const saved = attempt.result as StoredDraft | undefined;
-        if (!frozen && generation === expectedGeneration && saved?.nativeHandoffPending) {
-          delete saved.nativeHandoffPending;
-          store.put(saved, attemptKey(key));
-        }
-      };
+      store.delete(attemptKey(key));
       const request = store.get(KEY);
       request.onsuccess = () => {
         const saved = request.result as StoredDraft | undefined;
-        if (
-          !frozen &&
-          generation === expectedGeneration &&
-          saved?.dedupeKey === key &&
-          saved.nativeHandoffPending
-        ) {
-          delete saved.nativeHandoffPending;
-          if (!saved.content && saved.files.length === 0 && !saved.detectionContext)
-            store.delete(KEY);
-          else store.put(saved, KEY);
+        if (saved?.dedupeKey === key && (saved.webSendAttempted || saved.nativeHandoffPending)) {
+          store.delete(KEY);
         }
         done();
       };
     }),
-  );
+  ).then(() => clearAttemptPointer(key));
+}
+export function clearPendingAttempts(): Promise<void> {
+  return enqueue(() =>
+    transaction<void>((store, done) => {
+      store.delete(IDBKeyRange.bound("attempt:", "attempt:\uffff"));
+      const request = store.get(KEY);
+      request.onsuccess = () => {
+        const saved = request.result as StoredDraft | undefined;
+        if (saved && (saved.webSendAttempted || saved.nativeHandoffPending)) {
+          store.delete(KEY);
+        }
+        done();
+      };
+    }),
+  ).then(() => disownAttempt());
 }
 export async function loadEditDraft(id: string): Promise<EditDraft | undefined> {
   await writes;

@@ -435,3 +435,27 @@ test("Raycast and desktop share records, attachments, retries, pagination and to
   await assert.rejects(client.list(), /吊销/);
   await assert.rejects(client.attachment(fileItem.attachments![0]!.id), /吊销/);
 });
+
+test("static webDist serves HTML and service worker with no-cache and hashed assets immutable", async () => {
+  const webRoot = join(root, "web-dist");
+  await mkdir(join(webRoot, "assets"), { recursive: true });
+  await writeFile(join(webRoot, "index.html"), "<!doctype html><html></html>");
+  await writeFile(join(webRoot, "sw.js"), "self.skipWaiting();");
+  await writeFile(join(webRoot, "assets/index-abc.js"), "console.log(1);");
+  const webApp = createApp(webRoot);
+  const indexRes = await webApp.request("/");
+  assert.equal(indexRes.status, 200);
+  assert.equal(indexRes.headers.get("cache-control"), "no-cache");
+  const swRes = await webApp.request("/sw.js");
+  assert.equal(swRes.status, 200);
+  assert.equal(swRes.headers.get("cache-control"), "no-cache");
+  const spaRes = await webApp.request("/missing-route");
+  assert.equal(spaRes.status, 200);
+  assert.equal(spaRes.headers.get("cache-control"), "no-cache");
+  const missingAssetRes = await webApp.request("/assets/missing.js");
+  assert.equal(missingAssetRes.status, 200);
+  assert.equal(missingAssetRes.headers.get("cache-control"), "no-cache");
+  const assetRes = await webApp.request("/assets/index-abc.js");
+  assert.equal(assetRes.status, 200);
+  assert.equal(assetRes.headers.get("cache-control"), "public, max-age=31536000, immutable");
+});

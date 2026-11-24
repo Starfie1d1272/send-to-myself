@@ -18,10 +18,9 @@
 
 ```text
 EntryAbility / MainPage
-  ├─ ArkWeb → 时间线、搜索、普通网页输入
-  ├─ UploadPage → 文件选择、持久化、后台上传
-  ├─ TransfersPage → 逐条队列、进度、下载完成后的分享/保存
-  └─ NativeBridge → 受来源限制的网页附件操作
+  ├─ ArkWeb (.onShowFileSelector) → 时间线、搜索、网页输入及原生相册/文件选择器
+  ├─ TransfersPage → 系统分享队列、进度、下载完成后的分享/保存
+  └─ NativeBridge → 受来源限制的网页附件下载/分享与会话桥
 
 ShareExtAbility.onSessionCreate
   └─ ShareHandler → ShareFiles → QueueService → request.agent / HTTP
@@ -153,7 +152,7 @@ Base URL = 用户填的服务器地址，例如 `https://stm.example.com`。所�
 
 ## 7. 持久队列与后台附件传输
 
-文本分享先入队再发送短 HTTP 请求；附件分享或原生文件选择通过 `request.agent` 的后台任务上传。`QueueService.ets` 保存内容、文件元数据、服务器、去重键和系统任务 ID，并兼容旧 `fileSandboxPaths`。
+文本分享先入队再发送短 HTTP 请求；系统分享接收的附件通过 `request.agent` 的后台任务上传。应用内点击附件统一由网页 `<input type="file">` 经 ArkWeb `.onShowFileSelector` 调起原生相册或文件选择器回填，走标准网页上传与草稿恢复。`QueueService.ets` 保存内容、文件元数据、服务器、去重键和系统任务 ID，并兼容旧 `fileSandboxPaths` 与旧版队列信封格式。
 
 存储更新与逐条派发/删除均有跨进程文件锁。任务 ID 落盘后才开始传输；应用重启重新查询系统状态。成功确认后清理发送副本，失败保留；取消意图先持久化，系统任务移除成功后才删除文件。相同连接 revision 的暂停任务可继续；revision 变化后先移除旧任务，再以同一去重键和当前凭据重建。
 
@@ -169,7 +168,7 @@ Base URL = 用户填的服务器地址，例如 `https://stm.example.com`。所�
 - TLS 证书错误取消加载，修正证书或服务器地址后重试，不允许无条件放行。
 - 登录保留服务端 Set-Cookie 属性并等待持久化；宿主重登与退出使用 `stmNative` 的对应方法。Web 联动由 #44 接入。
 - 处理返回键：WebView 能后退则后退，否则退出。
-- 普通网页上传保留 WebView 路径；原生后台发送入口与附件分享/保存使用系统传输代理。新桥接限定当前服务器来源，原生构造附件请求地址。
+- 应用内文件选择通过 `.onShowFileSelector` 调起原生选择器并由网页直接上传；系统分享传入与时间线附件保存/分享使用系统传输代理。新桥接限定当前服务器来源，原生构造附件请求地址。
 - 深色、大字体与键盘适配需覆盖网页及原生页面，真机状态以设备审计记录为准。
 
 ---

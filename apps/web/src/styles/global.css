@@ -325,8 +325,15 @@ body {
   color: var(--ink-soft);
   width: fit-content;
 }
-.composer__attempts p {
+.composer__attempts-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   margin: 8px 0;
+}
+.composer__attempts-head p {
+  margin: 0;
   font-size: 13px;
   color: var(--ink-soft);
 }
@@ -337,8 +344,14 @@ body {
   display: grid;
   gap: 6px;
 }
-.composer__attempts li button {
-  width: 100%;
+.composer__attempts li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.composer__attempt-restore {
+  flex: 1;
+  min-width: 0;
   justify-content: flex-start;
   text-align: left;
   white-space: normal;
