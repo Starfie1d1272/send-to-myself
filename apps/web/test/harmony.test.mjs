@@ -866,7 +866,7 @@ test("download removal preserves its file until system cancellation succeeds", a
   assert.equal(existsSync(task.config.saveas), false);
 });
 
-test("bridge allowlist names the configured scheme, host, and effective port", (t) => {
+test("bridge allowlist keeps explicit ports and leaves default ports empty for ArkWeb", (t) => {
   const f = fixture(t);
   const bridge = f.load("./NativeBridge");
   const permission = JSON.parse(bridge.bridgePermission("http://192.168.144.1:8799"));
@@ -876,7 +876,17 @@ test("bridge allowlist names the configured scheme, host, and effective port", (
   assert.equal(
     JSON.parse(bridge.bridgePermission("https://example.invalid")).javascriptProxyPermission
       .urlPermissionList[0].port,
-    "443",
+    "",
+  );
+  assert.equal(
+    JSON.parse(bridge.bridgePermission("https://example.invalid:443")).javascriptProxyPermission
+      .urlPermissionList[0].port,
+    "",
+  );
+  assert.equal(
+    JSON.parse(bridge.bridgePermission("http://example.invalid")).javascriptProxyPermission
+      .urlPermissionList[0].port,
+    "",
   );
   assert.throws(() => bridge.bridgePermission("file:///etc/passwd"), /无效/);
   assert.throws(() => bridge.bridgePermission("https://user:password@example.invalid"), /无效/);

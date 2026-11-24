@@ -1,16 +1,17 @@
 import { PAPER, CARD_HI, INK, INK_SOFT, ACCENT, ERROR, SUCCESS } from '../common/Theme';
 import { common, UIExtensionContentSession } from '@kit.AbilityKit';
 
-@Entry
+@Entry({ useSharedStorage: true })
 @Component
 struct SharePage {
   @State statusText: string = '发送中…';
   @LocalStorageLink('shareResult') @Watch('onResultChange') result: string = '';
   @LocalStorageLink('shareError') @Watch('onErrorChange') error: string = '';
-  @LocalStorageLink('shareMessage') message: string = '';
+  @LocalStorageLink('shareMessage') @Watch('onMessageChange') message: string = '';
   @State statusColor: ResourceColor = INK_SOFT;
   @State opening: boolean = false;
   private session: UIExtensionContentSession | undefined = undefined;
+  private closeTimer: number = -1;
 
   aboutToAppear(): void {
     let storage = this.getUIContext().getSharedLocalStorage();
@@ -24,7 +25,21 @@ struct SharePage {
     else if (this.error) this.onErrorChange();
   }
 
+  aboutToDisappear(): void {
+    if (this.closeTimer >= 0) {
+      clearTimeout(this.closeTimer);
+      this.closeTimer = -1;
+    }
+  }
+
   onResultChange(): void { this.handleResult(this.result); }
+  onMessageChange(): void {
+    if (this.result === 'queued') {
+      this.statusText = this.message || '已保存在本机，打开应用或恢复网络后重试';
+    } else if (this.result === 'unknown') {
+      this.statusText = this.message || '发送失败';
+    }
+  }
   onErrorChange(): void {
     if (!this.error) return;
     this.statusText = '失败：' + this.error;
@@ -66,7 +81,9 @@ struct SharePage {
   }
 
   autoClose(delayMs: number): void {
-    setTimeout(() => {
+    if (this.closeTimer >= 0) clearTimeout(this.closeTimer);
+    this.closeTimer = setTimeout(() => {
+      this.closeTimer = -1;
       if (this.session) {
         this.session.terminateSelf();
       }
