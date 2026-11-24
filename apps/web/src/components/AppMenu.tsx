@@ -13,6 +13,7 @@ export type AppMenuProps = {
 export function AppMenu(props: AppMenuProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
     const click = (e: MouseEvent) => {
@@ -31,8 +32,24 @@ export function AppMenu(props: AppMenuProps) {
       document.removeEventListener("keydown", key);
     };
   }, [open]);
+  const onMenuKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
+    const buttons = Array.from(
+      panelRef.current?.querySelectorAll<HTMLButtonElement>(
+        'button[role="menuitem"]:not(:disabled)',
+      ) ?? [],
+    );
+    if (!buttons.length) return;
+    e.preventDefault();
+    const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
+    if (e.key === "Home") buttons[0]!.focus();
+    else if (e.key === "End") buttons.at(-1)!.focus();
+    else if (e.key === "ArrowDown") buttons[(index + 1) % buttons.length]!.focus();
+    else buttons[(index - 1 + buttons.length) % buttons.length]!.focus();
+  };
   const item = (label: string, action: () => void, disabled = false) => (
     <button
+      type="button"
       role="menuitem"
       disabled={disabled}
       onClick={() => {
@@ -48,9 +65,10 @@ export function AppMenu(props: AppMenuProps) {
   return (
     <div ref={ref} className="app-menu">
       <button
+        type="button"
         className="icon-btn app-menu__trigger"
-        aria-label="更多"
-        title="更多"
+        aria-label="应用菜单"
+        title="应用菜单"
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen(!open)}
@@ -62,7 +80,7 @@ export function AppMenu(props: AppMenuProps) {
         </svg>
       </button>
       {open && (
-        <div role="menu" className="app-menu__panel">
+        <div ref={panelRef} role="menu" className="app-menu__panel" onKeyDown={onMenuKeyDown}>
           {item("连接手机 / 电脑", props.onOpenConnect)}
           {props.onOpenTransfers && item("传输任务", props.onOpenTransfers)}
           {item("服务器信息", props.onOpenServerInfo)}
@@ -75,7 +93,9 @@ export function AppMenu(props: AppMenuProps) {
               props.logoutPending,
             )}
           {oldNative && (
-            <small>当前应用后台任务需在原生传输页暂停；网页登录不能修复后台令牌。</small>
+            <small className="app-menu__note">
+              当前应用后台任务需在原生传输页暂停；网页登录不能修复后台令牌。
+            </small>
           )}
         </div>
       )}

@@ -42,7 +42,7 @@ export function Lightbox({
         }
       }}
     >
-      <button className="lightbox__close" onClick={onClose} aria-label="关闭">
+      <button type="button" className="lightbox__close" onClick={onClose} aria-label="关闭">
         <IconX width={22} height={22} />
       </button>
       <div className="lightbox__scroll" tabIndex={0} onClick={(e) => e.stopPropagation()}>

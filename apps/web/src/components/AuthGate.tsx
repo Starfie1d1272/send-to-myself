@@ -269,9 +269,17 @@ export function AuthGate({ children }: { children: ReactNode }) {
   if (!entered && !signedOut && auth.isLoading) return <div className="state">正在连接…</div>;
   if (!entered && !signedOut && auth.isError && !auth.data)
     return (
-      <div className="state">
-        <p>暂时无法连接 NAS，请检查网络或地址</p>
-        <button onClick={() => void auth.refetch()}>重试</button>
+      <div className="state" role="alert">
+        <p className="state__sub">暂时无法连接 NAS，请检查网络或地址</p>
+        <div className="state__actions">
+          <button
+            type="button"
+            className="button button--secondary"
+            onClick={() => void auth.refetch()}
+          >
+            重试
+          </button>
+        </div>
       </div>
     );
   const login = (
@@ -299,7 +307,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
             position: "fixed",
             inset: 0,
             zIndex: 10000,
-            background: "#f6f1e8",
+            background: "var(--paper)",
             overflow: "auto",
           }}
         >
@@ -310,14 +318,24 @@ export function AuthGate({ children }: { children: ReactNode }) {
               <div className="login__card">
                 <p>{error || "正在退出…"}</p>
                 {!pending && (
-                  <>
-                    <button onClick={() => void logout()}>重试退出</button>
+                  <div className="dialog-actions" style={{ justifyContent: "center" }}>
+                    <button
+                      type="button"
+                      className="button button--secondary"
+                      onClick={() => void logout()}
+                    >
+                      重试退出
+                    </button>
                     {getNativeBridge()?.openTools && (
-                      <button onClick={() => void getNativeBridge()?.openTools?.()}>
+                      <button
+                        type="button"
+                        className="button button--secondary"
+                        onClick={() => void getNativeBridge()?.openTools?.()}
+                      >
                         进入原生传输页面核对
                       </button>
                     )}
-                  </>
+                  </div>
                 )}
               </div>
             </main>

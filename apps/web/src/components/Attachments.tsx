@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { copyImage } from "../lib/clipboard";
 import { shareAttachment, saveAttachment, hasNativeDownload } from "../lib/share";
 import type { Attachment } from "@sendtomyself/shared";
@@ -6,57 +6,9 @@ import { attachmentDownloadUrl, attachmentRawUrl, attachmentThumbUrl } from "../
 import { formatSize } from "../lib/format";
 import { IconFile } from "./icons";
 import { Lightbox } from "./Lightbox";
+import { InlineStatus } from "./ui/InlineStatus";
 
 const isImage = (a: Attachment) => a.mimeType.startsWith("image/");
-
-function More({
-  disabled,
-  onShare,
-  label = "分享",
-}: {
-  disabled: boolean;
-  onShare: () => Promise<boolean>;
-  label?: string;
-}) {
-  const ref = useRef<HTMLDetailsElement>(null);
-  useEffect(() => {
-    const onPointer = (event: PointerEvent) => {
-      if (ref.current?.open && !ref.current.contains(event.target as Node))
-        ref.current.open = false;
-    };
-    document.addEventListener("pointerdown", onPointer);
-    return () => document.removeEventListener("pointerdown", onPointer);
-  }, []);
-  return (
-    <details
-      ref={ref}
-      onKeyDown={(event) => {
-        if (event.key === "Escape" && ref.current?.open) {
-          event.stopPropagation();
-          ref.current.open = false;
-          ref.current.querySelector("summary")?.focus();
-        }
-      }}
-    >
-      <summary>更多</summary>
-      <button
-        className="button button--quiet"
-        disabled={disabled}
-        onClick={async () => {
-          if (await onShare()) {
-            const details = ref.current;
-            if (details?.isConnected && details.open) {
-              details.open = false;
-              details.querySelector("summary")?.focus();
-            }
-          }
-        }}
-      >
-        {label}
-      </button>
-    </details>
-  );
-}
 
 export function Attachments({ items }: { items: Attachment[] }) {
   // 当前在看大图的原图 URL；null=未打开。单 WebView 壳里 target="_blank" 打不开，故用壳内弹层。
@@ -102,19 +54,16 @@ export function Attachments({ items }: { items: Attachment[] }) {
   if (items.length === 0) return null;
   const images = items.filter(isImage);
   const files = items.filter((a) => !isImage(a));
+  const compactImageActions = images.length > 1;
 
   return (
     <div className="att">
-      {notice && <p role="status">{notice}</p>}
-      {shareError && (
-        <p className="composer__error" role="alert">
-          {shareError}
-        </p>
-      )}
+      {notice && <InlineStatus tone="success">{notice}</InlineStatus>}
+      {shareError && <InlineStatus tone="error">{shareError}</InlineStatus>}
       {images.length > 0 && (
         <div className={`att__grid att__grid--${Math.min(images.length, 3)}`}>
           {images.map((a) => (
-            <div key={a.id}>
+            <div className="att__card" key={a.id}>
               <button
                 type="button"
                 className="att__img"
@@ -125,7 +74,10 @@ export function Attachments({ items }: { items: Attachment[] }) {
               </button>
               <div className="att__image-actions">
                 <button
-                  className="att__copy"
+                  type="button"
+                  className={`att__action${copied === a.id ? " att__action--done" : ""}`}
+                  aria-label={copied === a.id ? "已复制图片" : "复制图片"}
+                  title={copied === a.id ? "已复制图片" : "复制图片"}
                   onClick={async () => {
                     setShareError("");
                     setCopied(null);
@@ -133,13 +85,20 @@ export function Attachments({ items }: { items: Attachment[] }) {
                     else setShareError("图片复制失败，请更新桌面客户端或下载后使用。");
                   }}
                 >
-                  {copied === a.id ? "已复制图片" : "复制图片"}
+                  {copied === a.id
+                    ? compactImageActions
+                      ? "已复制"
+                      : "已复制图片"
+                    : compactImageActions
+                      ? "复制"
+                      : "复制图片"}
                 </button>
-                <More disabled={busyId !== null} onShare={() => share(a)} label="分享图片" />
                 <a
-                  className="att__copy"
+                  className="att__action"
                   href={attachmentDownloadUrl(a.id)}
                   download={a.filename}
+                  aria-label="保存图片"
+                  title="保存图片"
                   onClick={(event) => {
                     if (hasNativeDownload()) {
                       event.preventDefault();
@@ -147,8 +106,18 @@ export function Attachments({ items }: { items: Attachment[] }) {
                     }
                   }}
                 >
-                  保存图片
+                  {compactImageActions ? "保存" : "保存图片"}
                 </a>
+                <button
+                  type="button"
+                  className="att__action"
+                  disabled={busyId !== null}
+                  aria-label="分享图片"
+                  title="分享图片"
+                  onClick={() => void share(a)}
+                >
+                  {compactImageActions ? "分享" : "分享图片"}
+                </button>
               </div>
             </div>
           ))}
@@ -166,7 +135,7 @@ export function Attachments({ items }: { items: Attachment[] }) {
           </div>
           <div className="att__file-actions">
             <a
-              className="button button--quiet"
+              className="att__action"
               href={attachmentDownloadUrl(a.id)}
               title="下载"
               download={a.filename}
@@ -179,7 +148,14 @@ export function Attachments({ items }: { items: Attachment[] }) {
             >
               保存
             </a>
-            <More disabled={busyId !== null} onShare={() => share(a)} />
+            <button
+              type="button"
+              className="att__action"
+              disabled={busyId !== null}
+              onClick={() => void share(a)}
+            >
+              分享
+            </button>
           </div>
         </div>
       ))}

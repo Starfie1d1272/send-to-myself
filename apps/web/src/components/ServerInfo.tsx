@@ -21,7 +21,14 @@ export function ServerInfo({ onClose, status }: { onClose: () => void; status: R
     <Dialog onClose={onClose} labelledBy="info-title">
       <div className="device-dialog__header">
         <h2 id="info-title">服务器信息</h2>
-        <button onClick={onClose}>关闭</button>
+        <button
+          type="button"
+          className="button button--quiet button--sm"
+          onClick={onClose}
+          aria-label="关闭服务器信息"
+        >
+          关闭
+        </button>
       </div>
       <dl className="info-list">
         <div>
@@ -73,8 +80,12 @@ export function ServerInfo({ onClose, status }: { onClose: () => void; status: R
       {info.isLoading && <p>正在读取…</p>}
       {info.isError && (
         <InlineStatus tone="error">
-          读取失败{" "}
-          <button className="button" onClick={() => void info.refetch()}>
+          <span>读取失败</span>
+          <button
+            type="button"
+            className="button button--secondary button--sm"
+            onClick={() => void info.refetch()}
+          >
             重试
           </button>
         </InlineStatus>
