@@ -538,13 +538,13 @@ test("Harmony image shares persist file metadata before HTTP and recover after a
   writeFileSync(original, "original-bytes");
   f.state.records = [{ uri: original, utd: "general.png" }, { content: "说明" }];
   f.state.beforeStart = async (task) => {
-    assert.equal(JSON.parse(f.store.get("queue")).items[0].agentId, task.tid);
+    assert.equal(JSON.parse(f.store.get("queue"))[0].agentId, task.tid);
     throw new Error("offline");
   };
   const result = await share.handleShare({}, f.context);
   assert.equal(result.queued, true);
   assert.equal(result.needsLogin, false);
-  let item = JSON.parse(f.store.get("queue")).items[0];
+  let item = JSON.parse(f.store.get("queue"))[0];
   assert.equal(item.files[0].mimeType, "image/png");
   assert.equal(item.files[0].filename, "原图.png");
   assert.equal(item.files[0].path.startsWith(join(f.root, "shared-queue")), true);
@@ -621,7 +621,7 @@ test("background multipart keeps all files in one request and persists its ID be
   const key = randomUUID();
   await queue.enqueue(f.context, key, "upload", "中文说明", files);
   f.state.beforeStart = async (task) =>
-    assert.equal(JSON.parse(f.store.get("queue")).items[0].agentId, task.tid);
+    assert.equal(JSON.parse(f.store.get("queue"))[0].agentId, task.tid);
   const otherProcess = f.newProcess()("./QueueService");
   await Promise.all([queue.processQueue(f.context), otherProcess.processQueue(f.context)]);
   assert.equal(f.tasks.size, 1);
@@ -681,7 +681,7 @@ test("cancel failure retains queue and files, restart finishes the recorded canc
   await queue.processQueue(f.context);
   f.state.agentRemoveError = new Error("service unavailable");
   await assert.rejects(queue.removeQueueItem(f.context, "cancel"), /service unavailable/);
-  assert.equal(JSON.parse(f.store.get("queue")).items[0].cancelRequested, true);
+  assert.equal(JSON.parse(f.store.get("queue"))[0].cancelRequested, true);
   assert.equal(existsSync(path), true);
   f.state.agentRemoveError = undefined;
   await f.newProcess()("./QueueService").reconcileQueue(f.context);
@@ -722,12 +722,12 @@ test("failed persistence never starts an untracked upload or deletes its source"
     { path, filename: "retain.bin", mimeType: "application/octet-stream" },
   ]);
   f.state.beforePut = async (key, value) => {
-    if (key === "queue" && JSON.parse(value).items[0]?.agentId) throw new Error("disk full");
+    if (key === "queue" && JSON.parse(value)[0]?.agentId) throw new Error("disk full");
   };
   await assert.rejects(queue.processQueue(f.context), /disk full/);
   assert.equal(f.agentCalls.filter(([action]) => action === "start").length, 0);
   assert.equal(f.tasks.size, 0);
-  assert.equal(JSON.parse(f.store.get("queue")).items[0].agentId, undefined);
+  assert.equal(JSON.parse(f.store.get("queue"))[0].agentId, undefined);
   assert.equal(existsSync(path), true);
 });
 
@@ -972,4 +972,27 @@ test("native tools menu requires the configured origin and foreground app", asyn
   foreground = false;
   await assert.rejects(bridge.openTools(), /首页/);
   assert.equal(opened, 1);
+});
+
+test("queue reads legacy envelope format when upgrading from prior version", async (t) => {
+  const f = fixture(t);
+  f.store.set(
+    "queue",
+    JSON.stringify({
+      items: [
+        {
+          dedupeKey: "old-1",
+          kind: "text",
+          content: "legacy",
+          serverUrl: f.state.server,
+          createdAt: 1,
+        },
+      ],
+      webReceipts: [{ serverOrigin: f.state.server, dedupeKey: "r1", acceptedAt: 1 }],
+    }),
+  );
+  const queue = f.load("./QueueService");
+  const rows = await queue.listQueue(f.context, false);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].key, "old-1");
 });

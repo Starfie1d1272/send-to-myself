@@ -18,10 +18,9 @@
 
 ```text
 EntryAbility / MainPage
-  ├─ ArkWeb → 时间线、搜索、普通网页输入
-  ├─ UploadPage → 文件选择、持久化、后台上传
-  ├─ TransfersPage → 逐条队列、进度、下载完成后的分享/保存
-  └─ NativeBridge → 受来源限制的网页附件操作
+  ├─ ArkWeb (.onShowFileSelector) → 时间线、搜索、网页输入及原生相册/文件选择器
+  ├─ TransfersPage → 系统分享队列、进度、下载完成后的分享/保存
+  └─ NativeBridge → 受来源限制的网页附件下载/分享与会话桥
 
 ShareExtAbility.onSessionCreate
   └─ ShareHandler → ShareFiles → QueueService → request.agent / HTTP

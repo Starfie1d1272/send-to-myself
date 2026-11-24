@@ -11,7 +11,7 @@ import { itemsRoute } from "./routes/items.js";
 import { previewRoute } from "./routes/preview.js";
 import { realtimeRoute } from "./routes/realtime.js";
 
-export function createApp() {
+export function createApp(webDist = env.webDist) {
   const app = new Hono();
 
   app.use("*", logger());
@@ -34,9 +34,20 @@ export function createApp() {
   app.route("/api/preview", previewRoute);
 
   // 生产单容器部署：API 直接托管前端构建产物 + SPA 回退（SPEC §12.1, §21）。
-  if (env.webDist) {
-    app.use("/*", serveStatic({ root: env.webDist }));
-    app.get("*", serveStatic({ path: "index.html", root: env.webDist }));
+  if (webDist) {
+    app.use("*", async (c, next) => {
+      await next();
+      if (c.req.path.startsWith("/api/") || c.req.path === "/health") return;
+      const isHtml = c.res.headers.get("content-type")?.includes("text/html");
+      c.header(
+        "Cache-Control",
+        !isHtml && c.req.path.startsWith("/assets/")
+          ? "public, max-age=31536000, immutable"
+          : "no-cache",
+      );
+    });
+    app.use("/*", serveStatic({ root: webDist }));
+    app.get("*", serveStatic({ path: "index.html", root: webDist }));
   }
 
   if (!authEnabled) {
