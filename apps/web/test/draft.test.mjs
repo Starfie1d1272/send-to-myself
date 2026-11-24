@@ -30,7 +30,21 @@ test("draft restores text and attachment bytes/metadata, and ordered clear canno
   assert.deepEqual(await loadDraft(), { content: "", files: [] });
 });
 
-test("pending attempts can be deleted individually or cleared all at once", async () => {
+test("pending attempts can be deleted individually or cleared all at once", async (t) => {
+  const prevStorage = Object.getOwnPropertyDescriptor(globalThis, "sessionStorage");
+  const sessionMap = new Map();
+  Object.defineProperty(globalThis, "sessionStorage", {
+    configurable: true,
+    value: {
+      getItem: (k) => sessionMap.get(k) ?? null,
+      setItem: (k, v) => sessionMap.set(k, String(v)),
+      removeItem: (k) => sessionMap.delete(k),
+    },
+  });
+  t.after(() => {
+    if (prevStorage) Object.defineProperty(globalThis, "sessionStorage", prevStorage);
+    else delete globalThis.sessionStorage;
+  });
   await clearPendingAttempts();
   await clearDraft();
   await prepareComposerDraft(
