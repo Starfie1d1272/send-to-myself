@@ -62,7 +62,8 @@ export function AppMenu(props: AppMenuProps) {
       role="menuitem"
       disabled={disabled}
       onClick={() => {
-        close(true);
+        triggerRef.current?.focus();
+        close();
         action();
       }}
     >
