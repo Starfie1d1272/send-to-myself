@@ -15,3 +15,6 @@ onlyBuiltDependencies:
 # drizzle-kit 的历史 esm-loader 间接使用旧 esbuild；升级修复开发服务器漏洞。
 overrides:
   "@esbuild-kit/core-utils>esbuild": ^0.25.12
+  # Scoped compatibility-checked remediations; do not replace minimatch inside glob 11.
+  "workbox-build@7.4.1>glob": ^14.0.2
+  "@oclif/core@4.14.0>minimatch": ^11.0.1
