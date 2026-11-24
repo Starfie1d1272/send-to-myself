@@ -3,7 +3,7 @@ import type { CreateItemInput, UpdateItemInput } from "@sendtomyself/shared";
 import { api, type ListParams, type UploadOptions } from "../lib/api";
 import { useAuthAccess } from "./useAuth";
 import { ApiError } from "../lib/api";
-import { itemPages } from "../lib/timeline";
+import { itemPages, sameTimelineMode } from "../lib/timeline";
 
 export function useItems(params: ListParams) {
   const access = useAuthAccess();
@@ -20,7 +20,10 @@ export function useItems(params: ListParams) {
         throw error;
       }
     },
-    placeholderData: (previous) => previous,
+    placeholderData: (previous, previousQuery) => {
+      const prevParams = previousQuery?.queryKey[1] as ListParams | undefined;
+      return sameTimelineMode(prevParams, params) ? previous : undefined;
+    },
     enabled: access.authenticated && !access.reauthRequired && !access.exiting,
   });
 }

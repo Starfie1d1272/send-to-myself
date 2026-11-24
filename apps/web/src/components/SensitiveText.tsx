@@ -28,6 +28,7 @@ export function SensitiveText({
             {renderText(before, start)}
             {revealed ? (
               <button
+                type="button"
                 className="secret secret--shown"
                 title="点击复制片段"
                 aria-label={`复制${span.hint}片段`}
@@ -36,7 +37,7 @@ export function SensitiveText({
                 {span.value}
               </button>
             ) : (
-              <button className="secret" onClick={onReveal} aria-label="查看内容">
+              <button type="button" className="secret" onClick={onReveal} aria-label="查看内容">
                 ••••••••••
               </button>
             )}

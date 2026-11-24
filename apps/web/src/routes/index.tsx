@@ -8,6 +8,7 @@ import { AccessTokens } from "../components/AccessTokens";
 import { ConnectDevices } from "../components/ConnectDevices";
 import { ServerInfo } from "../components/ServerInfo";
 import { AppMenu } from "../components/AppMenu";
+import { InlineStatus } from "../components/ui/InlineStatus";
 import { canOpenNativeTransfers, openNativeTransfers } from "../lib/nativeTransfers";
 import { Composer } from "../components/Composer";
 import { EditDraftRecovery } from "../components/EditDraftRecovery";
@@ -90,8 +91,8 @@ export function TimelinePage() {
       <main className="shell">
         <header className="masthead">
           <div className="masthead__brand">
-            <span className="wordmark">SendToMyself</span>
-            <span className="masthead__sub">发给自己 · 统一信息流</span>
+            <h1 className="wordmark">SendToMyself</h1>
+            <span className="masthead__sub">NAS 上的跨设备收件箱</span>
           </div>
           <div className="masthead__right">
             <span className="masthead__date">{dateStr}</span>
@@ -125,33 +126,61 @@ export function TimelinePage() {
         {!access.reauthRequired && !access.exiting && dialog === "info" && (
           <ServerInfo status={realtime.status} onClose={() => setDialog(null)} />
         )}
-        {access.logoutError && <p role="alert">{access.logoutError}</p>}
-        {realtime.status !== "connected" && (
-          <p role="status">
-            {realtime.status === "connecting" ? "正在连接" : "实时连接中断，正在重连"}{" "}
-            {realtime.status === "reconnecting" && (
-              <button onClick={() => void realtime.retry()}>重试</button>
-            )}{" "}
-            {realtime.retryError}
-          </p>
+        {access.logoutError && (
+          <div className="status-banner status-banner--error">
+            <InlineStatus tone="error">{access.logoutError}</InlineStatus>
+          </div>
         )}
-        {toolsError && <p role="alert">{toolsError}</p>}
+        {realtime.status !== "connected" && (
+          <div className="status-banner">
+            <InlineStatus>
+              <span>
+                {realtime.status === "connecting" ? "正在连接" : "实时连接中断，正在重连"}
+              </span>
+              {realtime.status === "reconnecting" && (
+                <button
+                  type="button"
+                  className="button button--secondary button--sm"
+                  onClick={() => void realtime.retry()}
+                >
+                  重试
+                </button>
+              )}
+              {realtime.retryError && <span>{realtime.retryError}</span>}
+            </InlineStatus>
+          </div>
+        )}
+        {toolsError && (
+          <div className="status-banner status-banner--error">
+            <InlineStatus tone="error">{toolsError}</InlineStatus>
+          </div>
+        )}
         <Composer />
         <EditDraftRecovery />
         <FilterBar state={state} onChange={changeState} />
         {state.view === "trash" && (
-          <p>
-            {info === undefined
-              ? "暂时无法读取保留设置，请以各条目显示的到期时间为准"
-              : info.trashRetentionDays > 0
-                ? `删除的内容保留 ${info.trashRetentionDays} 天，到期后永久删除。已有旧内容从自动清理启用时开始计时。`
-                : "自动清理已关闭，内容保留到你手动永久删除。"}
-          </p>
+          <div className="status-banner">
+            <InlineStatus>
+              {info === undefined
+                ? "暂时无法读取保留设置，请以各条目显示的到期时间为准"
+                : info.trashRetentionDays > 0
+                  ? `删除的内容保留 ${info.trashRetentionDays} 天，到期后永久删除。已有旧内容从自动清理启用时开始计时。`
+                  : "自动清理已关闭，内容保留到你手动永久删除。"}
+            </InlineStatus>
+          </div>
         )}
         {isError && (
           <div className="state" role="alert">
-            <p>加载失败，已显示的内容仍保留。</p>
-            <button onClick={() => void refetch()}>重试加载</button>
+            <p className="state__sub">加载失败，已显示的内容仍保留。</p>
+            <div className="state__actions">
+              <button
+                type="button"
+                className="button button--secondary"
+                onClick={() => void refetch()}
+              >
+                重试加载
+              </button>
+            </div>
           </div>
         )}
         {(!isError || items.length > 0) && (
@@ -167,6 +196,7 @@ export function TimelinePage() {
         {hasNextPage && !isPlaceholderData && (
           <div className="timeline__more">
             <button
+              type="button"
               className="send"
               disabled={isFetchingNextPage}
               onClick={() => void fetchNextPage()}

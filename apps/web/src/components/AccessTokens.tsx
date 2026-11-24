@@ -11,7 +11,9 @@ export function AccessTokens({ onClose }: { onClose: () => void }) {
   const access = useAuthAccess();
   const [name, setName] = useState("");
   const [token, setToken] = useState("");
-  const [message, setMessage] = useState("");
+  const [showToken, setShowToken] = useState(false);
+  const [confirmRevokeTail, setConfirmRevokeTail] = useState<string | null>(null);
+  const [message, setMessage] = useState<{ text: string; tone: "success" | "error" } | null>(null);
   const [copying, setCopying] = useState(false);
   const qc = useQueryClient();
   const devices = useQuery({
@@ -25,15 +27,21 @@ export function AccessTokens({ onClose }: { onClose: () => void }) {
     mutationFn: () => api.createDevice(name.trim()),
     onSuccess: (result) => {
       setToken(result.token);
-      setMessage("");
+      setShowToken(false);
+      setName("");
+      setMessage(null);
       void qc.invalidateQueries({ queryKey: ["devices"] });
     },
   });
   const revoke = useMutation({
     networkMode: "always",
     mutationFn: api.revokeDevice,
-    onSuccess: () => {
-      setToken("");
+    onSuccess: (_data, revokedTail) => {
+      if (token && token.endsWith(revokedTail)) {
+        setToken("");
+        setShowToken(false);
+      }
+      setConfirmRevokeTail(null);
       void qc.invalidateQueries({ queryKey: ["devices"] });
     },
   });
@@ -41,7 +49,12 @@ export function AccessTokens({ onClose }: { onClose: () => void }) {
     <Dialog onClose={onClose} labelledBy="device-title">
       <div className="device-dialog__header">
         <h2 id="device-title">接入令牌</h2>
-        <button onClick={onClose} aria-label="关闭接入令牌">
+        <button
+          type="button"
+          className="button button--quiet button--sm"
+          onClick={onClose}
+          aria-label="关闭接入令牌"
+        >
           关闭
         </button>
       </div>
@@ -82,32 +95,51 @@ export function AccessTokens({ onClose }: { onClose: () => void }) {
           <p>令牌仅显示这一次，请复制到 Raycast 的“接入令牌”设置。拥有此令牌即可访问全部内容。</p>
           <input
             aria-label="新接入令牌"
-            type="password"
+            type={showToken ? "text" : "password"}
             readOnly
             value={token}
             onFocus={(event) => event.target.select()}
           />
-          <button
-            disabled={copying}
-            onClick={async () => {
-              setCopying(true);
-              try {
-                setMessage((await copyText(token)) ? "已复制令牌" : "复制失败，请手动复制令牌");
-              } finally {
-                setCopying(false);
-              }
-            }}
-          >
-            {copying ? "复制中…" : "复制令牌"}
-          </button>
-          <button
-            onClick={() => {
-              setToken("");
-              setMessage("");
-            }}
-          >
-            已保存
-          </button>
+          <div className="device-dialog__token-actions">
+            <button
+              type="button"
+              className="button button--secondary button--sm"
+              disabled={copying}
+              onClick={async () => {
+                setCopying(true);
+                try {
+                  const ok = await copyText(token);
+                  setMessage(
+                    ok
+                      ? { text: "已复制令牌", tone: "success" }
+                      : { text: "复制失败，请显示后手动复制", tone: "error" },
+                  );
+                } finally {
+                  setCopying(false);
+                }
+              }}
+            >
+              {copying ? "复制中…" : "复制令牌"}
+            </button>
+            <button
+              type="button"
+              className="button button--quiet button--sm"
+              onClick={() => setShowToken((prev) => !prev)}
+            >
+              {showToken ? "隐藏令牌" : "显示令牌"}
+            </button>
+            <button
+              type="button"
+              className="button button--primary button--sm"
+              onClick={() => {
+                setToken("");
+                setShowToken(false);
+                setMessage(null);
+              }}
+            >
+              已保存
+            </button>
+          </div>
         </div>
       )}
       {devices.error && (
@@ -116,9 +148,10 @@ export function AccessTokens({ onClose }: { onClose: () => void }) {
             "请在浏览器打开同一地址，用口令登录后管理接入令牌"
           ) : (
             <>
-              读取接入令牌失败。{" "}
+              <span>读取接入令牌失败。</span>
               <button
-                className="button"
+                type="button"
+                className="button button--secondary button--sm"
                 disabled={devices.isFetching}
                 onClick={() => void devices.refetch()}
               >
@@ -142,7 +175,11 @@ export function AccessTokens({ onClose }: { onClose: () => void }) {
             : "吊销令牌失败，请重试。"}
         </InlineStatus>
       )}
-      {message && <InlineStatus>{message}</InlineStatus>}
+      {message && (
+        <div className="inline-status--spaced">
+          <InlineStatus tone={message.tone}>{message.text}</InlineStatus>
+        </div>
+      )}
       {devices.isLoading ? (
         <p>加载令牌…</p>
       ) : (
@@ -164,9 +201,37 @@ export function AccessTokens({ onClose }: { onClose: () => void }) {
                       : new Date(device.lastUsedAt * 1000).toLocaleString()}
                   </span>
                 </div>
-                <button disabled={revoke.isPending} onClick={() => revoke.mutate(device.tail)}>
-                  吊销
-                </button>
+                <div className="detail-list__actions">
+                  {confirmRevokeTail === device.tail ? (
+                    <>
+                      <button
+                        type="button"
+                        className="button button--danger button--sm"
+                        disabled={revoke.isPending}
+                        onClick={() => revoke.mutate(device.tail)}
+                      >
+                        {revoke.isPending ? "吊销中…" : "确认吊销"}
+                      </button>
+                      <button
+                        type="button"
+                        className="button button--secondary button--sm"
+                        disabled={revoke.isPending}
+                        onClick={() => setConfirmRevokeTail(null)}
+                      >
+                        取消
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      className="button button--secondary button--sm"
+                      disabled={revoke.isPending}
+                      onClick={() => setConfirmRevokeTail(device.tail)}
+                    >
+                      吊销
+                    </button>
+                  )}
+                </div>
               </li>
             ))}
           </ul>

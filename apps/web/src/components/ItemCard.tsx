@@ -1,4 +1,5 @@
 import { Dialog } from "./ui/Dialog";
+import { InlineStatus } from "./ui/InlineStatus";
 import { captureDetectionContext } from "../lib/detectionContext";
 import { useEffect, useRef, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
@@ -29,6 +30,7 @@ import {
 } from "../lib/draft";
 import { mutationErrorMessage } from "../lib/mutation-error";
 import { useItemMutations } from "../hooks/useItems";
+import { usePopoverMenu } from "../hooks/usePopoverMenu";
 import { Attachments } from "./Attachments";
 import { LinkPreviewCard } from "./LinkPreviewCard";
 import { SensitiveText } from "./SensitiveText";
@@ -78,10 +80,14 @@ export function ItemCard({
   const [copyError, setCopyError] = useState("");
   const [dueOpen, setDueOpen] = useState(false);
   const [tagOpen, setTagOpen] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
+  const {
+    open: menuOpen,
+    setOpen: setMenuOpen,
+    close: closeMenu,
+    containerRef: menuRef,
+    triggerRef,
+  } = usePopoverMenu();
   const [customDue, setCustomDue] = useState("");
-  const menuRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
   const editRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
     setRevealed(false);
@@ -93,24 +99,6 @@ export function ItemCard({
     document.addEventListener("visibilitychange", hide);
     return () => document.removeEventListener("visibilitychange", hide);
   }, []);
-  useEffect(() => {
-    if (!menuOpen) return;
-    const key = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setMenuOpen(false);
-        triggerRef.current?.focus();
-      }
-    };
-    const outside = (e: MouseEvent) => {
-      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false);
-    };
-    document.addEventListener("keydown", key);
-    document.addEventListener("mousedown", outside);
-    return () => {
-      document.removeEventListener("keydown", key);
-      document.removeEventListener("mousedown", outside);
-    };
-  }, [menuOpen]);
   const [editing, setEditing] = useState(false);
   const wasEditing = useRef(false);
   const [draft, setDraft] = useState("");
@@ -171,10 +159,9 @@ export function ItemCard({
   };
   const menuAction = async (operation: () => Promise<unknown>, preview = false) => {
     if (await run(operation, preview)) {
-      setMenuOpen(false);
+      closeMenu(true);
       setDueOpen(false);
       setTagOpen(false);
-      requestAnimationFrame(() => triggerRef.current?.focus());
     }
   };
   const patch = (p: Parameters<typeof update.mutate>[0]["patch"]) => {
@@ -373,11 +360,12 @@ export function ItemCard({
       transition={{ type: "spring", stiffness: 520, damping: 38 }}
       className={`item item--gap-${gap}${item.pinned ? " item--pinned" : ""}${
         item.completed ? " item--done" : ""
-      }`}
+      }${menuOpen ? " item--menu-open" : ""}`}
     >
       <div className="item__row">
         {item.isTodo && !trash && (
           <button
+            type="button"
             disabled={busy || editing}
             className={`check${item.completed ? " check--on" : ""}`}
             onClick={() => patch({ completed: !item.completed })}
@@ -393,25 +381,47 @@ export function ItemCard({
             <div className="item__edit">
               <textarea
                 ref={editRef}
+                aria-label="编辑内容"
                 className="item__edit-input"
                 value={draft}
                 maxLength={100000}
                 disabled={busy}
                 onChange={(e) => changeDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (
+                    e.key === "Enter" &&
+                    (e.metaKey || e.ctrlKey) &&
+                    !e.nativeEvent.isComposing &&
+                    e.nativeEvent.keyCode !== 229
+                  ) {
+                    e.preventDefault();
+                    void saveEdit();
+                  } else if (e.key === "Escape") {
+                    e.preventDefault();
+                    void cancelEdit();
+                  }
+                }}
               />
               <div className="item__edit-actions">
-                <button className="item__edit-save" onClick={() => void saveEdit()} disabled={busy}>
+                <button
+                  type="button"
+                  className="button button--primary button--sm"
+                  onClick={() => void saveEdit()}
+                  disabled={busy}
+                >
                   {busy ? "保存中…" : "保存"}
                 </button>
                 <button
-                  className="item__edit-cancel"
+                  type="button"
+                  className="button button--secondary button--sm"
                   disabled={busy}
                   onClick={() => void cancelEdit()}
                 >
                   取消
                 </button>
+                <span className="item__edit-hint">⌘/Ctrl+Enter 保存 · Esc 取消</span>
               </div>
-              {draftStatus && <p role="status">{draftStatus}</p>}
+              {draftStatus && <InlineStatus>{draftStatus}</InlineStatus>}
             </div>
           ) : partialMask ? (
             <>
@@ -433,7 +443,7 @@ export function ItemCard({
                 ))}
             </>
           ) : item.sensitive && !revealed ? (
-            <button className="redacted" onClick={() => setRevealed(true)}>
+            <button type="button" className="redacted" onClick={() => setRevealed(true)}>
               <span className="redacted__bars" aria-hidden>
                 ▮▮▮▮▮▮▮▮▮▮
               </span>
@@ -450,7 +460,13 @@ export function ItemCard({
           )}
 
           {item.sensitive && revealed && (
-            <button onClick={() => setRevealed(false)}>隐藏内容</button>
+            <button
+              type="button"
+              className="button button--quiet button--sm item__hide-btn"
+              onClick={() => setRevealed(false)}
+            >
+              隐藏内容
+            </button>
           )}
           {attachments.length > 0 && (!item.sensitive || revealed) && !item.purgeStartedAt && (
             <Attachments items={attachments} />
@@ -471,6 +487,7 @@ export function ItemCard({
 
           {showSuggestion && (
             <button
+              type="button"
               className="suggest"
               disabled={busy || editing}
               onClick={() => patch({ isTodo: true, dueAt: suggestion!.dueAt })}
@@ -482,7 +499,7 @@ export function ItemCard({
           )}
 
           {trash && (
-            <p>
+            <p className="item__trash-note">
               {item.purgeStartedAt
                 ? "永久删除尚未完成"
                 : `删除于 ${item.deletedAt ? new Date(item.deletedAt).toLocaleString() : ""}`}
@@ -501,8 +518,58 @@ export function ItemCard({
             {item.category !== "none" && (
               <span className="tag">{item.category === "idea" ? "想法" : "稍后看"}</span>
             )}
-            <time className="item__time">{formatTime(item.createdAt)}</time>
+            <time className="item__time" dateTime={item.createdAt}>
+              {formatTime(item.createdAt)}
+            </time>
           </div>
+          {(notice || error || copyError) && (
+            <div className="item__status-list">
+              {notice && <InlineStatus tone="success">{notice}</InlineStatus>}
+              {error && (
+                <InlineStatus tone="error">
+                  <span>{error}</span>
+                  {editing ? (
+                    <>
+                      <button
+                        type="button"
+                        className="button button--secondary button--sm"
+                        disabled={busy}
+                        onClick={() => void saveEdit()}
+                      >
+                        重试保存
+                      </button>
+                      <button
+                        type="button"
+                        className="button button--secondary button--sm"
+                        onClick={() => void copyText(draft)}
+                      >
+                        复制未保存内容
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      className="button button--secondary button--sm"
+                      disabled={busy}
+                      onClick={() => {
+                        if (retry.current)
+                          void (menuOpen
+                            ? menuAction(retry.current.operation, retry.current.preview)
+                            : run(
+                                retry.current.operation,
+                                retry.current.preview,
+                                retry.current.successMessage,
+                              ));
+                      }}
+                    >
+                      重试
+                    </button>
+                  )}
+                </InlineStatus>
+              )}
+              {copyError && <InlineStatus tone="error">{copyError}</InlineStatus>}
+            </div>
+          )}
         </div>
       </div>
 
@@ -510,70 +577,34 @@ export function ItemCard({
         <Dialog onClose={() => setConfirmDelete(false)} labelledBy={`purge-${item.id}`}>
           <h2 id={`purge-${item.id}`}>永久删除这条内容？</h2>
           <p>正文和 {attachments.length} 个附件将从 NAS 删除，无法从回收站恢复。</p>
-          <button onClick={() => setConfirmDelete(false)}>取消</button>
-          <button
-            className="button button--danger"
-            onClick={() => {
-              setConfirmDelete(false);
-              void run(async () => {
-                await permanent.mutateAsync(item.id);
-              });
-            }}
-          >
-            永久删除
-          </button>
-        </Dialog>
-      )}
-      {notice && <p role="status">{notice}</p>}
-      {error && (
-        <p className="composer__error" role="alert">
-          {error}{" "}
-          {editing ? (
-            <>
-              <button
-                className="button button--secondary"
-                disabled={busy}
-                onClick={() => void saveEdit()}
-              >
-                重试保存
-              </button>
-              <button className="button button--secondary" onClick={() => void copyText(draft)}>
-                复制未保存内容
-              </button>
-            </>
-          ) : (
+          <div className="dialog-actions">
             <button
+              type="button"
               className="button button--secondary"
-              disabled={busy}
+              onClick={() => setConfirmDelete(false)}
+            >
+              取消
+            </button>
+            <button
+              type="button"
+              className="button button--danger"
               onClick={() => {
-                if (retry.current)
-                  void (menuOpen
-                    ? menuAction(retry.current.operation, retry.current.preview)
-                    : run(
-                        retry.current.operation,
-                        retry.current.preview,
-                        retry.current.successMessage,
-                      ));
+                setConfirmDelete(false);
+                void run(async () => {
+                  await permanent.mutateAsync(item.id);
+                });
               }}
             >
-              重试
+              永久删除
             </button>
-          )}
-        </p>
+          </div>
+        </Dialog>
       )}
-      {copyError && (
-        <p className="composer__error" role="alert">
-          {copyError}
-        </p>
-      )}
-      <fieldset
-        className="actions"
-        disabled={busy || editing}
-        style={{ border: 0, padding: 0, margin: 0 }}
-      >
+      <fieldset className="actions" disabled={busy || editing}>
         {trash ? (
           <>
             <button
+              type="button"
               className="icon-btn"
               aria-label="恢复"
               title="恢复"
@@ -583,7 +614,8 @@ export function ItemCard({
               <IconRestore />
             </button>
             <button
-              className="button button--danger"
+              type="button"
+              className="button button--danger button--sm"
               onClick={() =>
                 item.purgeStartedAt
                   ? void run(async () => {
@@ -599,6 +631,7 @@ export function ItemCard({
           <>
             {item.content.trim() && (!item.sensitive || revealed) && (
               <button
+                type="button"
                 className="icon-btn"
                 onClick={copy}
                 aria-label={copied ? "已复制文字" : "复制文字"}
@@ -611,15 +644,9 @@ export function ItemCard({
                 )}
               </button>
             )}
-            <div
-              className="due-wrap"
-              ref={menuRef}
-              onBlur={(event) => {
-                if (!event.currentTarget.contains(event.relatedTarget as Node | null))
-                  setMenuOpen(false);
-              }}
-            >
+            <div className="due-wrap" ref={menuRef}>
               <button
+                type="button"
                 className="icon-btn"
                 ref={triggerRef}
                 aria-label="更多操作"
@@ -641,140 +668,183 @@ export function ItemCard({
               </button>
               {menuOpen && (
                 <div className="due-menu">
-                  <button
-                    onClick={() =>
-                      void menuAction(() =>
-                        update.mutateAsync({ id: item.id, patch: { pinned: !item.pinned } }),
-                      )
-                    }
-                  >
-                    {item.pinned ? "取消收藏" : "收藏"}
-                  </button>
-                  <button
-                    onClick={() =>
-                      void menuAction(() =>
-                        update.mutateAsync({ id: item.id, patch: { isTodo: !item.isTodo } }),
-                      )
-                    }
-                  >
-                    {item.isTodo ? "取消待办" : "设为待办"}
-                  </button>
-                  <button aria-expanded={dueOpen} onClick={() => setDueOpen(!dueOpen)}>
-                    截止日期
-                  </button>
-                  {dueOpen && (
-                    <div>
-                      {(["today", "tomorrow", "sunday"] as const).map((k) => (
-                        <button
-                          key={k}
-                          onClick={() =>
-                            void menuAction(() =>
-                              update.mutateAsync({ id: item.id, patch: { dueAt: quickDue(k) } }),
-                            )
-                          }
-                        >
-                          {k === "today" ? "今天" : k === "tomorrow" ? "明天" : "本周日"} 23:59
-                        </button>
-                      ))}
-                      <form
-                        onSubmit={(e) => {
-                          e.preventDefault();
-                          if (customDue)
-                            void menuAction(() =>
-                              update.mutateAsync({
-                                id: item.id,
-                                patch: { dueAt: new Date(customDue).toISOString() },
-                              }),
-                            );
-                        }}
-                      >
-                        <label>
-                          自定义{" "}
-                          <input
-                            type="datetime-local"
-                            value={customDue}
-                            onChange={(e) => setCustomDue(e.target.value)}
-                          />
-                        </label>
-                        <button type="submit">确定</button>
-                      </form>
-                      {item.dueAt && (
-                        <button
-                          onClick={() =>
-                            void menuAction(() =>
-                              update.mutateAsync({ id: item.id, patch: { dueAt: null } }),
-                            )
-                          }
-                        >
-                          清除截止日期
-                        </button>
-                      )}
-                    </div>
-                  )}
-                  <button aria-expanded={tagOpen} onClick={() => setTagOpen(!tagOpen)}>
-                    标记
-                  </button>
-                  {tagOpen &&
-                    (
-                      [
-                        ["none", "无"],
-                        ["idea", "想法"],
-                        ["read_later", "稍后看"],
-                      ] as const
-                    ).map(([value, label]) => (
-                      <button
-                        key={value}
-                        onClick={() =>
-                          void menuAction(() =>
-                            update.mutateAsync({ id: item.id, patch: { category: value } }),
-                          )
-                        }
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  <button
-                    onClick={() => {
-                      setMenuOpen(false);
-                      void startEdit();
-                    }}
-                  >
-                    编辑
-                  </button>
-                  <button
-                    onClick={() =>
-                      void menuAction(() =>
-                        update.mutateAsync({ id: item.id, patch: { sensitive: !item.sensitive } }),
-                      )
-                    }
-                  >
-                    {item.sensitive ? "取消敏感遮罩" : "标记为敏感"}
-                  </button>
-                  {item.sensitiveOverride !== null && (
+                  <div className="due-menu__group">
                     <button
+                      type="button"
                       onClick={() =>
                         void menuAction(() =>
-                          update.mutateAsync({ id: item.id, patch: { sensitive: null } }),
+                          update.mutateAsync({ id: item.id, patch: { pinned: !item.pinned } }),
                         )
                       }
                     >
-                      恢复自动识别
+                      {item.pinned ? "取消收藏" : "收藏"}
                     </button>
-                  )}
-                  {urls.length > 0 && (
                     <button
+                      type="button"
+
                       onClick={() =>
-                        void menuAction(async () => {
-                          const result = await refetchPreview.mutateAsync(item.id);
-                          if (result.meta?.preview?.status === "error")
-                            throw new Error("preview failed");
-                        }, true)
+                        void menuAction(() =>
+                          update.mutateAsync({ id: item.id, patch: { isTodo: !item.isTodo } }),
+                        )
                       }
                     >
-                      刷新链接预览
+                      {item.isTodo ? "取消待办" : "设为待办"}
                     </button>
-                  )}
-                  <button onClick={() => void menuAction(() => remove.mutateAsync(item.id))}>
+                    <button
+                      type="button"
+
+                      aria-expanded={dueOpen}
+                      onClick={() => setDueOpen(!dueOpen)}
+                    >
+                      截止日期
+                    </button>
+                    {dueOpen && (
+                      <div className="due-menu__sub">
+                        {(["today", "tomorrow", "sunday"] as const).map((k) => (
+                          <button
+                            type="button"
+                            key={k}
+                            onClick={() =>
+                              void menuAction(() =>
+                                update.mutateAsync({ id: item.id, patch: { dueAt: quickDue(k) } }),
+                              )
+                            }
+                          >
+                            {k === "today" ? "今天" : k === "tomorrow" ? "明天" : "本周日"} 23:59
+                          </button>
+                        ))}
+                        <form
+                          className="due-menu__custom"
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            if (customDue)
+                              void menuAction(() =>
+                                update.mutateAsync({
+                                  id: item.id,
+                                  patch: { dueAt: new Date(customDue).toISOString() },
+                                }),
+                              );
+                          }}
+                        >
+                          <label>
+                            自定义
+                            <input
+                              type="datetime-local"
+                              value={customDue}
+                              onChange={(e) => setCustomDue(e.target.value)}
+                            />
+                          </label>
+                          <button type="submit">确定</button>
+                        </form>
+                        {item.dueAt && (
+                          <button
+                            type="button"
+                            className="due-menu__clear"
+                            onClick={() =>
+                              void menuAction(() =>
+                                update.mutateAsync({ id: item.id, patch: { dueAt: null } }),
+                              )
+                            }
+                          >
+                            清除截止日期
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    <button
+                      type="button"
+
+                      aria-expanded={tagOpen}
+                      onClick={() => setTagOpen(!tagOpen)}
+                    >
+                      标记
+                    </button>
+                    {tagOpen && (
+                      <div className="due-menu__sub">
+                        {(
+                          [
+                            ["none", "无"],
+                            ["idea", "想法"],
+                            ["read_later", "稍后看"],
+                          ] as const
+                        ).map(([value, label]) => (
+                          <button
+                            type="button"
+                            key={value}
+                            onClick={() =>
+                              void menuAction(() =>
+                                update.mutateAsync({ id: item.id, patch: { category: value } }),
+                              )
+                            }
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="due-menu__divider" role="separator" />
+                  <div className="due-menu__group">
+                    <button
+                      type="button"
+
+                      onClick={() => {
+                        setMenuOpen(false);
+                        void startEdit();
+                      }}
+                    >
+                      编辑
+                    </button>
+                    <button
+                      type="button"
+
+                      onClick={() =>
+                        void menuAction(() =>
+                          update.mutateAsync({
+                            id: item.id,
+                            patch: { sensitive: !item.sensitive },
+                          }),
+                        )
+                      }
+                    >
+                      {item.sensitive ? "取消敏感遮罩" : "标记为敏感"}
+                    </button>
+                    {item.sensitiveOverride !== null && (
+                      <button
+                        type="button"
+
+                        onClick={() =>
+                          void menuAction(() =>
+                            update.mutateAsync({ id: item.id, patch: { sensitive: null } }),
+                          )
+                        }
+                      >
+                        恢复自动识别
+                      </button>
+                    )}
+                    {urls.length > 0 && (
+                      <button
+                        type="button"
+
+                        onClick={() =>
+                          void menuAction(async () => {
+                            const result = await refetchPreview.mutateAsync(item.id);
+                            if (result.meta?.preview?.status === "error")
+                              throw new Error("preview failed");
+                          }, true)
+                        }
+                      >
+                        刷新链接预览
+                      </button>
+                    )}
+                  </div>
+                  <div className="due-menu__divider" role="separator" />
+                  <button
+                    type="button"
+
+                    className="due-menu__danger"
+                    onClick={() => void menuAction(() => remove.mutateAsync(item.id))}
+                  >
                     移至回收站
                   </button>
                 </div>

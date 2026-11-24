@@ -3,6 +3,7 @@ import type { Item } from "@sendtomyself/shared";
 import { type GapKind, groupByDay, sameCluster } from "../lib/format";
 import type { TimelineViewState } from "../lib/timeline";
 import { ItemCard } from "./ItemCard";
+import { InlineStatus } from "./ui/InlineStatus";
 
 export function Timeline({
   items,
@@ -53,17 +54,29 @@ export function Timeline({
       <div className="state state--empty">
         <p className="state__title">{title}</p>
         <p className="state__sub">{sub}</p>
-        {state.query.trim() ? (
-          <button onClick={() => onChange({ ...state, query: "" })}>清空搜索</button>
-        ) : filtered ? (
-          <button
-            onClick={() =>
-              onChange({ ...state, contentType: "all", category: "all", sensitiveOnly: false })
-            }
-          >
-            清除筛选
-          </button>
-        ) : null}
+        {(state.query.trim() || filtered) && (
+          <div className="state__actions">
+            {state.query.trim() ? (
+              <button
+                type="button"
+                className="button button--secondary"
+                onClick={() => onChange({ ...state, query: "" })}
+              >
+                清空搜索
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="button button--secondary"
+                onClick={() =>
+                  onChange({ ...state, contentType: "all", category: "all", sensitiveOnly: false })
+                }
+              >
+                清除筛选
+              </button>
+            )}
+          </div>
+        )}
       </div>
     );
   }
@@ -71,11 +84,15 @@ export function Timeline({
   return (
     <>
       {pending && (
-        <div className="state state--load" role="status">
-          正在加载筛选结果…
+        <div className="status-banner">
+          <InlineStatus>正在加载筛选结果…</InlineStatus>
         </div>
       )}
-      <div className="timeline" style={pending ? { display: "none" } : undefined}>
+      <div
+        className={`timeline${pending ? " timeline--pending" : ""}`}
+        inert={pending || undefined}
+        aria-busy={pending || undefined}
+      >
         {groups.map((g) => (
           <section key={g.key} className="day">
             <div className="day__divider">
