@@ -362,11 +362,11 @@ struct MainPage {
                     ['shareAttachment', 'saveAttachment', 'openTools', 'openTransfers', 'reauthenticate', 'logout'], bridgePermission(this.activeOrigin));
                 } catch (_error) { promptAction.showToast({ message: '原生分享入口暂不可用，请重新打开应用' }); }
               })
-              .onShowFileSelector((event) => {
+              .onShowFileSelector((event): boolean => {
                 if (!event) return false;
                 const max = event.fileSelector.getMode() === FileSelectorMode.FileOpenMultipleMode ? 20 : 1;
                 let settled = false;
-                const finish = (uris: string[]) => {
+                const finish = (uris: string[]): void => {
                   if (settled) return;
                   settled = true;
                   event.result.handleFileList(uris);
@@ -377,27 +377,27 @@ struct MainPage {
                   sheets: [
                     {
                       title: '从相册选择',
-                      action: () => {
+                      action: (): void => {
                         const opts = new photoAccessHelper.PhotoSelectOptions();
                         opts.MIMEType = photoAccessHelper.PhotoViewMIMETypes.IMAGE_VIDEO_TYPE;
                         opts.maxSelectNumber = max;
                         new photoAccessHelper.PhotoViewPicker().select(opts)
-                          .then((res) => finish(res.photoUris))
-                          .catch(() => finish([]));
+                          .then((res): void => { finish(res.photoUris); })
+                          .catch((): void => { finish([]); });
                       }
                     },
                     {
                       title: '从文件管理选择',
-                      action: () => {
+                      action: (): void => {
                         const opts = new picker.DocumentSelectOptions();
                         opts.maxSelectNumber = max;
                         new picker.DocumentViewPicker(this.context).select(opts)
-                          .then((uris) => finish(uris))
-                          .catch(() => finish([]));
+                          .then((uris): void => { finish(uris); })
+                          .catch((): void => { finish([]); });
                       }
                     }
                   ],
-                  cancel: () => { finish([]); }
+                  cancel: (): void => { finish([]); }
                 });
                 return true;
               })
