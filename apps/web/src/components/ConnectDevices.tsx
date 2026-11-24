@@ -52,7 +52,7 @@ export function ConnectDevices({ onClose }: { onClose: () => void }) {
               <strong>{client.label}</strong>
               {client.releaseUrl && (
                 <a href={client.releaseUrl} target="_blank" rel="noreferrer">
-                  {client.status === "preview" ? "查看开发预览" : "查看下载"}
+                  查看下载
                 </a>
               )}
             </div>

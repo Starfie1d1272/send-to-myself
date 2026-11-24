@@ -82,8 +82,10 @@ jobs:
         if: github.event_name == 'push'
         uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3
         with:
+          name: Core ${{ steps.version.outputs.version }}
           body_path: core-release-notes.md
           prerelease: ${{ contains(steps.version.outputs.version, '-') }}
+          make_latest: ${{ !contains(steps.version.outputs.version, '-') }}
           files: |
             dist/*.zip
             dist/*.zip.sha256
