@@ -3,6 +3,7 @@ import { useComposer } from "../hooks/useComposer";
 import { canOpenNativeTransfers, openNativeTransfers } from "../lib/nativeTransfers";
 import { formatSize } from "../lib/format";
 import { IconFile, IconPaperclip, IconX } from "./icons";
+import { InlineStatus } from "./ui/InlineStatus";
 
 export function Composer() {
   const {
@@ -89,6 +90,7 @@ export function Composer() {
       <textarea
         ref={ref}
         className="composer__input"
+        aria-label="写点什么，发给自己"
         placeholder="写点什么，发给自己…"
         value={value}
         rows={1}
@@ -131,12 +133,13 @@ export function Composer() {
                 <span className="tray__name">{f.name}</span>
                 <span className="tray__size">{formatSize(f.size)}</span>
                 {((info && f.size > info.maxUploadBytes) || badFilename === f.name) && (
-                  <span role="alert">
+                  <span className="tray__error" role="alert">
                     {info ? `超过单文件上限 ${formatSize(info.maxUploadBytes)}` : "超过单文件上限"}
                   </span>
                 )}
               </div>
               <button
+                type="button"
                 className="tray__x"
                 disabled={pending}
                 onClick={() => removeAt(i)}
@@ -150,17 +153,25 @@ export function Composer() {
       )}
 
       {draftError && (
-        <p className="composer__error" role="alert">
-          草稿未能保存到本机，请勿关闭窗口。
-        </p>
+        <div className="composer__status">
+          <InlineStatus tone="error">草稿未能保存到本机，请勿关闭窗口。</InlineStatus>
+        </div>
       )}
       {selectedAttempt && (
-        <button type="button" disabled={pending} onClick={() => void restoreShared()}>
-          返回当前草稿
-        </button>
+        <div className="composer__status">
+          <button
+            type="button"
+            className="button button--secondary button--sm"
+            disabled={pending}
+            onClick={() => void restoreShared()}
+          >
+            返回当前草稿
+          </button>
+        </div>
       )}
       {pendingAttempts.length > 0 && (
         <details
+          className="composer__attempts"
           onToggle={(event) => {
             if (event.currentTarget.open) void refreshAttempts();
           }}
@@ -172,6 +183,7 @@ export function Composer() {
               <li key={item.key}>
                 <button
                   type="button"
+                  className="button button--secondary button--sm"
                   disabled={pending || !ready}
                   onClick={() => void restoreAttempt(item.key)}
                 >
@@ -186,31 +198,66 @@ export function Composer() {
         </details>
       )}
       {error && (
-        <p className="composer__error" role="alert">
-          {error}{" "}
-          {(deleted || newRequired || draft.nativeHandoffPending || draft.webSendAttempted) && (
-            <>
-              {" "}
-              {deleted
-                ? "原内容已永久删除；如需保留，可作为新内容发送。"
-                : "旧任务可能仍在发送，重新发送可能重复。"}{" "}
-              <button onClick={sendAsNew}>再发一份</button>
-            </>
-          )}{" "}
-          {draft.nativeHandoffPending && (
-            <button onClick={() => void checkReceipt()}>重新检查</button>
-          )}
-        </p>
+        <div className="composer__status">
+          <InlineStatus tone="error">
+            <span>{error}</span>
+            {(deleted || newRequired || draft.nativeHandoffPending || draft.webSendAttempted) && (
+              <>
+                <span>
+                  {deleted
+                    ? "原内容已永久删除；如需保留，可作为新内容发送。"
+                    : "旧任务可能仍在发送，重新发送可能重复。"}
+                </span>
+                <button
+                  type="button"
+                  className="button button--secondary button--sm"
+                  onClick={sendAsNew}
+                >
+                  再发一份
+                </button>
+              </>
+            )}
+            {draft.nativeHandoffPending && (
+              <button
+                type="button"
+                className="button button--secondary button--sm"
+                onClick={() => void checkReceipt()}
+              >
+                重新检查
+              </button>
+            )}
+          </InlineStatus>
+        </div>
       )}
-      {webFallback && <button onClick={() => fileInput.current?.click()}>改用当前页面上传</button>}
-      {webFallback && files.length > 0 && <p>此批附件将在当前页面发送，请保持页面开启</p>}
+      {webFallback && (
+        <div className="composer__status">
+          <InlineStatus>
+            <button
+              type="button"
+              className="button button--secondary button--sm"
+              onClick={() => fileInput.current?.click()}
+            >
+              改用当前页面上传
+            </button>
+            {files.length > 0 && <span>此批附件将在当前页面发送，请保持页面开启</span>}
+          </InlineStatus>
+        </div>
+      )}
       {notice && (
-        <p role="status">
-          {notice}{" "}
-          {notice === "已保存在本机，等待发送" && canOpenNativeTransfers() && (
-            <button onClick={() => void openNativeTransfers()}>查看传输任务</button>
-          )}
-        </p>
+        <div className="composer__status">
+          <InlineStatus>
+            <span>{notice}</span>
+            {notice === "已保存在本机，等待发送" && canOpenNativeTransfers() && (
+              <button
+                type="button"
+                className="button button--secondary button--sm"
+                onClick={() => void openNativeTransfers()}
+              >
+                查看传输任务
+              </button>
+            )}
+          </InlineStatus>
+        </div>
       )}
       {files.length > 0 && (
         <p className="composer__hint">
@@ -220,23 +267,30 @@ export function Composer() {
         </p>
       )}
       {overLimit && (
-        <p className="composer__error" role="alert">
-          附件数量或总大小超过 NAS 上限，请移除部分附件。
-        </p>
+        <div className="composer__status">
+          <InlineStatus tone="error">附件数量或总大小超过 NAS 上限，请移除部分附件。</InlineStatus>
+        </div>
       )}
       {pending && files.length > 0 && (
-        <div role="status">
-          {progress?.total && progress.loaded >= progress.total
-            ? "上传完成，正在保存…"
-            : progress?.total
-              ? `上传中 ${Math.round((progress.loaded / progress.total) * 100)}%`
-              : "上传中…"}{" "}
-          <button onClick={stop}>停止上传</button>
+        <div className="composer__status">
+          <InlineStatus>
+            <span>
+              {progress?.total && progress.loaded >= progress.total
+                ? "上传完成，正在保存…"
+                : progress?.total
+                  ? `上传中 ${Math.round((progress.loaded / progress.total) * 100)}%`
+                  : "上传中…"}
+            </span>
+            <button type="button" className="button button--danger button--sm" onClick={stop}>
+              停止上传
+            </button>
+          </InlineStatus>
         </div>
       )}
       <div className="composer__bar">
         <div className="composer__left">
           <button
+            type="button"
             disabled={pending || !ready}
             className="attach-btn"
             onClick={() => {
@@ -261,7 +315,7 @@ export function Composer() {
             }}
           />
         </div>
-        <button className="send" onClick={() => void send()} disabled={!canSend}>
+        <button type="button" className="send" onClick={() => void send()} disabled={!canSend}>
           {pending ? "发送中…" : "发送"}
         </button>
       </div>

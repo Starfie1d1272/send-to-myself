@@ -2,7 +2,7 @@
 :root {
   color-scheme: light;
   --paper-2: #ece3d4;
-  --green: #5f7a4f;
+  --green: #4b673c;
   --font-display: "Fraunces", Georgia, "Songti SC", serif;
   --font-ui:
     "Hanken Grotesk", -apple-system, BlinkMacSystemFont, "PingFang SC", "HarmonyOS Sans SC",
@@ -13,9 +13,10 @@
   --card-hi: #fffdf8;
   --ink: #241d16;
   --ink-soft: #5b5044;
-  --ink-faint: #938573;
+  --ink-faint: #726354;
   --line: #e3d9c7;
   --line-strong: #d3c4ab;
+  --line-control: #917f67;
 
   --accent: #bc4b2a;
   --accent-deep: #9a3a1f;
@@ -83,7 +84,7 @@ body {
   flex: 1;
   padding: 11px 13px;
   border-radius: 10px;
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--line-control);
   background: var(--card-hi);
   color: var(--ink);
   font-family: var(--font-ui);
@@ -168,7 +169,7 @@ h2 {
 .secondary {
   background: var(--card-hi);
   color: var(--ink);
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--line-control);
 }
 .secondary:hover {
   background: var(--paper);

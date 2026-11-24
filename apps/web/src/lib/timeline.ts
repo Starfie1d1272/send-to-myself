@@ -37,6 +37,10 @@ export function timelineParams(state: TimelineViewState, now = new Date()): List
   if (state.sensitiveOnly) p.sensitive = true;
   return p;
 }
+export function sameTimelineMode(prev: ListParams | undefined, next: ListParams): boolean {
+  return !!prev && Boolean(prev.deleted) === Boolean(next.deleted);
+}
+
 export function itemPages(params: ListParams) {
   return {
     queryKey: ["items", params],

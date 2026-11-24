@@ -20,7 +20,7 @@ export default defineConfig({
       manifest: {
         name: "SendToMyself",
         short_name: "ToMyself",
-        description: "发给自己的统一信息流",
+        description: "NAS 上的跨设备收件箱",
         lang: "zh-CN",
         theme_color: "#bc4b2a",
         background_color: "#f2ece1",
