@@ -6,17 +6,37 @@ on:
         description: Full commit SHA of the selected branch, reviewed for this run
         type: string
         required: true
+  push:
+    tags:
+      - "harmony-v*"
 permissions:
   contents: read
 jobs:
   build:
-    if: github.repository == 'Starfie1d1272/send-to-myself' && inputs.reviewed_sha == github.sha
+    if: >-
+      github.repository == 'Starfie1d1272/send-to-myself' &&
+      ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/harmony-v')) ||
+      (github.event_name == 'workflow_dispatch' && inputs.reviewed_sha == github.sha))
+    outputs:
+      version: ${{ steps.tag.outputs.version }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Validate Harmony tag metadata
+        id: tag
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/harmony-v')
+        shell: bash
+        run: |
+          set -euo pipefail
+          VER="${GITHUB_REF_NAME#harmony-v}"
+          read -r ACTUAL CODE < <(node -e "const a=JSON.parse(require('fs').readFileSync('SendToMyself/AppScope/app.json5','utf8')).app; console.log(a.versionName, a.versionCode)")
+          [[ "${VER%%-*}" == "$ACTUAL" ]] || { echo "Tag and Harmony versionName differ" >&2; exit 1; }
+          node scripts/extract-changelog.mjs harmony "$VER" >/dev/null
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '26.11.1'
@@ -144,9 +164,40 @@ jobs:
           cd "$RUNNER_TEMP/harmony-artifact"
           sha256sum entry-default-unsigned.hap > SHA256SUMS
           printf '%s\n' "$GITHUB_SHA" > SOURCE_SHA
+          if [[ "${{ github.event_name }}" == push && "${{ github.ref }}" == refs/tags/harmony-v* ]]; then
+            HAP_SHA=$(awk '{print $1}' SHA256SUMS)
+            CORE=$(node -p "require('$GITHUB_WORKSPACE/apps/api/package.json').version")
+            {
+              (cd "$GITHUB_WORKSPACE" && node scripts/extract-changelog.mjs harmony "${{ steps.tag.outputs.version }}")
+              printf '\n源码及构建 SHA：%s。配套核心 %s；版本码 %s。目标 API 26，兼容 SDK 6.0.2 (22)。\n\nHAP 未签名，须自行签名后安装。设备安装、后台传输和完整旅程以实际验收为准。升级前请备份数据和配置。\n\nHAP SHA256：%s\n' "$GITHUB_SHA" "$CORE" "${{ steps.tag.outputs.code }}" "$HAP_SHA"
+            } > release-notes.md
+          fi
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: harmony-unsigned-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/harmony-artifact/
           if-no-files-found: error
           retention-days: 7
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/harmony-v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: harmony-unsigned-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: dist
+      - uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3
+        with:
+          name: HarmonyOS ${{ needs.build.outputs.version }}
+          body_path: dist/release-notes.md
+          prerelease: ${{ contains(needs.build.outputs.version, '-') }}
+          make_latest: false
+          files: |
+            dist/entry-default-unsigned.hap
+            dist/SHA256SUMS
+            dist/SOURCE_SHA
+          fail_on_unmatched_files: true

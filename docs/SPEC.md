@@ -1,6 +1,6 @@
 # SendToMyself — 需求与边界（SPEC V1.1 · 终稿）
 
-> 本文件记录产品范围和历史设计；当前公开版本与验收边界以 [RELEASES](RELEASES.md) 和实际源码为准。
+> 本文件记录产品范围和设计边界；各端最新构建产物见 [GitHub Releases](https://github.com/Starfie1d1272/send-to-myself/releases)，使用边界见 [发布说明](RELEASES.md)。
 
 产品定位更新：2026-11-02 · 单用户 NAS 跨设备收件箱；源码实现不等于公开发布或完整验收。版本变更见 [CHANGELOG.md](../CHANGELOG.md)，验证范围见 [RELIABILITY.md](RELIABILITY.md)。
 
@@ -252,12 +252,12 @@ NAS 安装使用 [deploy/docker-compose.yml](../deploy/docker-compose.yml)：固
 | 平台 | 壳方案 | 系统分享接收 | 当前状态 |
 |---|---|---|---|
 | 浏览器 / PWA | 响应式网页，可安装 | Web Share Target 尚未实现 | 核心已发布；无离线发送队列 |
-| Windows / macOS | Tauri 2 | 尚未实现系统分享接收 | 已发布 1.0.0 安装包；主线新设置与复制能力另见[交付表](RELEASES.md) |
+| Windows / macOS | Tauri 2 | 尚未实现系统分享接收 | 提供 Windows x64 与 Apple Silicon 安装包，见[桌面端发布列表](https://github.com/Starfie1d1272/send-to-myself/releases?q=Desktop) |
 | **HarmonyOS NEXT** | **原生 ArkTS** | Share Kit 代码已实现 | 登录/WebView/离线队列已有代码，待真机验收 |
 | Android | Capacitor（计划） | ACTION_SEND（计划） | 尚未实现 |
 | iOS | Capacitor（按需） | Share Extension（计划） | 尚未实现 |
 
-平台壳与核心版本独立管理。主线桌面设置与鸿蒙新传输能力不代表旧公开安装包已包含这些功能；实际发布和设备验收见 [RELEASES](RELEASES.md)。Android/iOS 使用网页，无原生包。
+平台壳与核心版本独立管理，发布说明与使用边界见 [RELEASES](RELEASES.md) 与 [VERSIONING](VERSIONING.md)。Android/iOS 使用网页，无原生包。
 
 ---
 

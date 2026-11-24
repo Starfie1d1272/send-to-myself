@@ -4,7 +4,7 @@
 
 # SendToMyself 桌面薄壳（Tauri 2）
 
-当前源码的 Windows / macOS 桌面壳（Tauri 2）连接 NAS 网页，并提供本机窗口与剪贴板能力。公开 [desktop-v1.0.0](https://github.com/Starfie1d1272/send-to-myself/releases/tag/desktop-v1.0.0) 提供 Windows x64 EXE/MSI 与 Apple Silicon DMG；以下新设置及复制能力不应视为已包含在该历史包中。配套状态见 [交付表](../../docs/RELEASES.md)。
+Windows / macOS 桌面壳（Tauri 2）连接 NAS 网页，并提供本机窗口与剪贴板能力。最新安装包见 [桌面端发布列表](https://github.com/Starfie1d1272/send-to-myself/releases?q=Desktop)（Windows x64 EXE/MSI 与 Apple Silicon DMG），发布规则与使用边界见 [发布说明](../../docs/RELEASES.md)。
 
 当前源码包括：
 
