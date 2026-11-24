@@ -13,7 +13,7 @@ export function AccessTokens({ onClose }: { onClose: () => void }) {
   const [token, setToken] = useState("");
   const [showToken, setShowToken] = useState(false);
   const [confirmRevokeTail, setConfirmRevokeTail] = useState<string | null>(null);
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState<{ text: string; tone: "success" | "error" } | null>(null);
   const [copying, setCopying] = useState(false);
   const qc = useQueryClient();
   const devices = useQuery({
@@ -29,15 +29,18 @@ export function AccessTokens({ onClose }: { onClose: () => void }) {
       setToken(result.token);
       setShowToken(false);
       setName("");
-      setMessage("");
+      setMessage(null);
       void qc.invalidateQueries({ queryKey: ["devices"] });
     },
   });
   const revoke = useMutation({
     networkMode: "always",
     mutationFn: api.revokeDevice,
-    onSuccess: () => {
-      setToken("");
+    onSuccess: (_data, revokedTail) => {
+      if (token && token.endsWith(revokedTail)) {
+        setToken("");
+        setShowToken(false);
+      }
       setConfirmRevokeTail(null);
       void qc.invalidateQueries({ queryKey: ["devices"] });
     },
@@ -105,7 +108,12 @@ export function AccessTokens({ onClose }: { onClose: () => void }) {
               onClick={async () => {
                 setCopying(true);
                 try {
-                  setMessage((await copyText(token)) ? "已复制令牌" : "复制失败，请显示后手动复制");
+                  const ok = await copyText(token);
+                  setMessage(
+                    ok
+                      ? { text: "已复制令牌", tone: "success" }
+                      : { text: "复制失败，请显示后手动复制", tone: "error" },
+                  );
                 } finally {
                   setCopying(false);
                 }
@@ -126,7 +134,7 @@ export function AccessTokens({ onClose }: { onClose: () => void }) {
               onClick={() => {
                 setToken("");
                 setShowToken(false);
-                setMessage("");
+                setMessage(null);
               }}
             >
               已保存
@@ -167,7 +175,11 @@ export function AccessTokens({ onClose }: { onClose: () => void }) {
             : "吊销令牌失败，请重试。"}
         </InlineStatus>
       )}
-      {message && <InlineStatus tone="success">{message}</InlineStatus>}
+      {message && (
+        <div className="inline-status--spaced">
+          <InlineStatus tone={message.tone}>{message.text}</InlineStatus>
+        </div>
+      )}
       {devices.isLoading ? (
         <p>加载令牌…</p>
       ) : (

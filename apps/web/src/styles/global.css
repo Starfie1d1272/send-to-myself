@@ -1302,44 +1302,15 @@ body {
   flex-wrap: wrap;
   gap: 6px;
 }
-.att__action {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  min-height: 30px;
-  padding: 4px 10px;
-  border: 1px solid var(--line-control);
-  border-radius: 8px;
-  background: var(--card-hi);
+.att__btn {
   color: var(--ink-soft);
-  font: inherit;
-  font-size: 12.5px;
-  font-weight: 500;
-  line-height: 1.25;
-  text-decoration: none;
-  cursor: pointer;
-  white-space: nowrap;
-  transition:
-    border-color 0.15s,
-    color 0.15s,
-    background 0.15s;
 }
-.att__action:hover:not(:disabled) {
-  border-color: var(--accent);
-  color: var(--accent-deep);
-  background: var(--card);
-}
-.att__action:disabled {
-  opacity: 0.55;
-  cursor: default;
-}
-.att__action--done {
+.att__btn--done {
   border-color: var(--green);
   color: var(--green);
 }
-.att__grid--2 .att__action,
-.att__grid--3 .att__action {
+.att__grid--2 .att__btn,
+.att__grid--3 .att__btn {
   padding: 4px 8px;
   font-size: 12px;
 }
@@ -1578,6 +1549,16 @@ body {
   gap: 8px;
   margin-top: 16px;
 }
+.dialog-actions--start {
+  justify-content: flex-start;
+  margin-top: 0;
+}
+.dialog-actions--center {
+  justify-content: center;
+}
+.inline-status--spaced {
+  margin-top: 10px;
+}
 .detail-list {
   list-style: none;
   padding: 0;
@@ -1794,8 +1775,8 @@ body {
   .app-menu__panel button {
     min-height: 44px;
   }
-  .att__action {
-    min-height: 38px;
+  .att__grid--2 .att__btn,
+  .att__grid--3 .att__btn {
     padding: 6px 10px;
   }
 }

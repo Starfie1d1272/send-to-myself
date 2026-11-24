@@ -318,7 +318,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
               <div className="login__card">
                 <p>{error || "正在退出…"}</p>
                 {!pending && (
-                  <div className="dialog-actions" style={{ justifyContent: "center" }}>
+                  <div className="dialog-actions dialog-actions--center">
                     <button
                       type="button"
                       className="button button--secondary"

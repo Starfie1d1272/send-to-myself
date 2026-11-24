@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { QueryClient, InfiniteQueryObserver } from "@tanstack/react-query";
 import { api } from "../src/lib/api.ts";
-import { initialTimelineState, itemPages, timelineParams } from "../src/lib/timeline.ts";
+import {
+  initialTimelineState,
+  itemPages,
+  sameTimelineMode,
+  timelineParams,
+} from "../src/lib/timeline.ts";
 
 test("serializes false filters and filters links/deadlines before pagination", async (t) => {
   const old = globalThis.fetch;
@@ -115,4 +120,18 @@ test("frontend text and attachment retries transmit their persistent dedupe keys
   await api.upload("same draft", [file], "upload-key");
   assert.equal(requests[1].get("dedupeKey"), "upload-key");
   assert.equal(requests[2].get("dedupeKey"), "upload-key");
+});
+
+test("placeholder data stays within the same view mode and never crosses into or out of trash", () => {
+  const inbox = timelineParams(initialTimelineState);
+  const todo = timelineParams({ ...initialTimelineState, view: "todo" });
+  const favorites = timelineParams({ ...initialTimelineState, view: "favorites", query: "k" });
+  const trash = timelineParams({ ...initialTimelineState, view: "trash" });
+
+  assert.equal(sameTimelineMode(inbox, todo), true);
+  assert.equal(sameTimelineMode(todo, favorites), true);
+  assert.equal(sameTimelineMode(inbox, trash), false);
+  assert.equal(sameTimelineMode(trash, inbox), false);
+  assert.equal(sameTimelineMode(trash, trash), true);
+  assert.equal(sameTimelineMode(undefined, inbox), false);
 });

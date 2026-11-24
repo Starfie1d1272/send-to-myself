@@ -3,6 +3,7 @@ import type { Item } from "@sendtomyself/shared";
 import { type GapKind, groupByDay, sameCluster } from "../lib/format";
 import type { TimelineViewState } from "../lib/timeline";
 import { ItemCard } from "./ItemCard";
+import { InlineStatus } from "./ui/InlineStatus";
 
 export function Timeline({
   items,
@@ -83,11 +84,15 @@ export function Timeline({
   return (
     <>
       {pending && (
-        <div className="status-banner" role="status">
-          <p className="inline-status">正在加载筛选结果…</p>
+        <div className="status-banner">
+          <InlineStatus>正在加载筛选结果…</InlineStatus>
         </div>
       )}
-      <div className={`timeline${pending ? " timeline--pending" : ""}`}>
+      <div
+        className={`timeline${pending ? " timeline--pending" : ""}`}
+        inert={pending || undefined}
+        aria-busy={pending || undefined}
+      >
         {groups.map((g) => (
           <section key={g.key} className="day">
             <div className="day__divider">

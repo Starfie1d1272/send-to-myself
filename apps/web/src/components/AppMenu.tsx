@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
+import { usePopoverMenu } from "../hooks/usePopoverMenu";
 import { getNativeBridge, hasNativeAuth } from "../lib/nativeBridge";
 
 export type AppMenuProps = {
@@ -11,28 +12,35 @@ export type AppMenuProps = {
   logoutPending?: boolean;
 };
 export function AppMenu(props: AppMenuProps) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const { open, setOpen, close, containerRef, triggerRef } = usePopoverMenu();
   const panelRef = useRef<HTMLDivElement>(null);
+  const initialFocusRef = useRef<"first" | "last">("first");
+
   useEffect(() => {
     if (!open) return;
-    const click = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false);
-    };
-    const key = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setOpen(false);
-        ref.current?.querySelector("button")?.focus();
-      }
-    };
-    document.addEventListener("mousedown", click);
-    document.addEventListener("keydown", key);
-    return () => {
-      document.removeEventListener("mousedown", click);
-      document.removeEventListener("keydown", key);
-    };
+    const items = Array.from(
+      panelRef.current?.querySelectorAll<HTMLButtonElement>(
+        'button[role="menuitem"]:not(:disabled)',
+      ) ?? [],
+    );
+    const target = initialFocusRef.current === "last" ? items.at(-1) : items[0];
+    target?.focus();
+    initialFocusRef.current = "first";
   }, [open]);
+
+  const onTriggerKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      initialFocusRef.current = e.key === "ArrowUp" ? "last" : "first";
+      setOpen(true);
+    }
+  };
+
   const onMenuKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "Tab") {
+      setOpen(false);
+      return;
+    }
     if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
     const buttons = Array.from(
       panelRef.current?.querySelectorAll<HTMLButtonElement>(
@@ -47,14 +55,14 @@ export function AppMenu(props: AppMenuProps) {
     else if (e.key === "ArrowDown") buttons[(index + 1) % buttons.length]!.focus();
     else buttons[(index - 1 + buttons.length) % buttons.length]!.focus();
   };
+
   const item = (label: string, action: () => void, disabled = false) => (
     <button
       type="button"
       role="menuitem"
       disabled={disabled}
       onClick={() => {
-        ref.current?.querySelector("button")?.focus();
-        setOpen(false);
+        close(true);
         action();
       }}
     >
@@ -63,15 +71,20 @@ export function AppMenu(props: AppMenuProps) {
   );
   const oldNative = !!getNativeBridge() && !hasNativeAuth();
   return (
-    <div ref={ref} className="app-menu">
+    <div ref={containerRef} className="app-menu">
       <button
         type="button"
+        ref={triggerRef}
         className="icon-btn app-menu__trigger"
         aria-label="应用菜单"
         title="应用菜单"
         aria-haspopup="menu"
         aria-expanded={open}
-        onClick={() => setOpen(!open)}
+        onKeyDown={onTriggerKeyDown}
+        onClick={() => {
+          initialFocusRef.current = "first";
+          setOpen(!open);
+        }}
       >
         <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
           <circle cx="5" cy="12" r="2" />

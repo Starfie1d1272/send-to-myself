@@ -57,7 +57,7 @@ export function LoginView({
         </p>
       )}
       {notice && (
-        <div style={{ marginTop: 12 }}>
+        <div className="inline-status--spaced">
           <InlineStatus>{notice}</InlineStatus>
         </div>
       )}

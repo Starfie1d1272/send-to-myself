@@ -5,7 +5,7 @@ import { clientReleases } from "../config/client-releases";
 import { copyText } from "../lib/clipboard";
 
 export function ConnectDevices({ onClose }: { onClose: () => void }) {
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState<{ text: string; tone: "success" | "error" } | null>(null);
   return (
     <Dialog onClose={onClose} labelledBy="connect-title">
       <div className="device-dialog__header">
@@ -24,26 +24,25 @@ export function ConnectDevices({ onClose }: { onClose: () => void }) {
         当前访问地址
         <input readOnly value={window.location.origin} onFocus={(e) => e.target.select()} />
       </label>
-      <div className="dialog-actions" style={{ justifyContent: "flex-start", marginTop: 0 }}>
+      <div className="dialog-actions dialog-actions--start">
         <button
           type="button"
           className="button button--secondary"
-          onClick={async () =>
+          onClick={async () => {
+            const ok = await copyText(window.location.origin);
             setMessage(
-              (await copyText(window.location.origin))
-                ? "已复制地址"
-                : "复制失败，请手动选择地址复制",
-            )
-          }
+              ok
+                ? { text: "已复制地址", tone: "success" }
+                : { text: "复制失败，请手动选择地址复制", tone: "error" },
+            );
+          }}
         >
           复制地址
         </button>
       </div>
       {message && (
-        <div style={{ marginTop: 10 }}>
-          <InlineStatus tone={message === "已复制地址" ? "success" : "error"}>
-            {message}
-          </InlineStatus>
+        <div className="inline-status--spaced">
+          <InlineStatus tone={message.tone}>{message.text}</InlineStatus>
         </div>
       )}
       <div className="client-list">

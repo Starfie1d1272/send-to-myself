@@ -95,7 +95,7 @@ export function EditDraftRecovery() {
         ))}
       </ul>
       {notice && (
-        <div style={{ marginTop: 8 }}>
+        <div className="inline-status--spaced">
           <InlineStatus>{notice}</InlineStatus>
         </div>
       )}

@@ -29,8 +29,8 @@ export function Attachments({ items }: { items: Attachment[] }) {
       setBusyId(null);
     }
   };
-  const share = async (attachment: Attachment) => {
-    if (busyId) return false;
+  const share = async (attachment: Attachment): Promise<void> => {
+    if (busyId) return;
     setBusyId(attachment.id);
     setShareError("");
     setNotice("");
@@ -39,12 +39,9 @@ export function Attachments({ items }: { items: Attachment[] }) {
       if (result === "queued") setNotice("已加入传输，下载完成后打开系统分享。");
       if (result === "unsupported") {
         setShareError("此设备不支持直接分享文件，请下载后发送。");
-        return false;
       }
-      return result !== "cancelled";
     } catch {
       setShareError("分享失败，请重试或下载后发送。");
-      return false;
     } finally {
       setBusyId(null);
     }
@@ -75,7 +72,7 @@ export function Attachments({ items }: { items: Attachment[] }) {
               <div className="att__image-actions">
                 <button
                   type="button"
-                  className={`att__action${copied === a.id ? " att__action--done" : ""}`}
+                  className={`button button--sm att__btn${copied === a.id ? " att__btn--done" : ""}`}
                   aria-label={copied === a.id ? "已复制图片" : "复制图片"}
                   title={copied === a.id ? "已复制图片" : "复制图片"}
                   onClick={async () => {
@@ -94,7 +91,7 @@ export function Attachments({ items }: { items: Attachment[] }) {
                       : "复制图片"}
                 </button>
                 <a
-                  className="att__action"
+                  className="button button--sm att__btn"
                   href={attachmentDownloadUrl(a.id)}
                   download={a.filename}
                   aria-label="保存图片"
@@ -110,7 +107,7 @@ export function Attachments({ items }: { items: Attachment[] }) {
                 </a>
                 <button
                   type="button"
-                  className="att__action"
+                  className="button button--sm att__btn"
                   disabled={busyId !== null}
                   aria-label="分享图片"
                   title="分享图片"
@@ -135,7 +132,7 @@ export function Attachments({ items }: { items: Attachment[] }) {
           </div>
           <div className="att__file-actions">
             <a
-              className="att__action"
+              className="button button--sm att__btn"
               href={attachmentDownloadUrl(a.id)}
               title="下载"
               download={a.filename}
@@ -150,7 +147,7 @@ export function Attachments({ items }: { items: Attachment[] }) {
             </a>
             <button
               type="button"
-              className="att__action"
+              className="button button--sm att__btn"
               disabled={busyId !== null}
               onClick={() => void share(a)}
             >

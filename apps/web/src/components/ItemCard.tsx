@@ -30,6 +30,7 @@ import {
 } from "../lib/draft";
 import { mutationErrorMessage } from "../lib/mutation-error";
 import { useItemMutations } from "../hooks/useItems";
+import { usePopoverMenu } from "../hooks/usePopoverMenu";
 import { Attachments } from "./Attachments";
 import { LinkPreviewCard } from "./LinkPreviewCard";
 import { SensitiveText } from "./SensitiveText";
@@ -79,10 +80,14 @@ export function ItemCard({
   const [copyError, setCopyError] = useState("");
   const [dueOpen, setDueOpen] = useState(false);
   const [tagOpen, setTagOpen] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
+  const {
+    open: menuOpen,
+    setOpen: setMenuOpen,
+    close: closeMenu,
+    containerRef: menuRef,
+    triggerRef,
+  } = usePopoverMenu();
   const [customDue, setCustomDue] = useState("");
-  const menuRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
   const editRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
     setRevealed(false);
@@ -94,24 +99,6 @@ export function ItemCard({
     document.addEventListener("visibilitychange", hide);
     return () => document.removeEventListener("visibilitychange", hide);
   }, []);
-  useEffect(() => {
-    if (!menuOpen) return;
-    const key = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setMenuOpen(false);
-        triggerRef.current?.focus();
-      }
-    };
-    const outside = (e: MouseEvent) => {
-      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false);
-    };
-    document.addEventListener("keydown", key);
-    document.addEventListener("mousedown", outside);
-    return () => {
-      document.removeEventListener("keydown", key);
-      document.removeEventListener("mousedown", outside);
-    };
-  }, [menuOpen]);
   const [editing, setEditing] = useState(false);
   const wasEditing = useRef(false);
   const [draft, setDraft] = useState("");
@@ -172,10 +159,9 @@ export function ItemCard({
   };
   const menuAction = async (operation: () => Promise<unknown>, preview = false) => {
     if (await run(operation, preview)) {
-      setMenuOpen(false);
+      closeMenu(true);
       setDueOpen(false);
       setTagOpen(false);
-      requestAnimationFrame(() => triggerRef.current?.focus());
     }
   };
   const patch = (p: Parameters<typeof update.mutate>[0]["patch"]) => {
@@ -665,7 +651,6 @@ export function ItemCard({
                 ref={triggerRef}
                 aria-label="更多操作"
                 title="更多操作"
-                aria-haspopup="menu"
                 aria-expanded={menuOpen}
                 onClick={() => setMenuOpen(!menuOpen)}
               >
@@ -682,11 +667,10 @@ export function ItemCard({
                 </svg>
               </button>
               {menuOpen && (
-                <div className="due-menu" role="menu">
+                <div className="due-menu">
                   <div className="due-menu__group">
                     <button
                       type="button"
-                      role="menuitem"
                       onClick={() =>
                         void menuAction(() =>
                           update.mutateAsync({ id: item.id, patch: { pinned: !item.pinned } }),
@@ -697,7 +681,7 @@ export function ItemCard({
                     </button>
                     <button
                       type="button"
-                      role="menuitem"
+
                       onClick={() =>
                         void menuAction(() =>
                           update.mutateAsync({ id: item.id, patch: { isTodo: !item.isTodo } }),
@@ -708,7 +692,7 @@ export function ItemCard({
                     </button>
                     <button
                       type="button"
-                      role="menuitem"
+
                       aria-expanded={dueOpen}
                       onClick={() => setDueOpen(!dueOpen)}
                     >
@@ -769,7 +753,7 @@ export function ItemCard({
                     )}
                     <button
                       type="button"
-                      role="menuitem"
+
                       aria-expanded={tagOpen}
                       onClick={() => setTagOpen(!tagOpen)}
                     >
@@ -803,7 +787,7 @@ export function ItemCard({
                   <div className="due-menu__group">
                     <button
                       type="button"
-                      role="menuitem"
+
                       onClick={() => {
                         setMenuOpen(false);
                         void startEdit();
@@ -813,7 +797,7 @@ export function ItemCard({
                     </button>
                     <button
                       type="button"
-                      role="menuitem"
+
                       onClick={() =>
                         void menuAction(() =>
                           update.mutateAsync({
@@ -828,7 +812,7 @@ export function ItemCard({
                     {item.sensitiveOverride !== null && (
                       <button
                         type="button"
-                        role="menuitem"
+
                         onClick={() =>
                           void menuAction(() =>
                             update.mutateAsync({ id: item.id, patch: { sensitive: null } }),
@@ -841,7 +825,7 @@ export function ItemCard({
                     {urls.length > 0 && (
                       <button
                         type="button"
-                        role="menuitem"
+
                         onClick={() =>
                           void menuAction(async () => {
                             const result = await refetchPreview.mutateAsync(item.id);
@@ -857,7 +841,7 @@ export function ItemCard({
                   <div className="due-menu__divider" role="separator" />
                   <button
                     type="button"
-                    role="menuitem"
+
                     className="due-menu__danger"
                     onClick={() => void menuAction(() => remove.mutateAsync(item.id))}
                   >
