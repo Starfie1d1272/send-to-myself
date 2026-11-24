@@ -16,7 +16,7 @@ export function bridgePermission(server: string): string {
   if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) throw new Error('服务器地址无效');
   const permission: PermissionConfig = {
     javascriptProxyPermission: { urlPermissionList: [{ scheme: parsed.protocol.replace(':', ''),
-      host: parsed.hostname, port: parsed.port || (parsed.protocol === 'https:' ? '443' : '80'), path: parsed.pathname || '/' }] }
+      host: parsed.hostname, port: parsed.port, path: parsed.pathname || '/' }] }
   };
   return JSON.stringify(permission);
 }

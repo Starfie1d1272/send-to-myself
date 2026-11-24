@@ -249,6 +249,12 @@ export async function processQueue(context: common.Context): Promise<void> {
   if (!processing) processing = drain(context).finally(() => { processing = undefined; });
   await processing;
 }
+export async function reconcileQueueItem(context: common.Context, key: string): Promise<void> {
+  const item = (await readQueue(context)).find((entry: QueueItemData) => entry.dedupeKey === key);
+  if (!item || (!item.agentId && !item.cancelRequested)) return;
+  try { await processItem(context, key, false); }
+  catch (error) { if (!(error instanceof TransferBusyError)) throw error as Error; }
+}
 export async function reconcileQueue(context: common.Context): Promise<void> {
   const items = await readQueue(context);
   for (let i = 0; i < items.length; i++) {

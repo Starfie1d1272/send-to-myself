@@ -544,7 +544,9 @@ test("Harmony image shares persist file metadata before HTTP and recover after a
   const result = await share.handleShare({}, f.context);
   assert.equal(result.queued, true);
   assert.equal(result.needsLogin, false);
+  assert.equal(typeof result.key, "string");
   let item = JSON.parse(f.store.get("queue")).items[0];
+  assert.equal(result.key, item.dedupeKey);
   assert.equal(item.files[0].mimeType, "image/png");
   assert.equal(item.files[0].filename, "原图.png");
   assert.equal(item.files[0].path.startsWith(join(f.root, "shared-queue")), true);
@@ -553,10 +555,17 @@ test("Harmony image shares persist file metadata before HTTP and recover after a
   f.state.beforeStart = undefined;
   const restarted = f.newProcess()("./QueueService");
   await restarted.processQueue(f.context);
+  const otherPath = join(f.root, "other.png");
+  writeFileSync(otherPath, "other-bytes");
+  await restarted.enqueue(f.context, "other-item", "upload", "", [
+    { path: otherPath, filename: "other.png", mimeType: "image/png" },
+  ]);
   f.tasks.get(item.agentId).progress.state = f.State.COMPLETED;
-  await restarted.reconcileQueue(f.context);
-  assert.equal((await restarted.queueStatus(f.context)).count, 0);
+  await restarted.reconcileQueueItem(f.context, result.key);
+  assert.equal(await restarted.isQueued(f.context, result.key), false);
+  assert.equal(await restarted.isQueued(f.context, "other-item"), true);
   assert.equal(existsSync(item.files[0].path), false);
+  assert.equal(existsSync(otherPath), true);
 });
 
 test("Harmony hyperlink records are text, filenames cannot collide, login sends no stale token", async (t) => {
@@ -866,7 +875,7 @@ test("download removal preserves its file until system cancellation succeeds", a
   assert.equal(existsSync(task.config.saveas), false);
 });
 
-test("bridge allowlist names the configured scheme, host, and effective port", (t) => {
+test("bridge allowlist keeps explicit ports and leaves default ports empty for ArkWeb", (t) => {
   const f = fixture(t);
   const bridge = f.load("./NativeBridge");
   const permission = JSON.parse(bridge.bridgePermission("http://192.168.144.1:8799"));
@@ -876,7 +885,17 @@ test("bridge allowlist names the configured scheme, host, and effective port", (
   assert.equal(
     JSON.parse(bridge.bridgePermission("https://example.invalid")).javascriptProxyPermission
       .urlPermissionList[0].port,
-    "443",
+    "",
+  );
+  assert.equal(
+    JSON.parse(bridge.bridgePermission("https://example.invalid:443")).javascriptProxyPermission
+      .urlPermissionList[0].port,
+    "",
+  );
+  assert.equal(
+    JSON.parse(bridge.bridgePermission("http://example.invalid")).javascriptProxyPermission
+      .urlPermissionList[0].port,
+    "",
   );
   assert.throws(() => bridge.bridgePermission("file:///etc/passwd"), /无效/);
   assert.throws(() => bridge.bridgePermission("https://user:password@example.invalid"), /无效/);
