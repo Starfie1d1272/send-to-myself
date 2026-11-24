@@ -12,19 +12,21 @@ use serde::{Deserialize, Serialize};
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
+    utils::config::{Config as TauriConfig, FrontendDist, WebviewUrl},
     Manager, Url, WindowEvent,
 };
 use tauri_plugin_clipboard_manager::ClipboardExt;
 
 const DEFAULT_SHORTCUT: &str = "CommandOrControl+Shift+S";
 const CLIPBOARD_WARNING: &str = "原生复制暂不可用，可使用页面支持的复制方式";
+const MAIN_WINDOW: &str = "main";
 #[derive(Serialize, Deserialize, Default)]
 struct Config {
     server_url: Option<String>,
     #[serde(default)]
     shortcut: Option<String>,
 }
-struct LauncherUrl(Mutex<Option<Url>>);
+struct LauncherUrl(Url);
 // The same lock serializes settings writes and owns connection attempts.
 struct SettingsLock(Mutex<u64>);
 #[derive(Default)]
@@ -88,22 +90,64 @@ fn write_config(app: &tauri::AppHandle, cfg: &Config) -> Result<(), SettingsErro
     })();
     result.map_err(|_| failure("save_failed", "保存配置失败"))
 }
+fn launcher_url(config: &TauriConfig, dev: bool) -> Result<Url, Box<dyn std::error::Error>> {
+    let window = config
+        .app
+        .windows
+        .iter()
+        .find(|window| window.label == MAIN_WINDOW)
+        .ok_or("missing main window configuration")?;
+    let WebviewUrl::App(path) = &window.url else {
+        return Err("main window must use an app URL".into());
+    };
+
+    let configured_base = if dev {
+        config.build.dev_url.as_ref()
+    } else {
+        match &config.build.frontend_dist {
+            Some(FrontendDist::Url(url)) => Some(url),
+            _ => None,
+        }
+    };
+    // Match Tauri's desktop URL resolution for WebviewUrl::App.
+    let base = match configured_base {
+        Some(url) => url.clone(),
+        None if cfg!(windows) && window.use_https_scheme => Url::parse("https://tauri.localhost/")?,
+        None if cfg!(windows) => Url::parse("http://tauri.localhost/")?,
+        None => Url::parse("tauri://localhost")?,
+    };
+    if path.to_str() == Some("index.html") {
+        Ok(base)
+    } else {
+        Ok(base.join(&path.to_string_lossy())?)
+    }
+}
+
+fn launcher_page_allowed(launcher: &Url, label: &str, page: &Url) -> bool {
+    // Custom-protocol URLs can represent the root with an empty path.
+    fn root_path(url: &Url) -> &str {
+        match url.path() {
+            "" => "/",
+            path => path,
+        }
+    }
+
+    label == MAIN_WINDOW
+        && launcher.scheme() == page.scheme()
+        && launcher.host_str() == page.host_str()
+        && launcher.port_or_known_default() == page.port_or_known_default()
+        && root_path(launcher) == root_path(page)
+}
+
 fn check_launcher(
     app: &tauri::AppHandle,
     window: &tauri::WebviewWindow,
 ) -> Result<(), SettingsError> {
     let launcher = app.state::<LauncherUrl>();
-    let saved = launcher.0.lock().unwrap();
     let page = window
         .url()
         .map_err(|_| failure("forbidden", "无权调用设置"))?;
-    let allowed = saved.as_ref().is_some_and(|u| {
-        u.scheme() == page.scheme()
-            && u.host_str() == page.host_str()
-            && u.port_or_known_default() == page.port_or_known_default()
-            && u.path() == page.path()
-    });
-    if window.label() != "main" || !allowed {
+    if !launcher_page_allowed(&launcher.0, window.label(), &page) {
         return Err(failure("forbidden", "无权调用设置"));
     }
     Ok(())
@@ -214,14 +258,7 @@ async fn connect_server(
         *generation
     };
     let parsed = validate_server(&url).map_err(|_| failure("invalid_url", "请填写应用根地址"))?;
-    if app
-        .state::<LauncherUrl>()
-        .0
-        .lock()
-        .unwrap()
-        .as_ref()
-        .is_some_and(|u| u.origin() == parsed.origin())
-    {
+    if app.state::<LauncherUrl>().0.origin() == parsed.origin() {
         return Err(failure("invalid_url", "不能连接启动页"));
     }
     probe_server(&parsed).await?;
@@ -431,6 +468,68 @@ fn copy_image(
 }
 
 #[cfg(test)]
+mod launcher_tests {
+    use super::*;
+
+    #[test]
+    fn resolves_desktop_launcher_from_config() {
+        let mut config: TauriConfig =
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        assert_eq!(
+            launcher_url(&config, true).unwrap().as_str(),
+            "http://localhost:1420/"
+        );
+        let bundled = if cfg!(windows) {
+            "http://tauri.localhost/"
+        } else {
+            "tauri://localhost"
+        };
+        assert_eq!(launcher_url(&config, false).unwrap().as_str(), bundled);
+
+        #[cfg(windows)]
+        {
+            config.app.windows[0].use_https_scheme = true;
+            assert_eq!(
+                launcher_url(&config, false).unwrap().as_str(),
+                "https://tauri.localhost/"
+            );
+        }
+
+        config.app.windows[0].url = WebviewUrl::App("launcher.html".into());
+        assert_eq!(
+            launcher_url(&config, true).unwrap().as_str(),
+            "http://localhost:1420/launcher.html"
+        );
+    }
+
+    #[test]
+    fn launcher_allows_settings_query_and_checks_window_and_address() {
+        let launcher = Url::parse("http://tauri.localhost/").unwrap();
+        for page in [
+            "http://tauri.localhost/",
+            "http://tauri.localhost/?view=settings",
+        ] {
+            let page = Url::parse(page).unwrap();
+            assert!(launcher_page_allowed(&launcher, MAIN_WINDOW, &page));
+            assert!(!launcher_page_allowed(&launcher, "other", &page));
+        }
+        for page in [
+            "about:blank",
+            "https://tauri.localhost/",
+            "http://example.test/",
+            "http://tauri.localhost:1420/",
+            "http://tauri.localhost/another-page",
+        ] {
+            assert!(!launcher_page_allowed(
+                &launcher,
+                MAIN_WINDOW,
+                &Url::parse(page).unwrap()
+            ));
+        }
+    }
+}
+
+#[cfg(test)]
 mod clipboard_tests {
     use super::*;
     #[test]
@@ -476,7 +575,7 @@ mod clipboard_tests {
 
 /// 切换窗口可见性（全局快捷键与托盘共用）。
 fn toggle_window(app: &tauri::AppHandle) {
-    if let Some(w) = app.get_webview_window("main") {
+    if let Some(w) = app.get_webview_window(MAIN_WINDOW) {
         if w.is_visible().unwrap_or(false) {
             let _ = w.hide();
         } else {
@@ -493,8 +592,8 @@ fn switch_server(app: &tauri::AppHandle) {
     let settings_lock = app.state::<SettingsLock>();
     let mut generation = settings_lock.0.lock().unwrap();
     *generation = generation.wrapping_add(1);
-    let target = app.state::<LauncherUrl>().0.lock().unwrap().clone();
-    if let (Some(w), Some(mut u)) = (app.get_webview_window("main"), target) {
+    if let Some(w) = app.get_webview_window(MAIN_WINDOW) {
+        let mut u = app.state::<LauncherUrl>().0.clone();
         u.set_query(Some("view=settings"));
         let _ = w.navigate(u);
         let _ = w.show();
@@ -507,7 +606,7 @@ pub fn run() {
     tauri::Builder::default()
         // single-instance 必须第一个注册：再次启动时聚焦已有窗口而非开新进程。
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            if let Some(w) = app.get_webview_window("main") {
+            if let Some(w) = app.get_webview_window(MAIN_WINDOW) {
                 let _ = w.show();
                 let _ = w.set_focus();
             }
@@ -524,10 +623,8 @@ pub fn run() {
         .setup(|app| {
             let handle = app.handle();
 
-            // 捕获本地启动页 URL，供「切换服务器」导航回来。
-            let main = app.get_webview_window("main").expect("main window");
-            let launcher_url = main.url().ok();
-            app.manage(LauncherUrl(Mutex::new(launcher_url)));
+            // WebView2 may still be navigating when setup runs.
+            app.manage(LauncherUrl(launcher_url(app.config(), tauri::is_dev())?));
 
             app.manage(SettingsLock(Mutex::new(0)));
             app.manage(RuntimeState(Mutex::new(Runtime::default())));
@@ -546,7 +643,7 @@ pub fn run() {
                 .menu(&menu)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "show" => {
-                        if let Some(w) = app.get_webview_window("main") {
+                        if let Some(w) = app.get_webview_window(MAIN_WINDOW) {
                             let _ = w.show();
                             let _ = w.set_focus();
                         }
