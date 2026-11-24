@@ -10,7 +10,6 @@ export interface ShareResultData {
   success: boolean;
   needsLogin: boolean;
   queued: boolean;
-  key?: string;
   unknown?: boolean;
   errorMessage?: string;
 }
@@ -18,11 +17,10 @@ class ShareResult implements ShareResultData {
   success: boolean;
   needsLogin: boolean;
   queued: boolean;
-  key?: string;
   unknown?: boolean;
   errorMessage?: string;
-  constructor(success: boolean, login: boolean, queued: boolean, error?: string, key?: string) {
-    this.success = success; this.needsLogin = login; this.queued = queued; this.errorMessage = error; this.key = key;
+  constructor(success: boolean, login: boolean, queued: boolean, error?: string) {
+    this.success = success; this.needsLogin = login; this.queued = queued; this.errorMessage = error;
   }
 }
 
@@ -67,8 +65,8 @@ export async function handleShare(want: Want, context: common.Context): Promise<
     return new ShareResult(false, false, false, '无法保存待发送内容，请重新分享');
   }
   try { await retryQueueItem(context, key); }
-  catch (_error) { return new ShareResult(false, false, true, '内容已保留，请打开应用重试', key); }
-  if (!await isQueued(context, key)) return new ShareResult(true, false, false, undefined, key);
+  catch (_error) { return new ShareResult(false, false, true, '内容已保留，请打开应用重试'); }
+  if (!await isQueued(context, key)) return new ShareResult(true, false, false);
   let row = (await listQueue(context)).find((item: QueueRow) => item.key === key);
-  return new ShareResult(false, !(await readConnection(context))?.deviceToken, true, row?.status || '已加入后台传输，可在应用内查看进度', key);
+  return new ShareResult(false, !(await readConnection(context))?.deviceToken, true, row?.status || '已加入后台传输，可在应用内查看进度');
 }

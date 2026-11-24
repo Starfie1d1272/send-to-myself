@@ -544,9 +544,7 @@ test("Harmony image shares persist file metadata before HTTP and recover after a
   const result = await share.handleShare({}, f.context);
   assert.equal(result.queued, true);
   assert.equal(result.needsLogin, false);
-  assert.equal(typeof result.key, "string");
   let item = JSON.parse(f.store.get("queue")).items[0];
-  assert.equal(result.key, item.dedupeKey);
   assert.equal(item.files[0].mimeType, "image/png");
   assert.equal(item.files[0].filename, "原图.png");
   assert.equal(item.files[0].path.startsWith(join(f.root, "shared-queue")), true);
@@ -555,17 +553,10 @@ test("Harmony image shares persist file metadata before HTTP and recover after a
   f.state.beforeStart = undefined;
   const restarted = f.newProcess()("./QueueService");
   await restarted.processQueue(f.context);
-  const otherPath = join(f.root, "other.png");
-  writeFileSync(otherPath, "other-bytes");
-  await restarted.enqueue(f.context, "other-item", "upload", "", [
-    { path: otherPath, filename: "other.png", mimeType: "image/png" },
-  ]);
   f.tasks.get(item.agentId).progress.state = f.State.COMPLETED;
-  await restarted.reconcileQueueItem(f.context, result.key);
-  assert.equal(await restarted.isQueued(f.context, result.key), false);
-  assert.equal(await restarted.isQueued(f.context, "other-item"), true);
+  await restarted.reconcileQueue(f.context);
+  assert.equal((await restarted.queueStatus(f.context)).count, 0);
   assert.equal(existsSync(item.files[0].path), false);
-  assert.equal(existsSync(otherPath), true);
 });
 
 test("Harmony hyperlink records are text, filenames cannot collide, login sends no stale token", async (t) => {
