@@ -103,7 +103,8 @@ jobs:
           mkdir -p "$dest"
           cp scripts/harmony-ci/wrapper/package*.json "$dest/"
           npm ci --prefix "$dest" --ignore-scripts --no-audit --no-fund
-          test "$(cd "$dest" && ./node_modules/.bin/pnpm --version)" = 10.28.2
+          expected_pnpm="$(node -p "require('./scripts/harmony-ci/wrapper/package.json').dependencies.pnpm")"
+          test "$(cd "$dest" && ./node_modules/.bin/pnpm --version)" = "$expected_pnpm"
       - name: Build and validate unsigned HAP
         shell: bash
         run: |
